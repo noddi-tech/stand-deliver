@@ -24,10 +24,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     );
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoading(false);
-    });
+    // If the URL has an OAuth hash fragment, skip getSession() — let onAuthStateChange handle it
+    const hasOAuthHash = window.location.hash.includes('access_token');
+    if (!hasOAuthHash) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        setSession(session);
+        setLoading(false);
+      });
+    }
 
     return () => subscription.unsubscribe();
   }, []);
