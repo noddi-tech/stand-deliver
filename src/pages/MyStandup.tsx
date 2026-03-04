@@ -227,6 +227,12 @@ export default function MyStandup() {
         sessionId = newSession.id;
       }
 
+      // Carry forward stale active/in_progress commitments
+      await supabase.rpc('carry_forward_commitments', {
+        p_team_id: teamId,
+        p_session_id: sessionId,
+      });
+
       // Insert standup response
       const { error: respError } = await supabase.from("standup_responses").insert({
         session_id: sessionId,
