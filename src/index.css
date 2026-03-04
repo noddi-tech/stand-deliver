@@ -42,6 +42,12 @@
 
     --radius: 0.5rem;
 
+    --chart-blue: 217 91% 60%;
+    --chart-emerald: 160 84% 39%;
+    --chart-amber: 43 96% 56%;
+    --chart-red: 0 84% 60%;
+    --chart-slate: 215 16% 47%;
+
     --sidebar-background: 210 20% 98%;
     --sidebar-foreground: 222 47% 11%;
     --sidebar-primary: 217 91% 60%;
@@ -86,6 +92,12 @@
     --border: 217 33% 17%;
     --input: 217 33% 17%;
     --ring: 217 91% 60%;
+
+    --chart-blue: 217 91% 60%;
+    --chart-emerald: 160 84% 39%;
+    --chart-amber: 43 96% 56%;
+    --chart-red: 0 63% 50%;
+    --chart-slate: 215 20% 65%;
 
     --sidebar-background: 222 47% 7%;
     --sidebar-foreground: 210 40% 98%;

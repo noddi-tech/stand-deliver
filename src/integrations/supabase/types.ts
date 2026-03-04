@@ -14,6 +14,68 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_weekly_digests: {
+        Row: {
+          ai_narrative: string | null
+          ai_recommendations: Json | null
+          completion_rate: number | null
+          created_at: string
+          health_score: number | null
+          id: string
+          team_id: string
+          top_themes: Json | null
+          total_blocked: number | null
+          total_carried: number | null
+          total_commitments: number | null
+          total_completed: number | null
+          week_end: string
+          week_start: string
+          work_distribution: Json | null
+        }
+        Insert: {
+          ai_narrative?: string | null
+          ai_recommendations?: Json | null
+          completion_rate?: number | null
+          created_at?: string
+          health_score?: number | null
+          id?: string
+          team_id: string
+          top_themes?: Json | null
+          total_blocked?: number | null
+          total_carried?: number | null
+          total_commitments?: number | null
+          total_completed?: number | null
+          week_end: string
+          week_start: string
+          work_distribution?: Json | null
+        }
+        Update: {
+          ai_narrative?: string | null
+          ai_recommendations?: Json | null
+          completion_rate?: number | null
+          created_at?: string
+          health_score?: number | null
+          id?: string
+          team_id?: string
+          top_themes?: Json | null
+          total_blocked?: number | null
+          total_carried?: number | null
+          total_commitments?: number | null
+          total_completed?: number | null
+          week_end?: string
+          week_start?: string
+          work_distribution?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_weekly_digests_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       blockers: {
         Row: {
           category: Database["public"]["Enums"]["blocker_category"]
@@ -556,6 +618,10 @@ export type Database = {
       get_team_org: { Args: { _team_id: string }; Returns: string }
       is_org_member: {
         Args: { _org_id: string; _user_id: string }
+        Returns: boolean
+      }
+      is_team_lead: {
+        Args: { _team_id: string; _user_id: string }
         Returns: boolean
       }
       is_team_member: {
