@@ -1,59 +1,33 @@
 
 
-## Plan: Polish, Empty States, Command Palette, and Keyboard Shortcuts
+## Diagnosis: RLS Policy on `organizations` is RESTRICTIVE Instead of PERMISSIVE
 
-### New Files
+The INSERT policy "Authenticated users can create orgs" on `organizations` is set as **RESTRICTIVE** (`Permissive: No`). Restrictive policies can only further narrow access — they cannot grant it. Without any PERMISSIVE INSERT policy, all inserts are denied regardless.
 
-**`src/components/ui/EmptyState.tsx`**
-Reusable component with props: `icon` (LucideIcon), `title`, `description`, `actionLabel?`, `actionHref?`. Centered layout with 48px icon in `text-muted-foreground/40`, title in `text-lg font-medium`, description in `text-sm text-muted-foreground`, optional `Button` wrapped in `Link`.
+The same issue applies to **all tables** in this project — every single RLS policy is marked `Permissive: No` (RESTRICTIVE). This means no data operations work at all. This is a systemic issue across the schema.
 
-**`src/components/CommandPalette.tsx`**
-Uses shadcn `CommandDialog` with `CommandInput`, `CommandList`, `CommandGroup`, `CommandItem`. Navigation items: Dashboard, My Standup, Team Feed, Meeting Mode, Analytics, Settings. Action items: "Start Today's Standup", "View Team Insights", "Open Weekly Digest". Each item has an icon + label, triggers `navigate()` on select and closes dialog.
+### Fix
 
-**`src/components/KeyboardShortcuts.tsx`**
-Modal overlay listing all shortcuts (N, D, M, ?) in a clean grid. Triggered by `?` key.
+Run a migration that drops and recreates all INSERT/SELECT/UPDATE policies as PERMISSIVE. The affected tables and policies:
 
-### Modified Files
+- `organizations` — INSERT, SELECT
+- `organization_members` — INSERT, SELECT
+- `teams` — INSERT, SELECT, UPDATE
+- `team_members` — INSERT, SELECT
+- `profiles` — SELECT, UPDATE
+- `standup_sessions` — INSERT, SELECT, UPDATE
+- `standup_responses` — INSERT, SELECT
+- `commitments` — INSERT, SELECT, UPDATE
+- `commitment_history` — INSERT, SELECT
+- `blockers` — INSERT, SELECT, UPDATE
+- `focus_recommendations` — INSERT, SELECT, UPDATE
+- `slack_installations` — INSERT, SELECT, UPDATE
+- `slack_user_mappings` — INSERT, SELECT, UPDATE
+- `ai_weekly_digests` — INSERT, SELECT, UPDATE
 
-**`src/components/AppLayout.tsx`**
-- Add `CommandPalette` component (rendered inside `LayoutInner`)
-- Add `KeyboardShortcuts` modal
-- Add `useEffect` for global keyboard listener:
-  - Skip if `activeElement` is input/textarea/contenteditable
-  - `N` → `/standup`, `D` → `/dashboard`, `M` → `/meeting`
-  - `?` → toggle shortcuts modal
-  - `Cmd+K` / `Ctrl+K` → open command palette
-- Render command palette + shortcuts modal
+The migration will `DROP POLICY` then `CREATE POLICY` for each, using the same `USING`/`WITH CHECK` expressions but as `PERMISSIVE` (the default) instead of `RESTRICTIVE`.
 
-**`src/components/AppSidebar.tsx`**
-- Add `⌘K` hint in sidebar footer (before sign out button): small `<kbd>` styled text showing "⌘K to search"
+### Single migration file
 
-**`src/pages/Dashboard.tsx`**
-- Replace the inline "Nothing needs attention" text with `<EmptyState>` using `CheckCircle2` icon
-- Replace "No team members found" with `<EmptyState>` 
-- When `!metrics` and not loading, show a full-page `<EmptyState>` with "No standups yet" message + button to `/standup`
-
-**`src/pages/TeamFeed.tsx`**
-- Replace the existing inline empty state (lines 158-164) with `<EmptyState icon={PenSquare} title="No standups submitted yet" description="Be the first to share your update!" actionLabel="Submit Your Standup" actionHref="/standup" />`
-
-**`src/pages/MyStandup.tsx`**
-- The empty state for resolved items (line 373-377) already exists — replace with `<EmptyState icon={CheckCircle2}` using green styling, compact variant
-
-**`src/pages/Analytics.tsx`**
-- When metrics data is empty/null and not loading, show `<EmptyState>` with "Need at least 1 week of standup data to show analytics"
-
-**`src/pages/MeetingMode.tsx`**
-- Blockers board empty state (line 408) — replace with `<EmptyState>` component
-
-**`src/pages/Settings.tsx`**
-- No changes needed (tabs already have content or placeholders)
-
-### Toast coverage
-Most toasts are already in place (standup submitted, Slack connected/error). Verify and ensure:
-- Meeting mode `finishMeeting` shows toast — add `toast.success("Standup session completed! Summary posted.")` before navigate
-- Commitment status changes in MyStandup already use toast (line 262-263) — confirmed
-
-### Summary of all changes
-- 3 new files: `EmptyState.tsx`, `CommandPalette.tsx`, `KeyboardShortcuts.tsx`
-- 7 modified files: `AppLayout.tsx`, `AppSidebar.tsx`, `Dashboard.tsx`, `TeamFeed.tsx`, `MyStandup.tsx`, `Analytics.tsx`, `MeetingMode.tsx`
+`supabase/migrations/fix_rls_permissive.sql` — drops all existing policies and recreates them as permissive, preserving the same access logic.
 
