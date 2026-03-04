@@ -393,18 +393,21 @@ export type Database = {
           created_at: string
           id: string
           name: string
+          slack_workspace_id: string | null
           slug: string
         }
         Insert: {
           created_at?: string
           id?: string
           name: string
+          slack_workspace_id?: string | null
           slug: string
         }
         Update: {
           created_at?: string
           id?: string
           name?: string
+          slack_workspace_id?: string | null
           slug?: string
         }
         Relationships: []

@@ -43,6 +43,15 @@ export default function Onboarding() {
   const [step, setStep] = useState(0);
   const [initialized, setInitialized] = useState(false);
 
+  // Slack workspace detection
+  const slackWorkspaceName = user?.user_metadata?.["https://slack.com/team_name"] 
+    ?? user?.user_metadata?.slack_team_name 
+    ?? null;
+  const slackWorkspaceId = user?.user_metadata?.["https://slack.com/team_id"] 
+    ?? user?.user_metadata?.slack_team_id 
+    ?? null;
+  const [showManualOrgInput, setShowManualOrgInput] = useState(false);
+
   useEffect(() => {
     if (!onboardingStatus.loading && !initialized) {
       if (onboardingStatus.hasOrg && onboardingStatus.hasTeam) {
@@ -56,6 +65,13 @@ export default function Onboarding() {
       setInitialized(true);
     }
   }, [onboardingStatus.loading, initialized]);
+
+  // Pre-fill org name from Slack workspace
+  useEffect(() => {
+    if (slackWorkspaceName && !orgName) {
+      setOrgName(slackWorkspaceName);
+    }
+  }, [slackWorkspaceName]);
 
   // Step 1 state
   const [orgName, setOrgName] = useState("");
@@ -89,10 +105,36 @@ export default function Onboarding() {
     if (!orgName.trim() || !user) return;
     setSaving(true);
     try {
+      // If signing in via Slack, check if org already exists for this workspace
+      if (slackWorkspaceId) {
+        const { data: existingOrg } = await (supabase
+          .from("organizations") as any)
+          .select("id")
+          .eq("slack_workspace_id", slackWorkspaceId)
+          .maybeSingle();
+
+        if (existingOrg) {
+          // Auto-join existing org
+          const { error: memErr } = await supabase
+            .from("organization_members")
+            .insert({ org_id: existingOrg.id, user_id: user.id, role: "member" });
+          if (memErr && !memErr.message.includes("duplicate")) throw memErr;
+
+          setOrgId(existingOrg.id);
+          setStep(1);
+          return;
+        }
+      }
+
       const slug = slugify(orgName);
+      const insertData: any = { name: orgName.trim(), slug };
+      if (slackWorkspaceId) {
+        insertData.slack_workspace_id = slackWorkspaceId;
+      }
+
       const { data: org, error: orgErr } = await supabase
         .from("organizations")
-        .insert({ name: orgName.trim(), slug })
+        .insert(insertData)
         .select("id")
         .single();
       if (orgErr) throw orgErr;
@@ -229,35 +271,61 @@ export default function Onboarding() {
           <Card className="w-full">
             <CardHeader>
               <CardTitle>Create your organization</CardTitle>
-              <CardDescription>This is your workspace where teams collaborate.</CardDescription>
+              <CardDescription>
+                {slackWorkspaceName && !showManualOrgInput
+                  ? "We detected your Slack workspace. Use it as your organization?"
+                  : "This is your workspace where teams collaborate."}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Organization name</Label>
-                <Input
-                  placeholder="e.g. Acme Engineering"
-                  value={orgName}
-                  onChange={(e) => setOrgName(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleCreateOrg()}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Your role</Label>
-                <Select value={userRole} onValueChange={setUserRole}>
-                  <SelectTrigger><SelectValue placeholder="Select your role" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="engineering_lead">Engineering Lead</SelectItem>
-                    <SelectItem value="product_manager">Product Manager</SelectItem>
-                    <SelectItem value="developer">Developer</SelectItem>
-                    <SelectItem value="designer">Designer</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button className="w-full" onClick={handleCreateOrg} disabled={!orgName.trim() || saving}>
-                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Continue
-              </Button>
+              {slackWorkspaceName && !showManualOrgInput ? (
+                <>
+                  <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+                    <p className="text-sm text-muted-foreground">Slack workspace</p>
+                    <p className="text-lg font-semibold">{slackWorkspaceName}</p>
+                  </div>
+                  <Button className="w-full" onClick={handleCreateOrg} disabled={saving}>
+                    {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Use this workspace
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="w-full text-muted-foreground"
+                    onClick={() => setShowManualOrgInput(true)}
+                  >
+                    Use a different name
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <Label>Organization name</Label>
+                    <Input
+                      placeholder="e.g. Acme Engineering"
+                      value={orgName}
+                      onChange={(e) => setOrgName(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleCreateOrg()}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Your role</Label>
+                    <Select value={userRole} onValueChange={setUserRole}>
+                      <SelectTrigger><SelectValue placeholder="Select your role" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="engineering_lead">Engineering Lead</SelectItem>
+                        <SelectItem value="product_manager">Product Manager</SelectItem>
+                        <SelectItem value="developer">Developer</SelectItem>
+                        <SelectItem value="designer">Designer</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Button className="w-full" onClick={handleCreateOrg} disabled={!orgName.trim() || saving}>
+                    {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Continue
+                  </Button>
+                </>
+              )}
             </CardContent>
           </Card>
         )}
