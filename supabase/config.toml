@@ -1,1 +1,10 @@
 project_id = "hlfshnuzwkncfhyuutpa"
+
+[functions.slack-oauth-callback]
+verify_jwt = false
+
+[functions.slack-collect-response]
+verify_jwt = false
+
+[functions.slack-slash-handler]
+verify_jwt = false
