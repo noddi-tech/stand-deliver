@@ -16,7 +16,7 @@ export default function Analytics() {
   const loading = teamLoading || isLoading;
 
   return (
-    <div className="min-h-screen bg-background p-6 md:p-8 max-w-7xl mx-auto space-y-6">
+    <div className="bg-background p-6 md:p-8 max-w-7xl mx-auto space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Analytics</h1>
         <p className="text-sm text-muted-foreground">Team performance overview</p>
