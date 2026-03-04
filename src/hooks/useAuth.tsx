@@ -6,7 +6,7 @@ interface AuthContextType {
   session: Session | null;
   user: User | null;
   loading: boolean;
-  signInWithMagicLink: (email: string) => Promise<{ error: Error | null }>;
+  signInWithSlack: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -32,12 +32,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signInWithMagicLink = async (email: string) => {
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { emailRedirectTo: window.location.origin },
+  const signInWithSlack = async () => {
+    await supabase.auth.signInWithOAuth({
+      provider: 'slack_oidc' as any,
+      options: { redirectTo: window.location.origin },
     });
-    return { error: error as Error | null };
   };
 
   const signOut = async () => {
@@ -50,7 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         session,
         user: session?.user ?? null,
         loading,
-        signInWithMagicLink,
+        signInWithSlack,
         signOut,
       }}
     >
