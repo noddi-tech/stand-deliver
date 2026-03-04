@@ -13,19 +13,25 @@ import { SlackPreview } from "./SlackPreview";
 import { toast } from "sonner";
 import { Hash, Link2, Loader2, Unplug } from "lucide-react";
 
-const SUPABASE_PROJECT_ID = import.meta.env.VITE_SUPABASE_PROJECT_ID;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SLACK_CLIENT_ID = import.meta.env.VITE_SLACK_CLIENT_ID;
 
 export function IntegrationsTab() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
-  const slackConnected = searchParams.get("slack") === "connected";
 
   useEffect(() => {
-    if (slackConnected) {
-      toast.success("Slack workspace connected successfully!");
+    const slackStatus = searchParams.get("slack");
+    if (slackStatus === "connected") {
+      toast.success("Slack workspace connected successfully! 🎉");
+      queryClient.invalidateQueries({ queryKey: ["slack-installation"] });
+      window.history.replaceState({}, "", window.location.pathname + "?tab=integrations");
+    } else if (slackStatus === "error") {
+      toast.error("Failed to connect Slack. Please try again.");
+      window.history.replaceState({}, "", window.location.pathname + "?tab=integrations");
     }
-  }, [slackConnected]);
+  }, [searchParams, queryClient]);
 
   // Fetch user's org
   const { data: orgMembership } = useQuery({
@@ -118,10 +124,13 @@ export function IntegrationsTab() {
       toast.error("You need to be part of an organization first.");
       return;
     }
-    const scopes = "chat:write,commands,im:write,users:read,channels:read";
-    const redirectUri = `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/slack-oauth-callback`;
-    const state = orgId;
-    const url = `https://slack.com/oauth/v2/authorize?client_id=${import.meta.env.VITE_SLACK_CLIENT_ID || ""}&scope=${scopes}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`;
+    if (!SLACK_CLIENT_ID) {
+      toast.error("Slack Client ID is not configured.");
+      return;
+    }
+    const scopes = "app_mentions:read,chat:write,chat:write.public,commands,im:write,im:read,im:history,users:read,users:read.email,channels:read,groups:read";
+    const redirectUri = `${SUPABASE_URL}/functions/v1/slack-oauth-callback`;
+    const url = `https://slack.com/oauth/v2/authorize?client_id=${SLACK_CLIENT_ID}&scope=${scopes}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${orgId}`;
     window.open(url, "_blank", "width=600,height=700");
   };
 
