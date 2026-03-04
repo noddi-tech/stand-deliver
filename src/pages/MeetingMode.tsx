@@ -8,9 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Check, Loader2, Pause, Play, SkipForward, Plus, ArrowRight } from "lucide-react";
+import { Check, Loader2, Pause, Play, SkipForward, Plus, ArrowRight, PartyPopper } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 type Phase = "pre" | "speaking" | "blockers" | "summary";
 
@@ -188,6 +190,7 @@ export default function MeetingMode() {
 
   const finishMeeting = async () => {
     await completeSessionMutation.mutateAsync();
+    toast.success("Standup session completed! Summary posted.");
     navigate("/dashboard");
   };
 
@@ -405,7 +408,7 @@ export default function MeetingMode() {
         <div className="max-w-4xl mx-auto space-y-6">
           <h1 className="text-2xl font-bold text-center">Blockers Board</h1>
           {allBlockers.length === 0 ? (
-            <p className="text-center text-slate-500 py-12">No blockers raised today! 🎉</p>
+            <EmptyState icon={PartyPopper} title="No blockers raised this session" description="Great work! 🎉" iconClassName="text-emerald-400/60" />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {allBlockers.map((b, i) => {

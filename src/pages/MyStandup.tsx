@@ -20,8 +20,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Lock, Check, X, AlertTriangle, Loader2, Plus, ArrowRight, Clock, Edit2 } from "lucide-react";
+import { Lock, Check, X, AlertTriangle, Loader2, Plus, ArrowRight, Clock, Edit2, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
+import { EmptyState } from "@/components/ui/EmptyState";
 import type { Database } from "@/integrations/supabase/types";
 
 type CommitmentStatus = Database["public"]["Enums"]["commitment_status"];
@@ -371,10 +372,12 @@ export default function MyStandup() {
         </CardHeader>
         <CardContent className="space-y-3">
           {previousCommitments.length === 0 && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Check className="h-4 w-4 text-primary" />
-              All clear! No items to resolve.
-            </div>
+            <EmptyState
+              icon={CheckCircle2}
+              title="All clear!"
+              description="No items to resolve."
+              iconClassName="text-emerald-500/60"
+            />
           )}
           {previousCommitments.map((c) => {
             const current = effectiveStatuses[c.id];

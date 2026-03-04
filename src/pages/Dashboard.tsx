@@ -11,8 +11,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import MetricCard from "@/components/analytics/MetricCard";
 import HealthGauge from "@/components/analytics/HealthGauge";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { LineChart, Line, ResponsiveContainer } from "recharts";
-import { AlertTriangle, CheckCircle2, Clock, ArrowRight } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, ArrowRight, PenSquare, Users } from "lucide-react";
 
 const MOOD_EMOJI: Record<string, string> = {
   great: "🚀",
@@ -130,7 +131,7 @@ export default function Dashboard() {
             ))}
           </div>
         ) : !attention?.commitments.length && !attention?.blockers.length ? (
-          <p className="text-sm text-muted-foreground">Nothing needs attention right now 🎉</p>
+          <EmptyState icon={CheckCircle2} title="All clear!" description="Nothing needs attention right now 🎉" iconClassName="text-emerald-500/60" />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {attention?.commitments.map((c) => (
@@ -179,7 +180,7 @@ export default function Dashboard() {
             ))}
           </div>
         ) : !members?.length ? (
-          <p className="text-sm text-muted-foreground">No team members found.</p>
+          <EmptyState icon={Users} title="No team members" description="Invite your team to get started." actionLabel="Go to Settings" actionHref="/settings" />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {members.map((m) => (

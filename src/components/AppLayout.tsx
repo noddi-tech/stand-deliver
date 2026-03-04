@@ -4,14 +4,40 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSidebar } from "@/components/ui/sidebar";
-import { createContext, useContext } from "react";
+import { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import { CommandPalette } from "@/components/CommandPalette";
+import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 
-// Context to allow pages (like MeetingMode) to hide the sidebar
 export const LayoutContext = createContext<{ hideSidebar: boolean }>({ hideSidebar: false });
 export const useLayout = () => useContext(LayoutContext);
 
 function LayoutInner() {
   const { toggleSidebar, isMobile } = useSidebar();
+  const navigate = useNavigate();
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      const el = document.activeElement;
+      const isInput =
+        el instanceof HTMLInputElement ||
+        el instanceof HTMLTextAreaElement ||
+        (el as HTMLElement)?.isContentEditable;
+      if (isInput) return;
+
+      if (e.key === "n" || e.key === "N") { navigate("/standup"); return; }
+      if (e.key === "d" || e.key === "D") { navigate("/dashboard"); return; }
+      if (e.key === "m" || e.key === "M") { navigate("/meeting"); return; }
+      if (e.key === "?") { e.preventDefault(); setShortcutsOpen((o) => !o); }
+    },
+    [navigate]
+  );
+
+  useEffect(() => {
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleKeyDown]);
 
   return (
     <div className="min-h-screen flex w-full">
@@ -29,6 +55,8 @@ function LayoutInner() {
           <Outlet />
         </main>
       </div>
+      <CommandPalette />
+      <KeyboardShortcuts open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
     </div>
   );
 }
