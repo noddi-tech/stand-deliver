@@ -1,55 +1,36 @@
 
 
-## Onboarding Flow for New Users
+## Plan: Commitment Carry-Forward + History Tracking
 
-### Overview
-Create a multi-step onboarding wizard at `/onboarding` that guides new users through org creation, team setup, schedule configuration, member invites, and optional Slack connection. `ProtectedRoute` will detect missing org membership and redirect accordingly.
+### 1. Database Migration
 
-### Database Changes
-No schema changes needed. Existing tables (`organizations`, `organization_members`, `teams`, `team_members`) already support all required operations. RLS policies already allow authenticated users to create orgs and org members to create teams/team members.
+Create a single migration with:
 
-### Files to Create
+**`commitment_history` table:**
+- `id`, `commitment_id` (FK → commitments), `session_id` (FK → standup_sessions), `old_status`, `new_status`, `note`, `changed_at`
+- RLS: team members can view history via join through commitments → team_members
+- RLS: insert policy for team members (needed by the trigger running as SECURITY DEFINER won't need it, but good practice)
 
-**`src/pages/Onboarding.tsx`** — Multi-step wizard with 5 steps:
+**`carry_forward_commitments` function:**
+- Takes `p_team_id` and `p_session_id`
+- Updates commitments with status `active`/`in_progress` (excluding current session) to `carried`, increments `carry_count`, sets `current_session_id`
+- Returns count of carried items
+- `SECURITY DEFINER` so it bypasses RLS
 
-1. **Create Organization** — org name input, role dropdown (Engineering Lead, PM, Developer, Designer, Other — stored only for UX context, not persisted since org_role enum handles actual roles). Creates `organizations` record (with slugified name) + `organization_members` record (role: 'owner').
+**`log_commitment_status_change` trigger function + trigger:**
+- On UPDATE of commitments, if status changed, inserts into `commitment_history`
+- Trigger fires AFTER UPDATE on commitments FOR EACH ROW
 
-2. **Create First Team** — team name input, team size number input (2-20). Creates `teams` record (with org_id) + `team_members` record (role: 'lead', user_id: current user).
+### 2. Frontend Integration (`src/pages/MyStandup.tsx`)
 
-3. **Set Standup Schedule** — Day-of-week pill toggles (Mon-Sun, default Mon-Fri), time picker (default 09:00), timezone dropdown (auto-detected via `Intl.DateTimeFormat().resolvedOptions().timeZone`), timer-per-person slider (60-300s, default 120). Updates the team record.
+In `handleSubmit`, after creating/finding the standup session and before fetching commitments:
 
-4. **Invite Team Members** — Email input with add/remove list. "Send Invites" stores emails (uses `supabase.auth.admin` is not available client-side, so for now just show a toast confirming invites will be sent). "Skip for now" link also advances.
+1. Call `supabase.rpc('carry_forward_commitments', { p_team_id: teamId, p_session_id: sessionId })`
+2. This ensures stale active/in_progress items are marked as `carried` before the user resolves them
 
-5. **Connect Slack (Optional)** — Slack icon card with description, "Connect Slack" button (reuses same OAuth flow from IntegrationsTab), "Skip for now" link. Either action redirects to `/dashboard` with welcome toast.
+Also update the `previousCommitments` query to include `carried` status (it already includes it in the `.in("status", [...])` filter — need to verify).
 
-Step indicator: horizontal progress bar with numbered step labels, current step highlighted blue.
-
-Layout: clean full-page centered layout, no AppLayout/sidebar wrapper.
-
-### Files to Modify
-
-**`src/App.tsx`**:
-- Import `Onboarding` page
-- Add route: `<Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />`
-  (inside ProtectedRoute but NOT inside AppLayout)
-
-**`src/components/ProtectedRoute.tsx`**:
-- After confirming user exists, query `organization_members` for current user
-- Add loading state for org check
-- If no org membership and current path is not `/onboarding` → redirect to `/onboarding`
-- If org exists, check `team_members` for current user; if no team membership and not on `/onboarding` → redirect to `/onboarding`
-- Pass onboarding state (hasOrg, hasTeam) via context or props so Onboarding page knows which step to start on
-
-**`src/hooks/useAuth.tsx`** (or new hook `src/hooks/useOnboardingCheck.ts`):
-- Create a dedicated hook `useOnboardingStatus` that queries org and team membership
-- Returns `{ hasOrg, hasTeam, orgId, teamId, loading }`
-- Used by both ProtectedRoute and Onboarding page
-
-### Implementation Details
-
-- Slug generation: lowercase, replace spaces with hyphens, strip non-alphanumeric
-- Timezone list: use `Intl.supportedValuesOf('timeZone')` for full list
-- Day toggles: array of `['mon','tue','wed','thu','fri','sat','sun']` matching the `standup_days` column format
-- All Supabase mutations use the existing client; RLS policies already permit the required operations
-- Step 4 invite emails: for MVP, just collect and show a toast — actual invite sending can be added later
+### 3. Files Changed
+- **New migration**: `commitment_history` table + `carry_forward_commitments` function + status change trigger
+- **`src/pages/MyStandup.tsx`**: Add RPC call after session creation, ensure `carried` is in the status filter for previous commitments
 
