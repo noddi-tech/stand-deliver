@@ -9,6 +9,9 @@ import ProtectedRoute from "@/components/ProtectedRoute";
 import Auth from "@/pages/Auth";
 import Dashboard from "@/pages/Dashboard";
 import Settings from "@/pages/Settings";
+import Analytics from "@/pages/Analytics";
+import MyAnalytics from "@/pages/MyAnalytics";
+import TeamInsights from "@/pages/TeamInsights";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -37,6 +40,30 @@ const App = () => (
                 element={
                   <ProtectedRoute>
                     <Settings />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/analytics"
+                element={
+                  <ProtectedRoute>
+                    <Analytics />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/my-analytics"
+                element={
+                  <ProtectedRoute>
+                    <MyAnalytics />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/team-insights"
+                element={
+                  <ProtectedRoute>
+                    <TeamInsights />
                   </ProtectedRoute>
                 }
               />
