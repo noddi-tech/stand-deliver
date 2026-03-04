@@ -8,3 +8,15 @@ verify_jwt = false
 
 [functions.slack-slash-handler]
 verify_jwt = false
+
+[functions.ai-parse-commitments]
+verify_jwt = false
+
+[functions.ai-detect-blockers]
+verify_jwt = false
+
+[functions.ai-summarize-session]
+verify_jwt = false
+
+[functions.ai-weekly-digest]
+verify_jwt = false

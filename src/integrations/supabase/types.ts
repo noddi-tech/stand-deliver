@@ -243,6 +243,67 @@ export type Database = {
           },
         ]
       }
+      focus_recommendations: {
+        Row: {
+          created_at: string
+          description: string
+          id: string
+          is_dismissed: boolean
+          member_id: string
+          priority: string
+          recommendation_type: Database["public"]["Enums"]["recommendation_type"]
+          session_id: string | null
+          team_id: string
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          id?: string
+          is_dismissed?: boolean
+          member_id: string
+          priority?: string
+          recommendation_type: Database["public"]["Enums"]["recommendation_type"]
+          session_id?: string | null
+          team_id: string
+          title: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          id?: string
+          is_dismissed?: boolean
+          member_id?: string
+          priority?: string
+          recommendation_type?: Database["public"]["Enums"]["recommendation_type"]
+          session_id?: string | null
+          team_id?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "focus_recommendations_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "team_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "focus_recommendations_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "standup_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "focus_recommendations_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       organization_members: {
         Row: {
           created_at: string
@@ -647,6 +708,13 @@ export type Database = {
         | "carried"
       mood_type: "great" | "good" | "okay" | "struggling" | "rough"
       org_role: "owner" | "admin" | "member"
+      recommendation_type:
+        | "focus_suggestion"
+        | "blocker_alert"
+        | "carry_over_warning"
+        | "workload_balance"
+        | "pattern_insight"
+        | "celebration"
       session_status: "scheduled" | "collecting" | "in_progress" | "completed"
       session_type: "async" | "sync" | "physical"
       submission_via: "web" | "slack" | "physical"
@@ -797,6 +865,14 @@ export const Constants = {
       ],
       mood_type: ["great", "good", "okay", "struggling", "rough"],
       org_role: ["owner", "admin", "member"],
+      recommendation_type: [
+        "focus_suggestion",
+        "blocker_alert",
+        "carry_over_warning",
+        "workload_balance",
+        "pattern_insight",
+        "celebration",
+      ],
       session_status: ["scheduled", "collecting", "in_progress", "completed"],
       session_type: ["async", "sync", "physical"],
       submission_via: ["web", "slack", "physical"],

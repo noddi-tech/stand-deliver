@@ -12,6 +12,7 @@ import Settings from "@/pages/Settings";
 import Analytics from "@/pages/Analytics";
 import MyAnalytics from "@/pages/MyAnalytics";
 import TeamInsights from "@/pages/TeamInsights";
+import WeeklyDigest from "@/pages/WeeklyDigest";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -64,6 +65,14 @@ const App = () => (
                 element={
                   <ProtectedRoute>
                     <TeamInsights />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/weekly-digest"
+                element={
+                  <ProtectedRoute>
+                    <WeeklyDigest />
                   </ProtectedRoute>
                 }
               />
