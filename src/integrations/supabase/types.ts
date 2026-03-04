@@ -265,6 +265,96 @@ export type Database = {
         }
         Relationships: []
       }
+      slack_installations: {
+        Row: {
+          bot_token: string
+          bot_user_id: string | null
+          id: string
+          installed_at: string
+          installing_user_id: string | null
+          org_id: string
+          workspace_id: string
+          workspace_name: string
+        }
+        Insert: {
+          bot_token: string
+          bot_user_id?: string | null
+          id?: string
+          installed_at?: string
+          installing_user_id?: string | null
+          org_id: string
+          workspace_id: string
+          workspace_name: string
+        }
+        Update: {
+          bot_token?: string
+          bot_user_id?: string | null
+          id?: string
+          installed_at?: string
+          installing_user_id?: string | null
+          org_id?: string
+          workspace_id?: string
+          workspace_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "slack_installations_installing_user_id_fkey"
+            columns: ["installing_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "slack_installations_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      slack_user_mappings: {
+        Row: {
+          created_at: string
+          id: string
+          org_id: string
+          slack_display_name: string | null
+          slack_user_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          org_id: string
+          slack_display_name?: string | null
+          slack_user_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          org_id?: string
+          slack_display_name?: string | null
+          slack_user_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "slack_user_mappings_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "slack_user_mappings_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       standup_responses: {
         Row: {
           blockers_text: string | null
