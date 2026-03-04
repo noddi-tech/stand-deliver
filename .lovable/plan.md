@@ -1,43 +1,18 @@
 
 
-## Plan: Auto-create Organization from Slack Workspace
+## Diagnosis
 
-When a user signs in via Slack OIDC, Supabase stores Slack workspace metadata in `user.user_metadata` (fields like `https://slack.com/team_name` and `https://slack.com/team_id`, or possibly `slack_team_name`/`slack_team_id`). We can use this to skip or pre-fill the organization step.
+Two issues:
 
-### Approach
+### 1. RLS Policies Are Still RESTRICTIVE
+The previous migration to fix policies from RESTRICTIVE to PERMISSIVE did not take effect. Every single policy across all tables still shows `Permissive: No`. This is why the INSERT on `organizations` fails — a RESTRICTIVE policy cannot grant access without a base PERMISSIVE policy.
 
-**Modify `src/pages/Onboarding.tsx` (step 0)**:
+**Fix**: Run a new migration that drops all existing policies and recreates them as PERMISSIVE (the Postgres default). This is the same fix as before, but needs to actually execute this time.
 
-1. On mount, read `user.user_metadata` to extract Slack workspace name and ID
-2. Check if an organization already exists for this Slack workspace (query `organizations` by slug or add a `slack_workspace_id` column)
-3. If workspace info is available, show a pre-filled card: "We detected your Slack workspace: **{workspace_name}**. Use this as your organization?" with a "Use this workspace" button and a "Use a different name" link that reveals the manual input
-4. If no Slack metadata (e.g. email sign-in), show the existing manual form as-is
+### 2. Auth Flow Is Correct
+The flow of authenticate → callback → dashboard → ProtectedRoute redirects to /onboarding (because no org exists) is actually working as designed. The user authenticates with Slack first, then lands on onboarding. The real blocker is just the RLS violation preventing org creation.
 
-**Database migration** — add `slack_workspace_id` column to `organizations`:
+### Migration
 
-```sql
-ALTER TABLE public.organizations 
-  ADD COLUMN IF NOT EXISTS slack_workspace_id text UNIQUE;
-```
-
-This lets us match returning users to existing orgs by Slack workspace ID, preventing duplicate orgs for the same workspace.
-
-**Modified `handleCreateOrg`**:
-- When creating from Slack, populate `slack_workspace_id` on the org
-- Before creating, check if an org with that `slack_workspace_id` already exists — if so, just add the user as a member and skip to step 1
-
-### Files Changed
-
-| File | Change |
-|------|--------|
-| `supabase/migrations/...` | Add `slack_workspace_id` column to `organizations` |
-| `src/pages/Onboarding.tsx` | Read Slack metadata from `user.user_metadata`, pre-fill org name, auto-join existing workspace org |
-| `src/integrations/supabase/types.ts` | Auto-updated after migration |
-
-### UX Flow
-
-1. User signs in with Slack → redirected to onboarding
-2. Step 0 shows: "Your Slack workspace: **Acme Corp**" with pre-filled org name and a prominent "Continue" button
-3. User can edit the name or accept as-is
-4. If another user from the same Slack workspace already created the org, the new user is auto-added as a member and skips to step 1 (team creation)
+Single file: drop and recreate all policies across all 14 tables as PERMISSIVE, preserving the same USING/WITH CHECK expressions. Tables: `organizations`, `organization_members`, `teams`, `team_members`, `profiles`, `standup_sessions`, `standup_responses`, `commitments`, `commitment_history`, `blockers`, `focus_recommendations`, `slack_installations`, `slack_user_mappings`, `ai_weekly_digests`.
 
