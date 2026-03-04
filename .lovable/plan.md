@@ -1,54 +1,57 @@
 
 
-# Slack Integration for StandFlow
+# Analytics for StandFlow
 
-## Current State
-The app only has Auth and a placeholder Dashboard. There is no Settings page, no sidebar, no app shell yet. The plan calls for building Phases 2-8 incrementally. This Slack integration request jumps ahead to what would be Phase 8 (Settings/Integrations) plus new edge functions.
+## 1. Database Migration
 
-## What to Build
+Create `ai_weekly_digests` table with columns: id, team_id (FK teams), week_start date, week_end date, health_score int, completion_rate decimal, total_commitments int, total_completed int, total_carried int, total_blocked int, top_themes jsonb, ai_narrative text, ai_recommendations jsonb, work_distribution jsonb, created_at timestamptz, unique(team_id, week_start). RLS: team members can view; team leads can insert/update.
 
-### 1. Database Migration
-Create two new tables with RLS:
+## 2. New Pages (3 files)
 
-- **slack_installations** — stores bot tokens per org/workspace. Columns: id, org_id (FK organizations), workspace_id, workspace_name, bot_token, bot_user_id, installing_user_id (FK profiles), installed_at, unique(org_id, workspace_id). RLS: org members can view/insert/update.
+**Analytics (`/analytics`)** — 6 sections:
+- Top metrics row: Health Score (SVG circular gauge), Completion Rate (% + Recharts sparkline), Active Blockers count, Carry-Over Rate %
+- Work Distribution: Recharts `AreaChart` (stacked) — weekly Feature/Bug Fix/Tech Debt/Other
+- Commitment Flow: horizontal funnel (custom bar chart) — Created → Done / Carried 1x / 2x / 3+ / Dropped
+- Blocker Heatmap: CSS grid with category rows × week columns, background color intensity by count
+- Participation: `BarChart` — response rate by day of week
+- Trending Themes: ranked list of phrases extracted from standup text (tag-style badges)
 
-- **slack_user_mappings** — links app users to Slack user IDs. Columns: id, org_id (FK organizations), user_id (FK profiles), slack_user_id, slack_display_name, created_at, unique(org_id, slack_user_id). RLS: org members can view/insert/update.
+All data fetched via React Query from `commitments`, `blockers`, `standup_responses`, `standup_sessions`, and `ai_weekly_digests`. Loading skeletons per section.
 
-### 2. Settings Page with Integrations Tab
-Create `/settings` route with a tabbed layout (Team, Schedule, Members, Integrations). Focus on the Integrations tab:
+**My Analytics (`/my-analytics`)** — private, scoped to current user's `team_members.id`:
+- Personal completion rate trend: `LineChart` over 30 days
+- Carry-over patterns by work type: grouped bar chart
+- Mood trend: `LineChart` mapping mood enum to numeric scale
+- "Your Patterns" section: 2-3 insight cards computed client-side from the user's data
 
-- **Connect to Slack** button that opens Slack OAuth URL (`https://slack.com/oauth/v2/authorize`) in a new window with required scopes (chat:write, commands, im:write, users:read, channels:read)
-- After connection: show workspace name, green connected badge, channel selector dropdown (fetched from Slack API via edge function)
-- **Slack User Mapping** section: table of team members with input fields to link Slack user IDs
-- **Slack Preview** component: static mockup showing what the bot DM reminder and channel summary messages look like in Slack Block Kit style
+**Team Insights (`/team-insights`)** — team leads only (check `team_members.role = 'lead'`):
+- Weekly digest from `ai_weekly_digests`: narrative, recommendations, work distribution summary
+- Celebration callouts (e.g., "5 commitments completed this week — best in a month")
+- Concern flags framed as questions ("Is the team overloaded? Carry-over rate increased 20%")
+- Explicitly no individual rankings or comparative metrics
+- Non-lead users see a "This page is for team leads" message
 
-### 3. Edge Functions (5 functions)
+## 3. Shared Components
 
-**a. slack-oauth-callback** — Handles OAuth redirect from Slack. Exchanges authorization code for bot token via `oauth.v2.access`, stores result in `slack_installations`, redirects user back to `/settings?tab=integrations&slack=connected`.
+- `src/components/analytics/MetricCard.tsx` — reusable card with label, value, optional sparkline/gauge
+- `src/components/analytics/HealthGauge.tsx` — SVG circular gauge (green/amber/red)
+- `src/components/analytics/CommitmentFunnel.tsx` — horizontal funnel visualization
+- `src/components/analytics/BlockerHeatmap.tsx` — grid heatmap component
 
-**b. slack-send-reminder** — Accepts `team_id`. Looks up team members with Slack mappings, fetches their carried/active commitments, sends a DM to each via `chat.postMessage` with Block Kit blocks (commitment list + Start/Snooze/Skip action buttons).
+## 4. Data Hooks
 
-**c. slack-collect-response** — Handles Slack interactive payloads (`type: block_actions`). Parses action (start/snooze/skip/done/blocked), creates or updates `standup_response` and `commitment` records accordingly. Returns updated message.
+- `useAnalyticsMetrics(teamId)` — aggregates from commitments, blockers, sessions
+- `useWeeklyDigests(teamId)` — fetches from ai_weekly_digests
+- `useMyAnalytics(memberId)` — personal stats from commitments + responses
+- All use React Query with appropriate cache/stale times
 
-**d. slack-post-summary** — Accepts `session_id`. Fetches all responses for the session, formats as a single Block Kit message with sections per member (mood, resolved items, new focus, blockers), posts to team's Slack channel. Includes footer with response count.
+## 5. Routing
 
-**e. slack-slash-handler** — Handles three slash commands:
-  - `/standup` — triggers standup collection for the user's team
-  - `/standup-status` — returns the user's open commitments as an ephemeral message
-  - `/standup-blocker` — quick-logs a blocker from the slash command text
+Add 3 new protected routes in `App.tsx`: `/analytics`, `/my-analytics`, `/team-insights`.
 
-### 4. Secrets Required
-- `SLACK_CLIENT_ID` and `SLACK_CLIENT_SECRET` — needed for OAuth flow. Will prompt user to add these via the secrets tool.
+## 6. Design
 
-### 5. Frontend Components
-- `src/pages/Settings.tsx` — tabbed settings page
-- `src/components/settings/IntegrationsTab.tsx` — Slack connect button, status display, channel selector, user mapping table
-- `src/components/settings/SlackPreview.tsx` — static Block Kit mockup
-- `src/components/settings/TeamTab.tsx`, `ScheduleTab.tsx`, `MembersTab.tsx` — placeholder tabs
-- Update `App.tsx` with `/settings` route
-
-### 6. Security Notes
-- Bot tokens stored in `slack_installations` are sensitive. RLS restricts to org members only. For production, these should ideally be encrypted or stored in Vault, but for MVP, RLS-protected storage is acceptable.
-- Edge functions use `SUPABASE_SERVICE_ROLE_KEY` to bypass RLS when needed for bot operations.
-- Slash command handler verifies Slack signing secret.
+- Dark-mode compatible Recharts colors using CSS variables (blue-500, emerald-500, amber-500, red-500, slate-400)
+- Consistent card layout matching the existing design system
+- Loading skeletons for every chart/section
 
