@@ -43,12 +43,17 @@ export default function Onboarding() {
   const [step, setStep] = useState(0);
   const [initialized, setInitialized] = useState(false);
 
-  // Slack workspace detection
+  // Slack workspace detection — check user_metadata then identity_data fallback
+  const identityData = user?.identities?.[0]?.identity_data;
   const slackWorkspaceName = user?.user_metadata?.["https://slack.com/team_name"] 
     ?? user?.user_metadata?.slack_team_name 
+    ?? identityData?.["https://slack.com/team_name"]
+    ?? identityData?.slack_team_name
     ?? null;
   const slackWorkspaceId = user?.user_metadata?.["https://slack.com/team_id"] 
     ?? user?.user_metadata?.slack_team_id 
+    ?? identityData?.["https://slack.com/team_id"]
+    ?? identityData?.slack_team_id
     ?? null;
   const [showManualOrgInput, setShowManualOrgInput] = useState(false);
 
@@ -105,19 +110,30 @@ export default function Onboarding() {
     if (!orgName.trim() || !user) return;
     setSaving(true);
     try {
+      // Verify auth is valid before any DB call
+      const { data: { user: verifiedUser }, error: authErr } = await supabase.auth.getUser();
+      if (authErr || !verifiedUser) {
+        toast({ title: "Session expired", description: "Please sign in again.", variant: "destructive" });
+        navigate("/auth", { replace: true });
+        return;
+      }
+
       // If signing in via Slack, check if org already exists for this workspace
       if (slackWorkspaceId) {
-        const { data: existingOrg } = await (supabase
+        const { data: existingOrg, error: lookupErr } = await (supabase
           .from("organizations") as any)
           .select("id")
           .eq("slack_workspace_id", slackWorkspaceId)
           .maybeSingle();
 
-        if (existingOrg) {
+        if (lookupErr) {
+          console.error("Org lookup error:", lookupErr);
+          // Don't block — just skip auto-join and create new
+        } else if (existingOrg) {
           // Auto-join existing org
           const { error: memErr } = await supabase
             .from("organization_members")
-            .insert({ org_id: existingOrg.id, user_id: user.id, role: "member" });
+            .insert({ org_id: existingOrg.id, user_id: verifiedUser.id, role: "member" });
           if (memErr && !memErr.message.includes("duplicate")) throw memErr;
 
           setOrgId(existingOrg.id);
@@ -141,13 +157,16 @@ export default function Onboarding() {
 
       const { error: memErr } = await supabase
         .from("organization_members")
-        .insert({ org_id: org.id, user_id: user.id, role: "owner" });
+        .insert({ org_id: org.id, user_id: verifiedUser.id, role: "owner" });
       if (memErr) throw memErr;
 
       setOrgId(org.id);
       setStep(1);
     } catch (e: any) {
-      toast({ title: "Error", description: e.message, variant: "destructive" });
+      const msg = e?.code === "42501"
+        ? "Your session is not authenticated. Please sign in with Slack again."
+        : e.message;
+      toast({ title: "Error", description: msg, variant: "destructive" });
     } finally {
       setSaving(false);
     }
