@@ -1,19 +1,37 @@
 
 
-## Problem
+## Root Cause
 
-After successful Slack OAuth, Supabase redirects to `https://standflow.naviosolutions.com#access_token=...`. The app loads at `/`, immediately navigates to `/dashboard`, which hits `ProtectedRoute`. There is a race condition: `getSession()` resolves with `null` (no existing session yet) and sets `loading=false` before the Supabase client has had time to process the access token from the URL hash fragment. This causes `ProtectedRoute` to redirect to `/auth`, losing the hash tokens.
+When Supabase completes OAuth, it redirects to `https://standflow.naviosolutions.com#access_token=...`. The app loads at `/`, and React Router immediately executes `<Navigate to="/dashboard" replace />` — this **strips the hash fragment** from the URL before the Supabase client can read and process the tokens. The tokens are lost, so no session is established, and `ProtectedRoute` bounces the user back to `/auth`.
 
 ## Fix
 
-Modify `useAuth.tsx` to detect when the URL contains an OAuth hash fragment (`#access_token=`) and delay setting `loading=false` until `onAuthStateChange` fires with the session from the hash, rather than letting `getSession()` prematurely resolve with null.
+Two changes:
 
-### Changes
+### 1. `src/hooks/useAuth.tsx` — redirect to `/auth/callback`
+Change `signInWithSlack` to redirect to a dedicated callback path:
+```
+redirectTo: `${window.location.origin}/auth/callback`
+```
+This avoids the root route's `<Navigate to="/dashboard">` which destroys the hash.
 
-**`src/hooks/useAuth.tsx`**:
-- Before calling `getSession()`, check if `window.location.hash` contains `access_token`
-- If it does, skip the `getSession()` call for setting loading state, and rely solely on `onAuthStateChange` to resolve the session (which will fire once Supabase processes the hash tokens)
-- If no hash fragment, proceed with `getSession()` as normal
+### 2. `src/App.tsx` — add `/auth/callback` route
+Add a new route that simply shows a spinner while the auth state resolves:
+```
+<Route path="/auth/callback" element={<AuthCallback />} />
+```
 
-This is a small, targeted change (about 5 lines) that fixes the race condition without restructuring the auth flow.
+### 3. `src/pages/AuthCallback.tsx` — new file
+A small component that:
+- Shows a loading spinner
+- Waits for `useAuth()` to finish loading
+- If `user` exists → navigate to `/dashboard`
+- If no user after auth resolves → navigate to `/auth` with an error toast
+- Safety timeout of 5 seconds to avoid hanging forever
+
+### 4. Supabase Dashboard — add redirect URL
+Add `https://standflow.naviosolutions.com/auth/callback` to the Redirect URLs allowlist in Authentication → URL Configuration.
+
+## Why the CORS error is irrelevant
+The `track/` CORS error is Slack's own telemetry request failing — it has no effect on the OAuth flow or session establishment.
 
