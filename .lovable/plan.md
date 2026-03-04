@@ -1,57 +1,89 @@
 
 
-# Analytics for StandFlow
+# AI Intelligence Features for StandFlow
 
 ## 1. Database Migration
 
-Create `ai_weekly_digests` table with columns: id, team_id (FK teams), week_start date, week_end date, health_score int, completion_rate decimal, total_commitments int, total_completed int, total_carried int, total_blocked int, top_themes jsonb, ai_narrative text, ai_recommendations jsonb, work_distribution jsonb, created_at timestamptz, unique(team_id, week_start). RLS: team members can view; team leads can insert/update.
+Create `focus_recommendations` table:
+- id (uuid, PK), team_id (FK teams), member_id (FK team_members), session_id (FK standup_sessions, nullable), recommendation_type (text, CHECK in 6 values), title (text), description (text), priority (text), is_dismissed (boolean, default false), created_at (timestamptz, default now())
+- Create enum `recommendation_type` for the 6 types
+- RLS: team members can view/insert; members can update own (dismiss)
 
-## 2. New Pages (3 files)
+## 2. Edge Functions (4 new, using Lovable AI Gateway)
 
-**Analytics (`/analytics`)** — 6 sections:
-- Top metrics row: Health Score (SVG circular gauge), Completion Rate (% + Recharts sparkline), Active Blockers count, Carry-Over Rate %
-- Work Distribution: Recharts `AreaChart` (stacked) — weekly Feature/Bug Fix/Tech Debt/Other
-- Commitment Flow: horizontal funnel (custom bar chart) — Created → Done / Carried 1x / 2x / 3+ / Dropped
-- Blocker Heatmap: CSS grid with category rows × week columns, background color intensity by count
-- Participation: `BarChart` — response rate by day of week
-- Trending Themes: ranked list of phrases extracted from standup text (tag-style badges)
+All functions use `LOVABLE_API_KEY` (already available) via `https://ai.gateway.lovable.dev/v1/chat/completions` with `google/gemini-3-flash-preview`.
 
-All data fetched via React Query from `commitments`, `blockers`, `standup_responses`, `standup_sessions`, and `ai_weekly_digests`. Loading skeletons per section.
+**a. `ai-parse-commitments`**
+- Input: `{ today_text: string }`
+- Calls Lovable AI with tool calling to extract `[{title, scope}]` from free-text
+- Returns parsed commitments as JSON array
+- Graceful fallback: if AI fails, return empty array with `ai_failed: true` flag
 
-**My Analytics (`/my-analytics`)** — private, scoped to current user's `team_members.id`:
-- Personal completion rate trend: `LineChart` over 30 days
-- Carry-over patterns by work type: grouped bar chart
-- Mood trend: `LineChart` mapping mood enum to numeric scale
-- "Your Patterns" section: 2-3 insight cards computed client-side from the user's data
+**b. `ai-detect-blockers`**
+- Input: `{ text: string }` (blockers_text + today_text)
+- Uses Lovable AI tool calling to extract `[{description, category}]`
+- Also does keyword-based fallback detection (blocked, waiting, stuck, depends on, need X from)
+- Returns detected blockers with suggested categories
 
-**Team Insights (`/team-insights`)** — team leads only (check `team_members.role = 'lead'`):
-- Weekly digest from `ai_weekly_digests`: narrative, recommendations, work distribution summary
-- Celebration callouts (e.g., "5 commitments completed this week — best in a month")
-- Concern flags framed as questions ("Is the team overloaded? Carry-over rate increased 20%")
-- Explicitly no individual rankings or comparative metrics
-- Non-lead users see a "This page is for team leads" message
+**c. `ai-summarize-session`**
+- Input: `{ session_id: string }`
+- Fetches all responses for session via service role client
+- Calls Lovable AI to generate 3-5 sentence summary
+- Updates `standup_sessions.ai_summary`
+- Optionally posts to Slack if team has `slack_channel_id` configured (calls existing `slack-post-summary` pattern)
 
-## 3. Shared Components
+**d. `ai-weekly-digest`**
+- Input: `{ team_id: string }`
+- Aggregates week's commitments, blockers, responses
+- Calls Lovable AI for narrative + recommendations via tool calling
+- Inserts into `ai_weekly_digests` table
+- Can be triggered manually or via cron
 
-- `src/components/analytics/MetricCard.tsx` — reusable card with label, value, optional sparkline/gauge
-- `src/components/analytics/HealthGauge.tsx` — SVG circular gauge (green/amber/red)
-- `src/components/analytics/CommitmentFunnel.tsx` — horizontal funnel visualization
-- `src/components/analytics/BlockerHeatmap.tsx` — grid heatmap component
+## 3. Frontend Components
 
-## 4. Data Hooks
+**AI Commitment Parser (chip/tag UI)**
+- New component `src/components/ai/CommitmentParser.tsx`
+- After user types today_text and blurs/submits, calls `ai-parse-commitments`
+- Shows parsed commitments as editable chips with edit/remove/add actions
+- "AI-powered" badge, loading spinner during parsing
+- Thumbs up/down feedback buttons
 
-- `useAnalyticsMetrics(teamId)` — aggregates from commitments, blockers, sessions
-- `useWeeklyDigests(teamId)` — fetches from ai_weekly_digests
-- `useMyAnalytics(memberId)` — personal stats from commitments + responses
-- All use React Query with appropriate cache/stale times
+**AI Blocker Detection (inline alerts)**
+- New component `src/components/ai/BlockerDetector.tsx`
+- Monitors blockers_text + today_text fields
+- Shows detected blockers as dismissible alert cards with suggested category
+- User can confirm (auto-fills blocker) or dismiss
 
-## 5. Routing
+**AI Focus Recommendations (cards above standup form)**
+- New component `src/components/ai/FocusRecommendations.tsx`
+- Fetches from `focus_recommendations` table for current member
+- Renders dismissible cards with warm tone: focus suggestions, carry-over warnings (3+ carries), celebration cards
+- "AI-powered" sparkle badge
+- Thumbs up/down feedback
 
-Add 3 new protected routes in `App.tsx`: `/analytics`, `/my-analytics`, `/team-insights`.
+**Weekly Digest View**
+- Accessible from Dashboard as a card/link
+- Shows latest `ai_weekly_digests` record: health score gauge, narrative text, recommendation list, work distribution summary
+- Reuses existing `HealthGauge` and `MetricCard` components
 
-## 6. Design
+## 4. Integration Points
 
-- Dark-mode compatible Recharts colors using CSS variables (blue-500, emerald-500, amber-500, red-500, slate-400)
-- Consistent card layout matching the existing design system
-- Loading skeletons for every chart/section
+- `ai-summarize-session` called after standup collection completes (triggered from frontend or as part of session completion flow)
+- AI summary displayed at top of Team Feed page (read from `standup_sessions.ai_summary`)
+- Weekly digest posted to Slack via existing Slack edge function infrastructure
+- All AI content marked with subtle "AI-powered" badge (sparkle icon + text)
+
+## 5. Config Updates
+
+- Add all 4 new edge functions to `supabase/config.toml` with `verify_jwt = false`
+- Validate JWT in code using `getClaims()` for `ai-parse-commitments`, `ai-detect-blockers`
+- `ai-summarize-session` and `ai-weekly-digest` use service role (triggered server-side or by leads)
+
+## 6. Graceful Fallbacks
+
+- Every AI call wrapped in try/catch
+- On failure: return fallback data with `ai_available: false` flag
+- Frontend shows "AI unavailable" subtle message, features still work manually
+- Blocker detection falls back to keyword matching
+- Commitment parsing falls back to treating entire text as single commitment
 
