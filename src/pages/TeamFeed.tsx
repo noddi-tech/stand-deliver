@@ -2,13 +2,15 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserTeam } from "@/hooks/useAnalytics";
-import { format, subDays, startOfWeek } from "date-fns";
+import { format, subDays, startOfWeek, isToday, isYesterday } from "date-fns";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2 } from "lucide-react";
+import { Loader2, CheckCircle2, Target, AlertCircle, PenSquare } from "lucide-react";
+import { Link } from "react-router-dom";
 
 const moodEmoji: Record<string, string> = {
   great: "🚀",
@@ -20,6 +22,17 @@ const moodEmoji: Record<string, string> = {
 
 type DateFilter = "today" | "week" | "all";
 
+function formatDateHeader(dateStr: string): string {
+  const date = new Date(dateStr + "T00:00:00");
+  if (isToday(date)) return "Today";
+  if (isYesterday(date)) return "Yesterday";
+  return format(date, "EEEE, MMM d");
+}
+
+function parseTextToList(text: string): string[] {
+  return text.split("\n").map((s) => s.trim()).filter(Boolean);
+}
+
 export default function TeamFeed() {
   const { data: teamData, isLoading: teamLoading } = useUserTeam();
   const teamId = teamData?.team_id;
@@ -27,14 +40,14 @@ export default function TeamFeed() {
   const [dateFilter, setDateFilter] = useState<DateFilter>("week");
   const [memberFilter, setMemberFilter] = useState<string>("all");
 
-  // Fetch team members
+  // Fetch team members with role
   const { data: members = [] } = useQuery({
     queryKey: ["team-members", teamId],
     enabled: !!teamId,
     queryFn: async () => {
       const { data } = await supabase
         .from("team_members")
-        .select("id, user_id, profile:profiles(full_name, avatar_url)")
+        .select("id, user_id, role, profile:profiles(full_name, avatar_url)")
         .eq("team_id", teamId!)
         .eq("is_active", true);
       return data || [];
@@ -142,13 +155,19 @@ export default function TeamFeed() {
           ))}
         </div>
       ) : grouped.length === 0 ? (
-        <p className="text-center text-muted-foreground py-12">No standups found for this period.</p>
+        <div className="text-center py-16 space-y-4">
+          <PenSquare className="h-12 w-12 mx-auto text-muted-foreground/40" />
+          <p className="text-muted-foreground">No standups submitted yet. Be the first!</p>
+          <Button asChild variant="outline">
+            <Link to="/standup">Submit Your Standup</Link>
+          </Button>
+        </div>
       ) : (
         grouped.map(({ session, responses: dayResponses }) => (
           <div key={session.id} className="space-y-3">
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-semibold text-foreground">
-                {format(new Date(session.session_date + "T00:00:00"), "EEEE, MMM d")}
+                {formatDateHeader(session.session_date)}
               </h2>
               <Badge variant="secondary" className="text-[10px]">
                 {dayResponses.length} response{dayResponses.length !== 1 ? "s" : ""}
@@ -166,15 +185,19 @@ export default function TeamFeed() {
             {dayResponses.map((r) => {
               const member = getMember(r.member_id);
               const profile = member?.profile as any;
+              const role = member?.role;
               const initials = (profile?.full_name || "?")
                 .split(" ")
                 .map((w: string) => w[0])
                 .join("")
                 .slice(0, 2);
 
+              const yesterdayItems = r.yesterday_text ? parseTextToList(r.yesterday_text) : [];
+              const todayItems = r.today_text ? parseTextToList(r.today_text) : [];
+
               return (
                 <Card key={r.id}>
-                  <CardContent className="p-4 space-y-2">
+                  <CardContent className="p-4 space-y-3">
                     <div className="flex items-center gap-3">
                       <Avatar className="h-8 w-8">
                         <AvatarImage src={profile?.avatar_url || undefined} />
@@ -185,6 +208,11 @@ export default function TeamFeed() {
                       <span className="font-medium text-sm text-foreground">
                         {profile?.full_name || "Unknown"}
                       </span>
+                      {role && (
+                        <Badge variant={role === "lead" ? "default" : "secondary"} className="text-[10px]">
+                          {role}
+                        </Badge>
+                      )}
                       {r.mood && (
                         <span className="text-lg" title={r.mood}>
                           {moodEmoji[r.mood] || ""}
@@ -195,22 +223,36 @@ export default function TeamFeed() {
                       </span>
                     </div>
 
-                    {r.yesterday_text && (
+                    {yesterdayItems.length > 0 && (
                       <div>
-                        <span className="text-xs font-medium text-muted-foreground">Yesterday:</span>
-                        <p className="text-sm text-foreground/80 whitespace-pre-line">{r.yesterday_text}</p>
+                        <span className="text-xs font-medium text-muted-foreground flex items-center gap-1 mb-1">
+                          <CheckCircle2 className="h-3 w-3" /> Resolved
+                        </span>
+                        <ul className="space-y-0.5">
+                          {yesterdayItems.map((item, i) => (
+                            <li key={i} className="text-sm text-foreground/80 pl-4">• {item}</li>
+                          ))}
+                        </ul>
                       </div>
                     )}
-                    {r.today_text && (
+                    {todayItems.length > 0 && (
                       <div>
-                        <span className="text-xs font-medium text-muted-foreground">Today:</span>
-                        <p className="text-sm text-foreground/80 whitespace-pre-line">{r.today_text}</p>
+                        <span className="text-xs font-medium text-muted-foreground flex items-center gap-1 mb-1">
+                          <Target className="h-3 w-3" /> Focusing on
+                        </span>
+                        <ul className="space-y-0.5">
+                          {todayItems.map((item, i) => (
+                            <li key={i} className="text-sm text-foreground/80 pl-4">• {item}</li>
+                          ))}
+                        </ul>
                       </div>
                     )}
                     {r.blockers_text && (
-                      <div>
-                        <span className="text-xs font-medium text-destructive">Blockers:</span>
-                        <p className="text-sm text-foreground/80 whitespace-pre-line">{r.blockers_text}</p>
+                      <div className="rounded-md bg-destructive/5 p-2">
+                        <span className="text-xs font-medium text-destructive flex items-center gap-1 mb-1">
+                          <AlertCircle className="h-3 w-3" /> Blockers
+                        </span>
+                        <p className="text-sm text-foreground/80 whitespace-pre-line pl-4">{r.blockers_text}</p>
                       </div>
                     )}
                   </CardContent>
