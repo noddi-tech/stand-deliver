@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2, CheckCircle2, Target, AlertCircle, PenSquare } from "lucide-react";
 import { Link } from "react-router-dom";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 const moodEmoji: Record<string, string> = {
   great: "🚀",
@@ -155,13 +156,13 @@ export default function TeamFeed() {
           ))}
         </div>
       ) : grouped.length === 0 ? (
-        <div className="text-center py-16 space-y-4">
-          <PenSquare className="h-12 w-12 mx-auto text-muted-foreground/40" />
-          <p className="text-muted-foreground">No standups submitted yet. Be the first!</p>
-          <Button asChild variant="outline">
-            <Link to="/standup">Submit Your Standup</Link>
-          </Button>
-        </div>
+        <EmptyState
+          icon={PenSquare}
+          title="No standups submitted yet"
+          description="Be the first to share your update!"
+          actionLabel="Submit Your Standup"
+          actionHref="/standup"
+        />
       ) : (
         grouped.map(({ session, responses: dayResponses }) => (
           <div key={session.id} className="space-y-3">

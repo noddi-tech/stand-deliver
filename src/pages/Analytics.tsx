@@ -1,5 +1,5 @@
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { Activity, AlertTriangle, ArrowDownRight, TrendingUp } from "lucide-react";
+import { Activity, AlertTriangle, ArrowDownRight, TrendingUp, BarChart3 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -7,6 +7,7 @@ import MetricCard from "@/components/analytics/MetricCard";
 import HealthGauge from "@/components/analytics/HealthGauge";
 import CommitmentFunnel from "@/components/analytics/CommitmentFunnel";
 import BlockerHeatmap from "@/components/analytics/BlockerHeatmap";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { useUserTeam, useAnalyticsMetrics } from "@/hooks/useAnalytics";
 
 export default function Analytics() {
@@ -14,6 +15,21 @@ export default function Analytics() {
   const teamId = teamData?.team_id;
   const { data: metrics, isLoading } = useAnalyticsMetrics(teamId);
   const loading = teamLoading || isLoading;
+
+  if (!loading && !metrics) {
+    return (
+      <div className="bg-background p-6 md:p-8 max-w-7xl mx-auto">
+        <h1 className="text-2xl font-bold text-foreground mb-2">Analytics</h1>
+        <EmptyState
+          icon={BarChart3}
+          title="Not enough data yet"
+          description="Need at least 1 week of standup data to show analytics."
+          actionLabel="Start a Standup"
+          actionHref="/standup"
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="bg-background p-6 md:p-8 max-w-7xl mx-auto space-y-6">

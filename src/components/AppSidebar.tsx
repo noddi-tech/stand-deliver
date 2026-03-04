@@ -152,7 +152,14 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-3">
+      <SidebarFooter className="p-3 space-y-1">
+        {!collapsed && (
+          <div className="flex items-center justify-center">
+            <kbd className="px-2 py-0.5 text-[10px] font-mono rounded bg-sidebar-accent text-sidebar-foreground/50 border border-sidebar-border">
+              ⌘K to search
+            </kbd>
+          </div>
+        )}
         <Button
           variant="ghost"
           size="sm"
