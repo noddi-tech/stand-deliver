@@ -160,6 +160,51 @@ export type Database = {
           },
         ]
       }
+      commitment_history: {
+        Row: {
+          changed_at: string
+          commitment_id: string
+          id: string
+          new_status: string | null
+          note: string | null
+          old_status: string | null
+          session_id: string | null
+        }
+        Insert: {
+          changed_at?: string
+          commitment_id: string
+          id?: string
+          new_status?: string | null
+          note?: string | null
+          old_status?: string | null
+          session_id?: string | null
+        }
+        Update: {
+          changed_at?: string
+          commitment_id?: string
+          id?: string
+          new_status?: string | null
+          note?: string | null
+          old_status?: string | null
+          session_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commitment_history_commitment_id_fkey"
+            columns: ["commitment_id"]
+            isOneToOne: false
+            referencedRelation: "commitments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commitment_history_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "standup_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       commitments: {
         Row: {
           blocked_reason: string | null
@@ -676,6 +721,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      carry_forward_commitments: {
+        Args: { p_session_id: string; p_team_id: string }
+        Returns: number
+      }
       get_team_org: { Args: { _team_id: string }; Returns: string }
       is_org_member: {
         Args: { _org_id: string; _user_id: string }
