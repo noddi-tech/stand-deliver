@@ -21,7 +21,7 @@ import TeamInsights from "@/pages/TeamInsights";
 import WeeklyDigest from "@/pages/WeeklyDigest";
 import NotFound from "./pages/NotFound";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient(); // force rebuild
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
