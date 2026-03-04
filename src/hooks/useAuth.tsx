@@ -17,18 +17,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // 1. Subscribe to auth changes FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        setSession(session);
+      async (event, newSession) => {
+        if (event === "SIGNED_OUT" || !newSession) {
+          setSession(null);
+          setLoading(false);
+          return;
+        }
+        // For SIGNED_IN / TOKEN_REFRESHED — trust the event session
+        setSession(newSession);
         setLoading(false);
       }
     );
 
-    // If the URL has an OAuth hash fragment, skip getSession() — let onAuthStateChange handle it
-    const hasOAuthHash = window.location.hash.includes('access_token');
+    // 2. Hydrate: if URL has OAuth hash, let onAuthStateChange handle it
+    const hasOAuthHash = window.location.hash.includes("access_token");
     if (!hasOAuthHash) {
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        setSession(session);
+      // Validate the local session against the server
+      supabase.auth.getSession().then(async ({ data: { session: localSession } }) => {
+        if (localSession) {
+          // Verify the user actually exists server-side
+          const { data: { user }, error } = await supabase.auth.getUser();
+          if (error || !user) {
+            // Stale/invalid session — clear it
+            await supabase.auth.signOut();
+            setSession(null);
+          } else {
+            setSession(localSession);
+          }
+        }
         setLoading(false);
       });
     }
@@ -38,7 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithSlack = async () => {
     await supabase.auth.signInWithOAuth({
-      provider: 'slack_oidc' as any,
+      provider: "slack_oidc" as any,
       options: { redirectTo: `${window.location.origin}/auth/callback` },
     });
   };
