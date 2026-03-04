@@ -1,36 +1,49 @@
 
 
-## Plan: Commitment Carry-Forward + History Tracking
+## Dashboard with Real Data
 
-### 1. Database Migration
+### New Files
 
-Create a single migration with:
+**`src/hooks/useTeamMetrics.ts`** — React Query hook fetching last 14 days of commitments, blockers, standup_responses, and standup_sessions for the current team. Calculates:
+- Health score: `(completionRate * 0.4 + blockerResolutionRate * 0.25 + (1 - carryRate) * 0.2 + participationRate * 0.15) * 100`
+- Completion rate + daily sparkline data (14 points)
+- Active blockers count + flag if any > 2 days old
+- Carry-over rate (commitments with carry_count >= 1 / total)
+- staleTime: 30000
 
-**`commitment_history` table:**
-- `id`, `commitment_id` (FK → commitments), `session_id` (FK → standup_sessions), `old_status`, `new_status`, `note`, `changed_at`
-- RLS: team members can view history via join through commitments → team_members
-- RLS: insert policy for team members (needed by the trigger running as SECURITY DEFINER won't need it, but good practice)
+**`src/hooks/useAttentionItems.ts`** — Queries:
+- Commitments where `carry_count >= 2` AND status IN `(active, carried, in_progress)` with member profile join
+- Blockers where `is_resolved = false` AND `created_at < now() - 2 days` with member profile join
+- Returns both arrays for the "Needs Attention" section
 
-**`carry_forward_commitments` function:**
-- Takes `p_team_id` and `p_session_id`
-- Updates commitments with status `active`/`in_progress` (excluding current session) to `carried`, increments `carry_count`, sets `current_session_id`
-- Returns count of carried items
-- `SECURITY DEFINER` so it bypasses RLS
+**`src/hooks/useTeamMembers.ts`** — Queries all active `team_members` for current team with profiles join. For each member:
+- Count open commitments (status IN active/carried/in_progress/blocked)
+- Check if standup_response exists for today's session
+- Get latest mood from most recent response
+- staleTime: 30000
 
-**`log_commitment_status_change` trigger function + trigger:**
-- On UPDATE of commitments, if status changed, inserts into `commitment_history`
-- Trigger fires AFTER UPDATE on commitments FOR EACH ROW
+### Modified Files
 
-### 2. Frontend Integration (`src/pages/MyStandup.tsx`)
+**`src/pages/Dashboard.tsx`** — Complete rewrite with 4 sections:
 
-In `handleSubmit`, after creating/finding the standup session and before fetching commitments:
+1. **Header**: "Dashboard" title + user greeting + standup CTA button (checks today's session/response status → "Start Today's Standup" / "Complete Your Standup" / "View Today's Standup ✅")
 
-1. Call `supabase.rpc('carry_forward_commitments', { p_team_id: teamId, p_session_id: sessionId })`
-2. This ensures stale active/in_progress items are marked as `carried` before the user resolves them
+2. **Metrics row** (4 MetricCards):
+   - Team Health: HealthGauge component (reuse existing)
+   - Completion Rate: percentage + tiny Recharts `<LineChart>` sparkline
+   - Active Blockers: count + red badge if old blockers exist
+   - Carry-Over Rate: percentage
 
-Also update the `previousCommitments` query to include `carried` status (it already includes it in the `.in("status", [...])` filter — need to verify).
+3. **Needs Attention section**: Cards with amber border (carry-overs) / red border (old blockers), showing title, owner avatar+name, carry count or days open, link to /standup
 
-### 3. Files Changed
-- **New migration**: `commitment_history` table + `carry_forward_commitments` function + status change trigger
-- **`src/pages/MyStandup.tsx`**: Add RPC call after session creation, ensure `carried` is in the status filter for previous commitments
+4. **Team Members grid**: Avatar, name, role badge, open commitment count, submission status icon, last mood emoji. Skeleton loaders for each section.
+
+Uses `useUserTeam()` from existing `useAnalytics.ts` to get teamId/memberId, then passes to the 3 new hooks.
+
+### Technical Details
+- All queries use `subDays(new Date(), 14)` for the 14-day window
+- Sparkline uses Recharts `<LineChart>` with no axes, just a clean line (height ~30px)
+- Mood emojis map: great→🚀, good→👍, okay→😐, struggling→😓, rough→😰
+- Loading states show Skeleton components matching card dimensions
+- Today's session check: query `standup_sessions` for today's date + `standup_responses` for current member
 
