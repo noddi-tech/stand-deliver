@@ -1,0 +1,1 @@
+ALTER TABLE public.slack_user_mappings ADD CONSTRAINT slack_user_mappings_user_id_org_id_key UNIQUE (user_id, org_id);
