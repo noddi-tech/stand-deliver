@@ -36,25 +36,26 @@ function slugify(name: string) {
 
 export default function Onboarding() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const onboardingStatus = useOnboardingStatus();
 
   // Determine initial step based on status
   const [step, setStep] = useState(0);
   const [initialized, setInitialized] = useState(false);
 
-  // Slack workspace detection — check user_metadata then identity_data fallback
+  // Slack workspace detection — check custom_claims, then user_metadata, then identity_data
+  const customClaims = user?.user_metadata?.custom_claims;
   const identityData = user?.identities?.[0]?.identity_data;
-  const slackWorkspaceName = user?.user_metadata?.["https://slack.com/team_name"] 
-    ?? user?.user_metadata?.slack_team_name 
-    ?? identityData?.["https://slack.com/team_name"]
-    ?? identityData?.slack_team_name
-    ?? null;
-  const slackWorkspaceId = user?.user_metadata?.["https://slack.com/team_id"] 
-    ?? user?.user_metadata?.slack_team_id 
+  const slackWorkspaceId = 
+    customClaims?.["https://slack.com/team_id"]
+    ?? user?.user_metadata?.["https://slack.com/team_id"]
     ?? identityData?.["https://slack.com/team_id"]
-    ?? identityData?.slack_team_id
     ?? null;
+  const [slackWorkspaceName, setSlackWorkspaceName] = useState<string | null>(
+    user?.user_metadata?.["https://slack.com/team_name"]
+    ?? identityData?.["https://slack.com/team_name"]
+    ?? null
+  );
   const [showManualOrgInput, setShowManualOrgInput] = useState(false);
 
   useEffect(() => {
@@ -70,6 +71,20 @@ export default function Onboarding() {
       setInitialized(true);
     }
   }, [onboardingStatus.loading, initialized]);
+
+  // Fetch workspace name from Slack API if we have team_id but no name
+  useEffect(() => {
+    if (slackWorkspaceId && !slackWorkspaceName && session?.provider_token) {
+      supabase.functions.invoke("slack-team-info", {
+        body: { provider_token: session.provider_token, team_id: slackWorkspaceId },
+      }).then(({ data }) => {
+        if (data?.team_name) {
+          setSlackWorkspaceName(data.team_name);
+          if (!orgName) setOrgName(data.team_name);
+        }
+      });
+    }
+  }, [slackWorkspaceId, slackWorkspaceName, session?.provider_token]);
 
   // Pre-fill org name from Slack workspace
   useEffect(() => {
@@ -118,49 +133,16 @@ export default function Onboarding() {
         return;
       }
 
-      // If signing in via Slack, check if org already exists for this workspace
-      if (slackWorkspaceId) {
-        const { data: existingOrg, error: lookupErr } = await (supabase
-          .from("organizations") as any)
-          .select("id")
-          .eq("slack_workspace_id", slackWorkspaceId)
-          .maybeSingle();
-
-        if (lookupErr) {
-          console.error("Org lookup error:", lookupErr);
-          // Don't block — just skip auto-join and create new
-        } else if (existingOrg) {
-          // Auto-join existing org
-          const { error: memErr } = await supabase
-            .from("organization_members")
-            .insert({ org_id: existingOrg.id, user_id: verifiedUser.id, role: "member" });
-          if (memErr && !memErr.message.includes("duplicate")) throw memErr;
-
-          setOrgId(existingOrg.id);
-          setStep(1);
-          return;
-        }
-      }
-
+      // Use RPC to create org + join atomically (bypasses RLS)
       const slug = slugify(orgName);
-      const insertData: any = { name: orgName.trim(), slug };
-      if (slackWorkspaceId) {
-        insertData.slack_workspace_id = slackWorkspaceId;
-      }
+      const { data: newOrgId, error: rpcErr } = await supabase.rpc("create_org_and_join" as any, {
+        p_name: orgName.trim(),
+        p_slug: slug,
+        p_slack_workspace_id: slackWorkspaceId || null,
+      });
+      if (rpcErr) throw rpcErr;
 
-      const { data: org, error: orgErr } = await supabase
-        .from("organizations")
-        .insert(insertData)
-        .select("id")
-        .single();
-      if (orgErr) throw orgErr;
-
-      const { error: memErr } = await supabase
-        .from("organization_members")
-        .insert({ org_id: org.id, user_id: verifiedUser.id, role: "owner" });
-      if (memErr) throw memErr;
-
-      setOrgId(org.id);
+      setOrgId(newOrgId as string);
       setStep(1);
     } catch (e: any) {
       const msg = e?.code === "42501"

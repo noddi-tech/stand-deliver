@@ -1,11 +1,13 @@
+import { useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2 } from "lucide-react";
+import { Loader2, LogOut } from "lucide-react";
 
 export default function Auth() {
-  const { user, loading, signInWithSlack } = useAuth();
+  const { user, loading, signInWithSlack, signOut } = useAuth();
+  const [signingOut, setSigningOut] = useState(false);
 
   if (loading) {
     return (
@@ -15,7 +17,30 @@ export default function Auth() {
     );
   }
 
-  if (user) return <Navigate to="/dashboard" replace />;
+  // If user has a valid session, auto-redirect but offer switch workspace
+  if (user && !signingOut) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background p-4">
+        <div className="w-full max-w-sm space-y-4 text-center">
+          <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Redirecting…</p>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-2 text-muted-foreground"
+            onClick={async () => {
+              setSigningOut(true);
+              await signOut();
+            }}
+          >
+            <LogOut className="h-4 w-4" />
+            Sign out &amp; switch workspace
+          </Button>
+          <Navigate to="/dashboard" replace />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">

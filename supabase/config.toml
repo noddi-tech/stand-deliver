@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.ai-weekly-digest]
 verify_jwt = false
+
+[functions.slack-team-info]
+verify_jwt = false
