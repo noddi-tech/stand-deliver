@@ -14,12 +14,19 @@ import { toast } from "sonner";
 import { Hash, Link2, Loader2, Unplug } from "lucide-react";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SLACK_CLIENT_ID = import.meta.env.VITE_SLACK_CLIENT_ID;
 
 export function IntegrationsTab() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
+  const [slackClientId, setSlackClientId] = useState<string | null>(null);
+
+  // Fetch Slack client ID from edge function
+  useEffect(() => {
+    supabase.functions.invoke("get-slack-config").then(({ data }) => {
+      if (data?.client_id) setSlackClientId(data.client_id);
+    });
+  }, []);
 
   useEffect(() => {
     const slackStatus = searchParams.get("slack");
@@ -124,13 +131,13 @@ export function IntegrationsTab() {
       toast.error("You need to be part of an organization first.");
       return;
     }
-    if (!SLACK_CLIENT_ID) {
-      toast.error("Slack Client ID is not configured.");
+    if (!slackClientId) {
+      toast.error("Slack Client ID is not configured. Check your Supabase secrets.");
       return;
     }
     const scopes = "app_mentions:read,chat:write,chat:write.public,commands,im:write,im:read,im:history,users:read,users:read.email,channels:read,groups:read";
     const redirectUri = `${SUPABASE_URL}/functions/v1/slack-oauth-callback`;
-    const url = `https://slack.com/oauth/v2/authorize?client_id=${SLACK_CLIENT_ID}&scope=${scopes}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${orgId}`;
+    const url = `https://slack.com/oauth/v2/authorize?client_id=${slackClientId}&scope=${scopes}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${orgId}`;
     window.open(url, "_blank", "width=600,height=700");
   };
 
