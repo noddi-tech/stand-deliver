@@ -730,7 +730,7 @@ export type Database = {
       }
       create_org_and_join: {
         Args: { p_name: string; p_slack_workspace_id?: string; p_slug: string }
-        Returns: string
+        Returns: Json
       }
       get_team_org: { Args: { _team_id: string }; Returns: string }
       is_org_member: {

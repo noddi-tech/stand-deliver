@@ -36,68 +36,33 @@ function slugify(name: string) {
 
 export default function Onboarding() {
   const navigate = useNavigate();
-  const { user, session } = useAuth();
+  const { user } = useAuth();
   const onboardingStatus = useOnboardingStatus();
 
-  // Determine initial step based on status
   const [step, setStep] = useState(0);
   const [initialized, setInitialized] = useState(false);
 
-  // Slack workspace detection — check custom_claims, then user_metadata, then identity_data
+  // Slack workspace detection
   const customClaims = user?.user_metadata?.custom_claims;
   const identityData = user?.identities?.[0]?.identity_data;
-  const slackWorkspaceId = 
+  const slackWorkspaceId =
     customClaims?.["https://slack.com/team_id"]
     ?? user?.user_metadata?.["https://slack.com/team_id"]
     ?? identityData?.["https://slack.com/team_id"]
     ?? null;
-  const [slackWorkspaceName, setSlackWorkspaceName] = useState<string | null>(
-    user?.user_metadata?.["https://slack.com/team_name"]
-    ?? identityData?.["https://slack.com/team_name"]
-    ?? null
-  );
-  const [showManualOrgInput, setShowManualOrgInput] = useState(false);
-
-  useEffect(() => {
-    if (!onboardingStatus.loading && !initialized) {
-      if (onboardingStatus.hasOrg && onboardingStatus.hasTeam) {
-        navigate("/dashboard", { replace: true });
-        return;
-      }
-      if (onboardingStatus.hasOrg && !onboardingStatus.hasTeam) {
-        setStep(1);
-        setOrgId(onboardingStatus.orgId!);
-      }
-      setInitialized(true);
-    }
-  }, [onboardingStatus.loading, initialized]);
-
-  // Fetch workspace name from Slack API if we have team_id but no name
-  useEffect(() => {
-    if (slackWorkspaceId && !slackWorkspaceName && session?.provider_token) {
-      supabase.functions.invoke("slack-team-info", {
-        body: { provider_token: session.provider_token, team_id: slackWorkspaceId },
-      }).then(({ data }) => {
-        if (data?.team_name) {
-          setSlackWorkspaceName(data.team_name);
-          if (!orgName) setOrgName(data.team_name);
-        }
-      });
-    }
-  }, [slackWorkspaceId, slackWorkspaceName, session?.provider_token]);
-
-  // Pre-fill org name from Slack workspace
-  useEffect(() => {
-    if (slackWorkspaceName && !orgName) {
-      setOrgName(slackWorkspaceName);
-    }
-  }, [slackWorkspaceName]);
 
   // Step 1 state
   const [orgName, setOrgName] = useState("");
   const [userRole, setUserRole] = useState("");
   const [orgId, setOrgId] = useState<string>("");
   const [saving, setSaving] = useState(false);
+  const [isExistingOrg, setIsExistingOrg] = useState(false);
+  const [existingOrgName, setExistingOrgName] = useState<string | null>(null);
+
+  // Team picker state (for existing orgs)
+  const [availableTeams, setAvailableTeams] = useState<{ id: string; name: string }[]>([]);
+  const [selectedTeamId, setSelectedTeamId] = useState<string>("");
+  const [loadingTeams, setLoadingTeams] = useState(false);
 
   // Step 2 state
   const [teamName, setTeamName] = useState("");
@@ -113,6 +78,20 @@ export default function Onboarding() {
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteEmails, setInviteEmails] = useState<string[]>([]);
 
+  useEffect(() => {
+    if (!onboardingStatus.loading && !initialized) {
+      if (onboardingStatus.hasOrg && onboardingStatus.hasTeam) {
+        navigate("/dashboard", { replace: true });
+        return;
+      }
+      if (onboardingStatus.hasOrg && !onboardingStatus.hasTeam) {
+        setStep(1);
+        setOrgId(onboardingStatus.orgId!);
+      }
+      setInitialized(true);
+    }
+  }, [onboardingStatus.loading, initialized]);
+
   if (onboardingStatus.loading || !initialized) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -125,7 +104,6 @@ export default function Onboarding() {
     if (!orgName.trim() || !user) return;
     setSaving(true);
     try {
-      // Verify auth is valid before any DB call
       const { data: { user: verifiedUser }, error: authErr } = await supabase.auth.getUser();
       if (authErr || !verifiedUser) {
         toast({ title: "Session expired", description: "Please sign in again.", variant: "destructive" });
@@ -133,22 +111,59 @@ export default function Onboarding() {
         return;
       }
 
-      // Use RPC to create org + join atomically (bypasses RLS)
       const slug = slugify(orgName);
-      const { data: newOrgId, error: rpcErr } = await supabase.rpc("create_org_and_join" as any, {
+      const { data: result, error: rpcErr } = await supabase.rpc("create_org_and_join" as any, {
         p_name: orgName.trim(),
         p_slug: slug,
         p_slack_workspace_id: slackWorkspaceId || null,
       });
       if (rpcErr) throw rpcErr;
 
-      setOrgId(newOrgId as string);
-      setStep(1);
+      const rpcResult = result as any as { org_id: string; org_name: string; is_existing: boolean };
+
+      setOrgId(rpcResult.org_id);
+
+      if (rpcResult.is_existing) {
+        // Existing org — show team picker
+        setIsExistingOrg(true);
+        setExistingOrgName(rpcResult.org_name);
+        setLoadingTeams(true);
+        const { data: teams } = await supabase
+          .from("teams")
+          .select("id, name")
+          .eq("org_id", rpcResult.org_id);
+        setAvailableTeams(teams || []);
+        setLoadingTeams(false);
+        setStep(1);
+      } else {
+        // New org — proceed to team creation
+        setIsExistingOrg(false);
+        setStep(1);
+      }
     } catch (e: any) {
       const msg = e?.code === "42501"
         ? "Your session is not authenticated. Please sign in with Slack again."
         : e.message;
       toast({ title: "Error", description: msg, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleJoinTeam = async () => {
+    if (!selectedTeamId || !user) return;
+    setSaving(true);
+    try {
+      const { error: memErr } = await supabase
+        .from("team_members")
+        .insert({ team_id: selectedTeamId, user_id: user.id, role: "member" });
+      if (memErr) throw memErr;
+
+      setTeamId(selectedTeamId);
+      toast({ title: "Welcome to StandFlow! 🎉", description: `You've joined ${existingOrgName}.` });
+      navigate("/dashboard", { replace: true });
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -272,66 +287,99 @@ export default function Onboarding() {
           <Card className="w-full">
             <CardHeader>
               <CardTitle>Create your organization</CardTitle>
+              <CardDescription>This is your workspace where teams collaborate.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Organization name</Label>
+                <Input
+                  placeholder="e.g. Acme Engineering"
+                  value={orgName}
+                  onChange={(e) => setOrgName(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleCreateOrg()}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Your role</Label>
+                <Select value={userRole} onValueChange={setUserRole}>
+                  <SelectTrigger><SelectValue placeholder="Select your role" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="engineering_lead">Engineering Lead</SelectItem>
+                    <SelectItem value="product_manager">Product Manager</SelectItem>
+                    <SelectItem value="developer">Developer</SelectItem>
+                    <SelectItem value="designer">Designer</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button className="w-full" onClick={handleCreateOrg} disabled={!orgName.trim() || saving}>
+                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Continue
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {step === 1 && isExistingOrg && (
+          <Card className="w-full">
+            <CardHeader>
+              <CardTitle>Join a team</CardTitle>
               <CardDescription>
-                {slackWorkspaceName && !showManualOrgInput
-                  ? "We detected your Slack workspace. Use it as your organization?"
-                  : "This is your workspace where teams collaborate."}
+                You're joining <span className="font-semibold text-foreground">{existingOrgName}</span>. Pick a team to get started.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {slackWorkspaceName && !showManualOrgInput ? (
+              {loadingTeams ? (
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="text-sm">Loading teams...</span>
+                </div>
+              ) : availableTeams.length > 0 ? (
                 <>
-                  <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
-                    <p className="text-sm text-muted-foreground">Slack workspace</p>
-                    <p className="text-lg font-semibold">{slackWorkspaceName}</p>
+                  <div className="space-y-2">
+                    {availableTeams.map((team) => (
+                      <button
+                        key={team.id}
+                        onClick={() => setSelectedTeamId(team.id)}
+                        className={`w-full rounded-lg border p-3 text-left text-sm font-medium transition-colors ${
+                          selectedTeamId === team.id
+                            ? "border-primary bg-primary/5 text-foreground"
+                            : "border-border bg-background text-muted-foreground hover:bg-accent"
+                        }`}
+                      >
+                        <Users className="mr-2 inline h-4 w-4" />
+                        {team.name}
+                      </button>
+                    ))}
                   </div>
-                  <Button className="w-full" onClick={handleCreateOrg} disabled={saving}>
+                  <Button className="w-full" onClick={handleJoinTeam} disabled={!selectedTeamId || saving}>
                     {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Use this workspace
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className="w-full text-muted-foreground"
-                    onClick={() => setShowManualOrgInput(true)}
-                  >
-                    Use a different name
+                    Join Team
                   </Button>
                 </>
               ) : (
-                <>
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">No teams yet. Create the first one!</p>
                   <div className="space-y-2">
-                    <Label>Organization name</Label>
+                    <Label>Team name</Label>
                     <Input
-                      placeholder="e.g. Acme Engineering"
-                      value={orgName}
-                      onChange={(e) => setOrgName(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleCreateOrg()}
+                      placeholder="e.g. Backend Team"
+                      value={teamName}
+                      onChange={(e) => setTeamName(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && handleCreateTeam()}
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label>Your role</Label>
-                    <Select value={userRole} onValueChange={setUserRole}>
-                      <SelectTrigger><SelectValue placeholder="Select your role" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="engineering_lead">Engineering Lead</SelectItem>
-                        <SelectItem value="product_manager">Product Manager</SelectItem>
-                        <SelectItem value="developer">Developer</SelectItem>
-                        <SelectItem value="designer">Designer</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <Button className="w-full" onClick={handleCreateOrg} disabled={!orgName.trim() || saving}>
+                  <Button className="w-full" onClick={handleCreateTeam} disabled={!teamName.trim() || saving}>
                     {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                    Continue
+                    Create Team
                   </Button>
-                </>
+                </div>
               )}
             </CardContent>
           </Card>
         )}
 
-        {step === 1 && (
+        {step === 1 && !isExistingOrg && (
           <Card className="w-full">
             <CardHeader>
               <CardTitle>Create your first team</CardTitle>
@@ -486,7 +534,6 @@ export default function Onboarding() {
                 className="w-full"
                 onClick={() => {
                   toast({ title: "Slack connection", description: "Redirecting to Slack OAuth…" });
-                  // Reuse Slack OAuth from settings — for now navigate to settings
                   navigate("/settings");
                 }}
               >

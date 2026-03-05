@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.slack-team-info]
 verify_jwt = false
+
+[functions.get-slack-config]
+verify_jwt = false
