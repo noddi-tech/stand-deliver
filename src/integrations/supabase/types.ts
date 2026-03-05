@@ -728,6 +728,10 @@ export type Database = {
         Args: { p_session_id: string; p_team_id: string }
         Returns: number
       }
+      create_org_and_join: {
+        Args: { p_name: string; p_slack_workspace_id?: string; p_slug: string }
+        Returns: string
+      }
       get_team_org: { Args: { _team_id: string }; Returns: string }
       is_org_member: {
         Args: { _org_id: string; _user_id: string }
