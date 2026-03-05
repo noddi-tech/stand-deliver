@@ -17,7 +17,7 @@ Deno.serve(async (req) => {
     const error = url.searchParams.get("error");
 
     if (error) {
-      return Response.redirect(`${Deno.env.get("SITE_URL") || "http://localhost:5173"}/settings?tab=integrations&slack=error`);
+      return Response.redirect(`${Deno.env.get("SITE_URL") || "https://standup-flow-app.lovable.app"}/settings?tab=integrations&slack=error`);
     }
 
     if (!code || !state) {
@@ -73,11 +73,11 @@ Deno.serve(async (req) => {
       throw new Error("Failed to store installation");
     }
 
-    const siteUrl = Deno.env.get("SITE_URL") || "http://localhost:5173";
+    const siteUrl = Deno.env.get("SITE_URL") || "https://standup-flow-app.lovable.app";
     return Response.redirect(`${siteUrl}/settings?tab=integrations&slack=connected`);
   } catch (err) {
     console.error("OAuth callback error:", err);
-    const siteUrl = Deno.env.get("SITE_URL") || "http://localhost:5173";
+    const siteUrl = Deno.env.get("SITE_URL") || "https://standup-flow-app.lovable.app";
     return Response.redirect(`${siteUrl}/settings?tab=integrations&slack=error`);
   }
 });
