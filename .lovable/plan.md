@@ -1,53 +1,66 @@
 
 
-## Root Cause Analysis
+## Two Issues Found
 
-### 1. RLS INSERT Still Failing (403)
-Despite `pg_policies` reporting PERMISSIVE, the INSERT on `organizations` still fails with error 42501. The `<supabase-tables>` schema dump consistently shows `Permissive: No` on every table. Rather than chase this contradiction further, the cleanest fix is to **bypass RLS entirely for the onboarding flow** using a `SECURITY DEFINER` RPC function. This is the correct pattern for multi-table atomic operations (create org + add member) during onboarding.
+### Issue 1: Workspace name not fetched during onboarding
+The `slack-team-info` edge function tries to call Slack's `team.info` API using `session.provider_token`. But Supabase's `slack_oidc` provider gives an **OIDC ID token**, not a Slack Web API token. It cannot call `team.info` — this silently fails. Additionally, `provider_token` is only available immediately after OAuth redirect and is lost on refresh.
 
-### 2. Slack Workspace Name Not Detected
-The code looks for `user.user_metadata["https://slack.com/team_name"]`, but the actual Slack OIDC data structure is:
+The user's metadata confirms this — only `team_id` is in `custom_claims`, no `team_name`:
 ```json
 { "custom_claims": { "https://slack.com/team_id": "T02KWR5S290" } }
 ```
-- `team_id` is nested under `custom_claims`, not at the top level
-- `team_name` is **not included at all** in the OIDC token
 
-### 3. /auth Redirects When Session Exists
-User wants: keep auto-redirect, but add a "Sign out and switch workspace" button.
+**Fix**: Since we can't get the workspace name from OIDC, we need to:
+- Modify `create_org_and_join` RPC to return both `org_id` and `org_name` (as a composite/JSON) so returning users see the org they're joining
+- In onboarding, when the RPC finds an existing org by workspace_id, skip org creation step and show "You're joining [Org Name]"
+- For first-time org creation, user types the name manually (no auto-fill from Slack since it's not available)
+- Remove the broken `slack-team-info` fetch from onboarding (it will never work with OIDC tokens)
+
+### Issue 2: "Slack Client ID is not configured" in Settings
+The `.env` has `VITE_SLACK_CLIENT_ID=""` (empty). The `SLACK_CLIENT_ID` exists as a Supabase secret but isn't exposed to the frontend. The "Connect to Slack" button checks `VITE_SLACK_CLIENT_ID` and shows the error toast.
+
+**Fix**: Create a small edge function `get-slack-config` that returns the (public) client ID from server secrets. The IntegrationsTab fetches it on mount instead of relying on a frontend env var. This avoids duplicating the secret.
+
+### Issue 3: Second user joining same workspace — team picker
+User chose "Pick team in onboarding" for joining behavior. When `create_org_and_join` finds an existing org, the onboarding should:
+- Show available teams in that org
+- Let the user pick which team to join
+- Skip org creation + team creation steps
 
 ---
 
-## Plan
+## Implementation Plan
 
-### A. Database: Create `create_org_and_join` RPC (migration)
-A `SECURITY DEFINER` function that:
-- Accepts `p_name text`, `p_slug text`, `p_slack_workspace_id text DEFAULT NULL`
-- Checks if an org with that `slack_workspace_id` already exists → if so, adds user as member and returns that org ID
-- Otherwise creates the org, adds user as owner, returns new org ID
-- Runs as postgres owner, bypassing all RLS
+### A. Database: Update `create_org_and_join` to return org name
+Modify the RPC to return `jsonb` containing `{ org_id, org_name, is_existing }` instead of just `uuid`. This lets the frontend know if the user joined an existing org and what it's called.
 
-### B. Edge Function: `slack-team-info`
-- Accepts `team_id` parameter
-- Uses `SLACK_CLIENT_ID` + `SLACK_CLIENT_SECRET` (already stored) to call Slack's `team.info` API via a client credentials approach, or accepts the user's provider_token from the frontend
-- Returns `{ team_name: string }`
-- Actually: Slack's `team.info` requires a user/bot token, not client credentials. We'll pass the `provider_token` from `session.provider_token` on the frontend.
+### B. Edge Function: `get-slack-config`
+Simple function that returns `{ client_id: Deno.env.get("SLACK_CLIENT_ID") }`. No JWT required. Add to `config.toml`.
 
 ### C. Update `Onboarding.tsx`
-- Fix Slack metadata extraction: check `user.user_metadata?.custom_claims?.["https://slack.com/team_id"]`
-- On mount, if `team_id` is found but no `team_name`, call the `slack-team-info` edge function with `session.provider_token` to fetch the workspace name
-- Replace direct Supabase INSERT with `supabase.rpc("create_org_and_join", { ... })` call
-- This eliminates the RLS issue entirely
+- Remove the broken `slack-team-info` fetch
+- After calling `create_org_and_join`, check `is_existing`:
+  - If true: skip to a "Pick team" step showing available teams in the org
+  - If false: proceed to team creation as normal
+- For existing orgs, fetch available teams and let user select one to join
 
-### D. Update `Auth.tsx`
-- When a session exists, show a "Sign out & switch workspace" button alongside the redirect
+### D. Update `IntegrationsTab.tsx`
+- Remove dependency on `VITE_SLACK_CLIENT_ID` env var
+- Fetch client ID from `get-slack-config` edge function on mount
+- Use that value in the OAuth URL
+
+### E. Cleanup
+- Remove `VITE_SLACK_CLIENT_ID` from `.env` (no longer needed)
+- Remove or repurpose `slack-team-info` edge function (OIDC tokens can't use it)
 
 ### Files Changed
 
 | File | Change |
 |------|--------|
-| `supabase/migrations/...` | `create_org_and_join` SECURITY DEFINER function |
-| `supabase/functions/slack-team-info/index.ts` | Edge function to fetch workspace name via Slack API |
-| `src/pages/Onboarding.tsx` | Fix metadata keys, use RPC for org creation, fetch workspace name |
-| `src/pages/Auth.tsx` | Add sign-out button when session exists |
+| `supabase/migrations/...` | Alter `create_org_and_join` to return jsonb with org_id, org_name, is_existing |
+| `supabase/functions/get-slack-config/index.ts` | New: returns SLACK_CLIENT_ID from secrets |
+| `supabase/config.toml` | Add `get-slack-config` with verify_jwt=false |
+| `src/pages/Onboarding.tsx` | Remove slack-team-info fetch, handle existing org + team picker flow |
+| `src/components/settings/IntegrationsTab.tsx` | Fetch client ID from edge function instead of env var |
+| `.env` | Remove empty VITE_SLACK_CLIENT_ID |
 
