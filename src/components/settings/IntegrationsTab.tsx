@@ -6,14 +6,22 @@ import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { SlackPreview } from "./SlackPreview";
 import { toast } from "sonner";
-import { Hash, Link2, Loader2, Unplug } from "lucide-react";
+import { Hash, Link2, Loader2, Unplug, UserCheck, Zap } from "lucide-react";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+
+interface SlackUser {
+  id: string;
+  name: string;
+  real_name: string;
+  email: string | null;
+  avatar: string | null;
+}
 
 export function IntegrationsTab() {
   const { user } = useAuth();
@@ -87,6 +95,19 @@ export function IntegrationsTab() {
     enabled: !!slackInstallation,
   });
 
+  // Fetch Slack workspace users
+  const { data: slackUsers } = useQuery<SlackUser[]>({
+    queryKey: ["slack-workspace-users", orgId],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("slack-lookup-users", {
+        body: { org_id: orgId },
+      });
+      if (error) throw error;
+      return data?.users || [];
+    },
+    enabled: !!slackInstallation,
+  });
+
   // Fetch team members with mappings
   const { data: teamMembers } = useQuery({
     queryKey: ["team-members-for-mapping", orgId],
@@ -110,14 +131,37 @@ export function IntegrationsTab() {
     enabled: !!orgId,
   });
 
-  // Update slack user ID mapping
+  // Auto-link current user's Slack account
+  const autoLink = useMutation({
+    mutationFn: async ({ memberId, userId }: { memberId: string; userId: string }) => {
+      const { data, error } = await supabase.functions.invoke("slack-auto-link", {
+        body: { org_id: orgId, member_id: memberId, user_id: userId },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["team-members-for-mapping"] });
+      toast.success(`Linked to Slack as ${data.display_name} ✅`);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  // Update slack user ID mapping via edge function (for other members)
   const updateMapping = useMutation({
     mutationFn: async ({ memberId, slackUserId }: { memberId: string; slackUserId: string }) => {
-      const { error } = await supabase
-        .from("team_members")
-        .update({ slack_user_id: slackUserId || null })
-        .eq("id", memberId);
+      // Use the auto-link edge function with service role to bypass RLS
+      const { data, error } = await supabase.functions.invoke("slack-auto-link", {
+        body: { 
+          org_id: orgId, 
+          member_id: memberId, 
+          user_id: teamMembers?.find(m => m.id === memberId)?.user_id,
+          slack_user_id_override: slackUserId 
+        },
+      });
       if (error) throw error;
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["team-members-for-mapping"] });
@@ -211,45 +255,100 @@ export function IntegrationsTab() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Slack User Mapping</CardTitle>
-            <CardDescription>Link team members to their Slack user IDs for DM reminders.</CardDescription>
+            <CardDescription>Link team members to their Slack accounts for DM reminders.</CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Member</TableHead>
-                  <TableHead>Slack User ID</TableHead>
+                  <TableHead>Slack Account</TableHead>
                   <TableHead className="w-24">Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {teamMembers.map((member: any) => (
-                  <TableRow key={member.id}>
-                    <TableCell className="font-medium">
-                      {member.profiles?.full_name || "Unknown"}
-                    </TableCell>
-                    <TableCell>
-                      <Input
-                        placeholder="U01ABCDEF"
-                        defaultValue={member.slack_user_id || ""}
-                        className="max-w-[200px] h-8 text-sm"
-                        onBlur={(e) =>
-                          updateMapping.mutate({
-                            memberId: member.id,
-                            slackUserId: e.target.value,
-                          })
-                        }
-                      />
-                    </TableCell>
-                    <TableCell>
-                      {member.slack_user_id ? (
-                        <Badge className="bg-success/20 text-success border-success/30 text-xs">Linked</Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-muted-foreground text-xs">Unlinked</Badge>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {teamMembers.map((member: any) => {
+                  const isCurrentUser = member.user_id === user?.id;
+                  const isLinked = !!member.slack_user_id;
+                  const linkedSlackUser = slackUsers?.find(su => su.id === member.slack_user_id);
+
+                  return (
+                    <TableRow key={member.id}>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-2">
+                          {member.profiles?.full_name || "Unknown"}
+                          {isCurrentUser && (
+                            <Badge variant="outline" className="text-xs">You</Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {isLinked ? (
+                          <div className="flex items-center gap-2">
+                            {linkedSlackUser && (
+                              <Avatar className="h-6 w-6">
+                                <AvatarImage src={linkedSlackUser.avatar || undefined} />
+                                <AvatarFallback className="text-xs">
+                                  {linkedSlackUser.real_name?.[0] || "?"}
+                                </AvatarFallback>
+                              </Avatar>
+                            )}
+                            <span className="text-sm text-foreground">
+                              {linkedSlackUser?.real_name || member.slack_user_id}
+                            </span>
+                          </div>
+                        ) : isCurrentUser ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="gap-2"
+                            disabled={autoLink.isPending}
+                            onClick={() => autoLink.mutate({ memberId: member.id, userId: user!.id })}
+                          >
+                            {autoLink.isPending ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Zap className="h-3 w-3" />
+                            )}
+                            Link My Account
+                          </Button>
+                        ) : (
+                          <Select
+                            onValueChange={(value) =>
+                              updateMapping.mutate({ memberId: member.id, slackUserId: value })
+                            }
+                          >
+                            <SelectTrigger className="max-w-[240px] h-8 text-sm">
+                              <SelectValue placeholder="Select Slack user..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {slackUsers?.map((su) => (
+                                <SelectItem key={su.id} value={su.id}>
+                                  <span className="flex items-center gap-2">
+                                    {su.real_name}
+                                    {su.email && (
+                                      <span className="text-muted-foreground text-xs">({su.email})</span>
+                                    )}
+                                  </span>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {isLinked ? (
+                          <Badge className="bg-success/20 text-success border-success/30 text-xs gap-1">
+                            <UserCheck className="h-3 w-3" />
+                            Linked
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-muted-foreground text-xs">Unlinked</Badge>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </CardContent>

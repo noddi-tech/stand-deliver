@@ -26,3 +26,9 @@ verify_jwt = false
 
 [functions.get-slack-config]
 verify_jwt = false
+
+[functions.slack-lookup-users]
+verify_jwt = false
+
+[functions.slack-auto-link]
+verify_jwt = false
