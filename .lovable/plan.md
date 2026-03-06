@@ -2,38 +2,32 @@
 
 ## Problem
 
-The **Team** and **Members** tabs in Settings are still placeholders. The Schedule tab was already built out. The user wants all settings tabs to be functional.
+The Schedule tab in Settings is a placeholder — it just says "Schedule settings will be available here." The schedule (days, time, timezone, timer duration) is set during onboarding and saved to the `teams` table, but there's no way to view or change it afterwards.
 
 ## Plan
 
-### 1. Build out `TeamTab.tsx`
+### Build out `ScheduleTab.tsx`
 
-Display and allow editing of team and organization details:
+Replicate the same schedule UI from the onboarding step 2 (days toggle buttons, time input, timezone select, timer slider) but as an editable settings form that:
 
-- **Team name** (`teams.name`) — text input
-- **Organization name** (`organizations.name`) — text input (read-only or editable if owner)
-- **Slack channel** (`teams.slack_channel_id`) — display current linked channel
+1. **Loads current values** from the `teams` table using the user's active team (via `team_members` lookup)
+2. **Displays the schedule** with the same day-pill toggles, time picker, timezone dropdown, and timer-per-person slider used in onboarding
+3. **Saves changes** back to the `teams` table on a "Save" button click with a success toast
 
-Loads via `team_members` → `teams` → `organizations` join. Save button updates the `teams` and/or `organizations` table.
+### Fields
 
-### 2. Build out `MembersTab.tsx`
-
-Show a table/list of all team members with:
-
-- **Avatar + name** from `profiles` (joined via `team_members.user_id`)
-- **Role** (`team_members.role` — lead/member) with ability for leads to change roles
-- **Status** (`team_members.is_active`) — toggle active/inactive
-- **Invite** — ability to invite new members (email-based or link-based, depending on scope)
-- **Remove** — deactivate a member (set `is_active = false`)
-
-Data comes from `team_members` joined with `profiles` for the current team.
+| Field | Column | UI Control |
+|-------|--------|------------|
+| Standup days | `standup_days` (text array) | Day pill toggles (Mon-Sun) |
+| Standup time | `standup_time` (time string) | Time input |
+| Timezone | `standup_timezone` | Searchable select with system timezones |
+| Timer per person | `timer_seconds_per_person` | Slider (30s-300s) with label |
 
 ### Files Changed
 
 | File | Change |
 |------|--------|
-| `src/components/settings/TeamTab.tsx` | Fetch team + org data, render editable form for team name and org name, save updates |
-| `src/components/settings/MembersTab.tsx` | Fetch team members with profiles, render member list with role management and active/inactive toggle |
+| `src/components/settings/ScheduleTab.tsx` | Full implementation — fetch team schedule, render editable form, save updates |
 
-No database changes needed — all columns already exist.
+No new database changes needed — the columns already exist on the `teams` table from onboarding.
 
