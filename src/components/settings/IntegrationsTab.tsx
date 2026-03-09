@@ -28,6 +28,7 @@ export function IntegrationsTab() {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const [slackClientId, setSlackClientId] = useState<string | null>(null);
+  const [savingChannel, setSavingChannel] = useState(false);
 
   // Fetch Slack client ID from edge function
   useEffect(() => {
