@@ -95,6 +95,8 @@ export default function MyStandup() {
   const [clickUpTasks, setClickUpTasks] = useState<any[]>([]);
   const [selectedClickUpTasks, setSelectedClickUpTasks] = useState<Set<string>>(new Set());
   const [loadingClickUp, setLoadingClickUp] = useState(false);
+  const [clickUpSearch, setClickUpSearch] = useState("");
+  const [clickUpStatusFilter, setClickUpStatusFilter] = useState<string>("all");
 
   // Fetch user's org for ClickUp
   const { data: orgMembership } = useQuery({
