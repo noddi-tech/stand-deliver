@@ -520,6 +520,7 @@ export default function MyStandup() {
             team_id: teamId,
             origin_session_id: sessionId,
             current_session_id: sessionId,
+            clickup_task_id: c.clickup_task_id || null,
           });
           if (error) throw error;
         }
