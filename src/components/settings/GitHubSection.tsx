@@ -241,7 +241,8 @@ export function GitHubSection({ orgId }: GitHubSectionProps) {
                   </a>
                 </li>
                 <li>Click <strong>Generate new token</strong></li>
-                <li>Select repositories (all or specific) and grant <strong>Read</strong> access to Contents, Pull requests, and <strong>Organization → Members</strong></li>
+                <li>Under the <strong>Repositories</strong> tab, click <strong>+ Add permissions</strong> and grant <strong>Read-only</strong> access to <strong>Contents</strong> and <strong>Pull requests</strong></li>
+                <li>Switch to the <strong>Organizations</strong> tab, click <strong>+ Add permissions</strong> and grant <strong>Read-only</strong> access to <strong>Members</strong></li>
                 <li>Copy the token and paste it below</li>
               </ol>
             </div>
