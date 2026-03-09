@@ -4,6 +4,7 @@ import { IntegrationsTab } from "@/components/settings/IntegrationsTab";
 import { TeamTab } from "@/components/settings/TeamTab";
 import { ScheduleTab } from "@/components/settings/ScheduleTab";
 import { MembersTab } from "@/components/settings/MembersTab";
+import { NotificationsTab } from "@/components/settings/NotificationsTab";
 
 export default function Settings() {
   const [searchParams] = useSearchParams();
@@ -18,11 +19,13 @@ export default function Settings() {
             <TabsTrigger value="team">Team</TabsTrigger>
             <TabsTrigger value="schedule">Schedule</TabsTrigger>
             <TabsTrigger value="members">Members</TabsTrigger>
+            <TabsTrigger value="notifications">Notifications</TabsTrigger>
             <TabsTrigger value="integrations">Integrations</TabsTrigger>
           </TabsList>
           <TabsContent value="team"><TeamTab /></TabsContent>
           <TabsContent value="schedule"><ScheduleTab /></TabsContent>
           <TabsContent value="members"><MembersTab /></TabsContent>
+          <TabsContent value="notifications"><NotificationsTab /></TabsContent>
           <TabsContent value="integrations"><IntegrationsTab /></TabsContent>
         </Tabs>
       </div>
