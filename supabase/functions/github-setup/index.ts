@@ -36,8 +36,8 @@ Deno.serve(async (req) => {
 
       if (!install) throw new Error("No GitHub installation found");
 
-      const members = await fetchOrgMembers(install.api_token_encrypted, install.github_org_name);
-      return new Response(JSON.stringify({ members }), {
+      const result = await fetchOrgMembers(install.api_token_encrypted, install.github_org_name);
+      return new Response(JSON.stringify({ members: result.members, members_error: result.error || null }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
