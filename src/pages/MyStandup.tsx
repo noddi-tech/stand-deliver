@@ -469,22 +469,18 @@ export default function MyStandup() {
         submitted_via: "web" as const,
       };
 
-      if (existingResponseId) {
-        // UPDATE existing response
-        const { error: respError } = await supabase
-          .from("standup_responses")
-          .update(responseData)
-          .eq("id", existingResponseId);
-        if (respError) throw respError;
-      } else {
-        // INSERT new response
-        const { error: respError } = await supabase.from("standup_responses").insert({
-          session_id: sessionId,
-          member_id: memberId,
-          ...responseData,
-        });
-        if (respError) throw respError;
-      }
+      // Upsert response (idempotent — handles both insert and edit)
+      const { error: respError } = await supabase
+        .from("standup_responses")
+        .upsert(
+          {
+            session_id: sessionId,
+            member_id: memberId,
+            ...responseData,
+          },
+          { onConflict: "session_id,member_id" }
+        );
+      if (respError) throw respError;
 
       // Handle commitments: mark removed ones as dropped, update existing, insert new
       if (existingResponseId && existingResponse) {
