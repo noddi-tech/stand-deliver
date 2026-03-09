@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserTeam } from "@/hooks/useAnalytics";
@@ -46,6 +46,7 @@ const priorityColors: Record<CommitmentPriority, string> = {
 interface NewCommitment {
   title: string;
   priority: CommitmentPriority;
+  existingId?: string; // If editing an existing commitment
 }
 
 export default function MyStandup() {
@@ -62,6 +63,8 @@ export default function MyStandup() {
   const [mood, setMood] = useState<MoodType | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [existingResponseId, setExistingResponseId] = useState<string | null>(null);
 
   // Blocked reason state
   const [blockedInputId, setBlockedInputId] = useState<string | null>(null);
@@ -75,7 +78,69 @@ export default function MyStandup() {
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [editingText, setEditingText] = useState("");
 
-  // Fetch previous commitments
+  // Fetch today's existing response
+  const { data: existingResponse, isLoading: existingLoading } = useQuery({
+    queryKey: ["existing-response-today", memberId, teamId],
+    enabled: !!memberId && !!teamId,
+    queryFn: async () => {
+      const today = format(new Date(), "yyyy-MM-dd");
+      
+      // Find today's session
+      const { data: session } = await supabase
+        .from("standup_sessions")
+        .select("id")
+        .eq("team_id", teamId!)
+        .eq("session_date", today)
+        .maybeSingle();
+      
+      if (!session) return null;
+
+      // Find this member's response
+      const { data: response } = await supabase
+        .from("standup_responses")
+        .select("*")
+        .eq("session_id", session.id)
+        .eq("member_id", memberId!)
+        .maybeSingle();
+      
+      if (!response) return null;
+
+      // Fetch commitments for this session by this member
+      const { data: commitments } = await supabase
+        .from("commitments")
+        .select("*")
+        .eq("member_id", memberId!)
+        .eq("origin_session_id", session.id)
+        .order("created_at", { ascending: true });
+
+      return {
+        response,
+        commitments: commitments || [],
+        sessionId: session.id,
+      };
+    },
+  });
+
+  // Set submitted state when existing response is found
+  useEffect(() => {
+    if (existingResponse && !isEditing) {
+      setSubmitted(true);
+      setExistingResponseId(existingResponse.response.id);
+      // Populate form state from DB for the summary view
+      setMood(existingResponse.response.mood);
+      setBlockersText(existingResponse.response.blockers_text || "");
+      setNotesText(existingResponse.response.notes || "");
+      setTodayCommitments(
+        existingResponse.commitments.map((c) => ({
+          title: c.title,
+          priority: c.priority,
+          existingId: c.id,
+        }))
+      );
+    }
+  }, [existingResponse, isEditing]);
+
+  // Fetch previous commitments (not from today's session)
   const { data: previousCommitments = [], isLoading: commitmentsLoading } = useQuery({
     queryKey: ["previous-commitments", memberId],
     enabled: !!memberId,
@@ -234,35 +299,91 @@ export default function MyStandup() {
         p_session_id: sessionId,
       });
 
-      // Insert standup response
-      const { error: respError } = await supabase.from("standup_responses").insert({
-        session_id: sessionId,
-        member_id: memberId,
+      const responseData = {
         mood,
         today_text: todayCommitments.map((c) => c.title).join("\n"),
         yesterday_text: previousCommitments.map((c) => `${c.title} → ${effectiveStatuses[c.id]}`).join("\n"),
         blockers_text: blockersText || null,
         notes: notesText || null,
-        submitted_via: "web",
-      });
-      if (respError) throw respError;
+        submitted_via: "web" as const,
+      };
 
-      // Insert new commitments
-      for (const c of todayCommitments) {
-        const { error } = await supabase.from("commitments").insert({
-          title: c.title,
-          priority: c.priority,
+      if (existingResponseId) {
+        // UPDATE existing response
+        const { error: respError } = await supabase
+          .from("standup_responses")
+          .update(responseData)
+          .eq("id", existingResponseId);
+        if (respError) throw respError;
+      } else {
+        // INSERT new response
+        const { error: respError } = await supabase.from("standup_responses").insert({
+          session_id: sessionId,
           member_id: memberId,
-          team_id: teamId,
-          origin_session_id: sessionId,
-          current_session_id: sessionId,
+          ...responseData,
         });
-        if (error) throw error;
+        if (respError) throw respError;
       }
 
-      toast.success("Standup submitted! 🎉");
+      // Handle commitments: mark removed ones as dropped, update existing, insert new
+      if (existingResponseId && existingResponse) {
+        const previousCommitmentIds = existingResponse.commitments.map((c) => c.id);
+        const currentExistingIds = todayCommitments
+          .filter((c) => c.existingId)
+          .map((c) => c.existingId!);
+        
+        // Mark removed commitments as dropped
+        const removedIds = previousCommitmentIds.filter((id) => !currentExistingIds.includes(id));
+        for (const id of removedIds) {
+          await supabase.from("commitments").update({
+            status: "dropped",
+            resolution_note: "Removed during standup edit",
+            resolved_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }).eq("id", id);
+        }
+
+        // Update existing commitments (title/priority may have changed)
+        for (const c of todayCommitments.filter((c) => c.existingId)) {
+          await supabase.from("commitments").update({
+            title: c.title,
+            priority: c.priority,
+            updated_at: new Date().toISOString(),
+          }).eq("id", c.existingId!);
+        }
+
+        // Insert new commitments (ones without existingId)
+        for (const c of todayCommitments.filter((c) => !c.existingId)) {
+          const { error } = await supabase.from("commitments").insert({
+            title: c.title,
+            priority: c.priority,
+            member_id: memberId,
+            team_id: teamId,
+            origin_session_id: sessionId,
+            current_session_id: sessionId,
+          });
+          if (error) throw error;
+        }
+      } else {
+        // Fresh submit — insert all commitments
+        for (const c of todayCommitments) {
+          const { error } = await supabase.from("commitments").insert({
+            title: c.title,
+            priority: c.priority,
+            member_id: memberId,
+            team_id: teamId,
+            origin_session_id: sessionId,
+            current_session_id: sessionId,
+          });
+          if (error) throw error;
+        }
+      }
+
+      toast.success(existingResponseId ? "Standup updated! ✏️" : "Standup submitted! 🎉");
       queryClient.invalidateQueries({ queryKey: ["previous-commitments"] });
+      queryClient.invalidateQueries({ queryKey: ["existing-response-today"] });
       setSubmitted(true);
+      setIsEditing(false);
 
       // Fire-and-forget: post summary to Slack if channel is configured
       supabase
@@ -286,8 +407,45 @@ export default function MyStandup() {
     }
   };
 
+  const startEditMode = () => {
+    if (!existingResponse) return;
+    // Load existing data into form
+    setMood(existingResponse.response.mood);
+    setBlockersText(existingResponse.response.blockers_text || "");
+    setNotesText(existingResponse.response.notes || "");
+    setTodayCommitments(
+      existingResponse.commitments.map((c) => ({
+        title: c.title,
+        priority: c.priority,
+        existingId: c.id,
+      }))
+    );
+    setIsEditing(true);
+    setSubmitted(false);
+  };
+
+  const cancelEdit = () => {
+    setIsEditing(false);
+    setSubmitted(true);
+    // Restore from DB
+    if (existingResponse) {
+      setMood(existingResponse.response.mood);
+      setBlockersText(existingResponse.response.blockers_text || "");
+      setNotesText(existingResponse.response.notes || "");
+      setTodayCommitments(
+        existingResponse.commitments.map((c) => ({
+          title: c.title,
+          priority: c.priority,
+          existingId: c.id,
+        }))
+      );
+    }
+  };
+
   const resetForm = () => {
     setSubmitted(false);
+    setIsEditing(false);
+    setExistingResponseId(null);
     setStatusOverrides({});
     setBlockedReasons({});
     setFadingIds(new Set());
@@ -297,7 +455,7 @@ export default function MyStandup() {
     setMood(null);
   };
 
-  if (teamLoading || commitmentsLoading) {
+  if (teamLoading || commitmentsLoading || existingLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -314,12 +472,12 @@ export default function MyStandup() {
   }
 
   // Post-submit read-only view
-  if (submitted) {
+  if (submitted && !isEditing) {
     return (
       <div className="max-w-3xl mx-auto p-6 space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-foreground">Standup Submitted ✅</h1>
-          <Button variant="outline" size="sm" onClick={resetForm}>
+          <Button variant="outline" size="sm" onClick={startEditMode}>
             <Edit2 className="h-4 w-4 mr-1" /> Edit
           </Button>
         </div>
@@ -332,7 +490,7 @@ export default function MyStandup() {
                 <div className="space-y-1">
                   {previousCommitments.map((c) => (
                     <div key={c.id} className="flex items-center gap-2 text-sm">
-                      <Badge variant="outline" className="text-[10px]">{effectiveStatuses[c.id]}</Badge>
+                      <Badge variant="outline" className="text-[10px]">{effectiveStatuses[c.id] || c.status}</Badge>
                       <span className="text-foreground">{c.title}</span>
                     </div>
                   ))}
@@ -373,133 +531,144 @@ export default function MyStandup() {
 
   return (
     <div className="max-w-3xl mx-auto p-6 space-y-6">
-      <h1 className="text-2xl font-bold text-foreground">My Standup</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-foreground">
+          {isEditing ? "Edit Standup" : "My Standup"}
+        </h1>
+        {isEditing && (
+          <Button variant="ghost" size="sm" onClick={cancelEdit}>
+            Cancel
+          </Button>
+        )}
+      </div>
 
       {/* Section 1: Resolve Previous Commitments */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center justify-between">
-            <span>Resolve Previous Commitments</span>
-            <span className="text-sm font-normal text-muted-foreground">
-              {resolvedCount} of {totalPrevious} resolved
-            </span>
-          </CardTitle>
-          <Progress value={progressPercent} className="h-2" />
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {previousCommitments.length === 0 && (
-            <EmptyState
-              icon={CheckCircle2}
-              title="All clear!"
-              description="No items to resolve."
-              iconClassName="text-emerald-500/60"
-            />
-          )}
-          {previousCommitments.map((c) => {
-            const current = effectiveStatuses[c.id];
-            const isResolved = current === "done" || current === "dropped";
-            const isFading = fadingIds.has(c.id);
-            return (
-              <div key={c.id} className="space-y-2">
-                <div
-                  className={`flex items-center justify-between gap-3 rounded-lg border p-3 transition-opacity duration-300 ${
-                    isFading ? "opacity-40" : isResolved ? "opacity-60" : ""
-                  }`}
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-sm font-medium ${isResolved ? "line-through" : ""}`}>
-                        {c.title}
-                      </span>
-                      <Badge variant="outline" className={`text-[10px] ${priorityColors[c.priority]}`}>
-                        {c.priority}
-                      </Badge>
-                      {c.carry_count > 0 && (
-                        <Badge variant="secondary" className="text-[10px]">
-                          carried {c.carry_count}x {c.carry_count >= 2 ? "⚠️" : ""}
+      {!isEditing && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center justify-between">
+              <span>Resolve Previous Commitments</span>
+              <span className="text-sm font-normal text-muted-foreground">
+                {resolvedCount} of {totalPrevious} resolved
+              </span>
+            </CardTitle>
+            <Progress value={progressPercent} className="h-2" />
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {previousCommitments.length === 0 && (
+              <EmptyState
+                icon={CheckCircle2}
+                title="All clear!"
+                description="No items to resolve."
+                iconClassName="text-emerald-500/60"
+              />
+            )}
+            {previousCommitments.map((c) => {
+              const current = effectiveStatuses[c.id];
+              const isResolved = current === "done" || current === "dropped";
+              const isFading = fadingIds.has(c.id);
+              return (
+                <div key={c.id} className="space-y-2">
+                  <div
+                    className={`flex items-center justify-between gap-3 rounded-lg border p-3 transition-opacity duration-300 ${
+                      isFading ? "opacity-40" : isResolved ? "opacity-60" : ""
+                    }`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`text-sm font-medium ${isResolved ? "line-through" : ""}`}>
+                          {c.title}
+                        </span>
+                        <Badge variant="outline" className={`text-[10px] ${priorityColors[c.priority]}`}>
+                          {c.priority}
                         </Badge>
-                      )}
-                      <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        {formatDistanceToNow(new Date(c.created_at), { addSuffix: true })}
-                      </span>
+                        {c.carry_count > 0 && (
+                          <Badge variant="secondary" className="text-[10px]">
+                            carried {c.carry_count}x {c.carry_count >= 2 ? "⚠️" : ""}
+                          </Badge>
+                        )}
+                        <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          {formatDistanceToNow(new Date(c.created_at), { addSuffix: true })}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <Button
+                        size="sm"
+                        variant={current === "done" ? "default" : "outline"}
+                        className="h-7 px-2 text-xs"
+                        onClick={() => handleStatusChange(c.id, "done")}
+                      >
+                        <Check className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={current === "in_progress" ? "default" : "outline"}
+                        className="h-7 px-2 text-xs"
+                        onClick={() => handleStatusChange(c.id, "in_progress")}
+                      >
+                        <ArrowRight className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={current === "blocked" ? "destructive" : "outline"}
+                        className="h-7 px-2 text-xs"
+                        onClick={() => handleStatusChange(c.id, "blocked")}
+                      >
+                        <AlertTriangle className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={current === "dropped" ? "secondary" : "outline"}
+                        className="h-7 px-2 text-xs"
+                        onClick={() => handleStatusChange(c.id, "dropped")}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex gap-1 shrink-0">
-                    <Button
-                      size="sm"
-                      variant={current === "done" ? "default" : "outline"}
-                      className="h-7 px-2 text-xs"
-                      onClick={() => handleStatusChange(c.id, "done")}
-                    >
-                      <Check className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={current === "in_progress" ? "default" : "outline"}
-                      className="h-7 px-2 text-xs"
-                      onClick={() => handleStatusChange(c.id, "in_progress")}
-                    >
-                      <ArrowRight className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={current === "blocked" ? "destructive" : "outline"}
-                      className="h-7 px-2 text-xs"
-                      onClick={() => handleStatusChange(c.id, "blocked")}
-                    >
-                      <AlertTriangle className="h-3 w-3" />
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant={current === "dropped" ? "secondary" : "outline"}
-                      className="h-7 px-2 text-xs"
-                      onClick={() => handleStatusChange(c.id, "dropped")}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
+                  {/* Inline blocked reason input */}
+                  {blockedInputId === c.id && (
+                    <div className="flex gap-2 pl-3">
+                      <Input
+                        placeholder="What's blocking you?"
+                        value={blockedReason}
+                        onChange={(e) => setBlockedReason(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && confirmBlocked(c.id)}
+                        className="flex-1 h-8 text-sm"
+                        autoFocus
+                      />
+                      <Button size="sm" className="h-8" onClick={() => confirmBlocked(c.id)}>
+                        Confirm
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-8" onClick={() => setBlockedInputId(null)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  )}
                 </div>
-                {/* Inline blocked reason input */}
-                {blockedInputId === c.id && (
-                  <div className="flex gap-2 pl-3">
-                    <Input
-                      placeholder="What's blocking you?"
-                      value={blockedReason}
-                      onChange={(e) => setBlockedReason(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && confirmBlocked(c.id)}
-                      className="flex-1 h-8 text-sm"
-                      autoFocus
-                    />
-                    <Button size="sm" className="h-8" onClick={() => confirmBlocked(c.id)}>
-                      Confirm
-                    </Button>
-                    <Button size="sm" variant="ghost" className="h-8" onClick={() => setBlockedInputId(null)}>
-                      Cancel
-                    </Button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </CardContent>
-      </Card>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Section 2: Today's Focus */}
-      <Card className={`transition-opacity duration-300 ${!allResolved ? "opacity-50" : ""}`}>
+      <Card className={`transition-opacity duration-300 ${!isEditing && !allResolved ? "opacity-50" : ""}`}>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
-            {!allResolved && <Lock className="h-4 w-4 text-muted-foreground" />}
+            {!isEditing && !allResolved && <Lock className="h-4 w-4 text-muted-foreground" />}
             Today's Focus
           </CardTitle>
-          {!allResolved && (
+          {!isEditing && !allResolved && (
             <p className="text-xs text-muted-foreground">
               Resolve all previous commitments to unlock this section
             </p>
           )}
         </CardHeader>
-        <CardContent className={`space-y-3 ${!allResolved ? "pointer-events-none" : ""}`}>
-          {allResolved && (
+        <CardContent className={`space-y-3 ${!isEditing && !allResolved ? "pointer-events-none" : ""}`}>
+          {(isEditing || allResolved) && (
             <>
               <div className="flex gap-2">
                 <Input
@@ -602,9 +771,9 @@ export default function MyStandup() {
       </Card>
 
       {/* Submit */}
-      <Button onClick={handleSubmit} disabled={submitting || !allResolved} className="w-full" size="lg">
+      <Button onClick={handleSubmit} disabled={submitting || (!isEditing && !allResolved)} className="w-full" size="lg">
         {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-        Submit Standup
+        {isEditing ? "Update Standup" : "Submit Standup"}
       </Button>
 
       {/* Drop confirmation dialog */}
