@@ -828,11 +828,31 @@ export default function MyStandup() {
         </CardContent>
       </Card>
 
+      {/* AI Coach Review */}
+      {showCoach && (
+        <StandupCoachCard
+          suggestions={coachSuggestions}
+          overallTip={coachTip}
+          onApply={handleCoachApply}
+          onDismiss={handleCoachDismiss}
+          onApplyAll={handleCoachApplyAll}
+          onSubmitAnyway={() => { setShowCoach(false); handleSubmit(); }}
+          submitting={submitting}
+        />
+      )}
+
       {/* Submit */}
-      <Button onClick={handleSubmit} disabled={submitting || (!isEditing && !allResolved)} className="w-full" size="lg">
-        {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-        {isEditing ? "Update Standup" : "Submit Standup"}
-      </Button>
+      {!showCoach && (
+        <Button
+          onClick={requestCoachReview}
+          disabled={submitting || coachLoading || (!isEditing && !allResolved)}
+          className="w-full"
+          size="lg"
+        >
+          {(submitting || coachLoading) ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+          {coachLoading ? "AI reviewing..." : isEditing ? "Update Standup" : "Submit Standup"}
+        </Button>
+      )}
 
       {/* Drop confirmation dialog */}
       <AlertDialog open={!!dropDialogId} onOpenChange={(open) => !open && setDropDialogId(null)}>
