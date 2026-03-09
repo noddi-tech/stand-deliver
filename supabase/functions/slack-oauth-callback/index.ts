@@ -10,19 +10,52 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const siteUrl = Deno.env.get("SITE_URL") || "https://standup-flow-app.lovable.app";
+
   try {
     const url = new URL(req.url);
     const code = url.searchParams.get("code");
-    const state = url.searchParams.get("state"); // org_id
+    const state = url.searchParams.get("state"); // nonce
     const error = url.searchParams.get("error");
 
     if (error) {
-      return Response.redirect(`${Deno.env.get("SITE_URL") || "https://standup-flow-app.lovable.app"}/settings?tab=integrations&slack=error`);
+      return Response.redirect(`${siteUrl}/settings?tab=integrations&slack=error`);
     }
 
     if (!code || !state) {
       return new Response("Missing code or state", { status: 400, headers: corsHeaders });
     }
+
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+
+    // Validate the nonce and extract org_id
+    const { data: oauthState, error: stateError } = await supabaseAdmin
+      .from("slack_oauth_states")
+      .select("id, org_id, user_id, created_at")
+      .eq("nonce", state)
+      .maybeSingle();
+
+    if (stateError || !oauthState) {
+      console.error("Invalid OAuth state nonce:", state);
+      return Response.redirect(`${siteUrl}/settings?tab=integrations&slack=error`);
+    }
+
+    // Check nonce freshness (10 minutes)
+    const nonceAge = Date.now() - new Date(oauthState.created_at).getTime();
+    if (nonceAge > 10 * 60 * 1000) {
+      console.error("OAuth state nonce expired");
+      // Clean up expired nonce
+      await supabaseAdmin.from("slack_oauth_states").delete().eq("id", oauthState.id);
+      return Response.redirect(`${siteUrl}/settings?tab=integrations&slack=error`);
+    }
+
+    // Delete the nonce (single-use)
+    await supabaseAdmin.from("slack_oauth_states").delete().eq("id", oauthState.id);
+
+    const orgId = oauthState.org_id;
 
     const clientId = Deno.env.get("SLACK_CLIENT_ID");
     const clientSecret = Deno.env.get("SLACK_CLIENT_SECRET");
@@ -48,22 +81,18 @@ Deno.serve(async (req) => {
       throw new Error(`Slack OAuth failed: ${tokenData.error}`);
     }
 
-    const supabaseAdmin = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
-
     // Upsert slack installation
     const { error: dbError } = await supabaseAdmin
       .from("slack_installations")
       .upsert(
         {
-          org_id: state,
+          org_id: orgId,
           workspace_id: tokenData.team.id,
           workspace_name: tokenData.team.name,
           bot_token: tokenData.access_token,
           bot_user_id: tokenData.bot_user_id,
           installed_at: new Date().toISOString(),
+          installing_user_id: oauthState.user_id,
         },
         { onConflict: "org_id,workspace_id" }
       );
@@ -73,11 +102,9 @@ Deno.serve(async (req) => {
       throw new Error("Failed to store installation");
     }
 
-    const siteUrl = Deno.env.get("SITE_URL") || "https://standup-flow-app.lovable.app";
     return Response.redirect(`${siteUrl}/settings?tab=integrations&slack=connected`);
   } catch (err) {
     console.error("OAuth callback error:", err);
-    const siteUrl = Deno.env.get("SITE_URL") || "https://standup-flow-app.lovable.app";
     return Response.redirect(`${siteUrl}/settings?tab=integrations&slack=error`);
   }
 });

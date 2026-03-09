@@ -49,7 +49,7 @@ export function ClickUpSection({ orgId }: ClickUpSectionProps) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("clickup_installations")
-        .select("*")
+        .select("id, org_id, clickup_team_id, clickup_team_name, installed_at, installed_by")
         .eq("org_id", orgId!)
         .maybeSingle();
       if (error) throw error;

@@ -65,3 +65,6 @@ verify_jwt = false
 
 [functions.github-sync-activity]
 verify_jwt = false
+
+[functions.slack-oauth-start]
+verify_jwt = false

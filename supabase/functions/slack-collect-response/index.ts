@@ -5,15 +5,51 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+async function verifySlackRequest(req: Request, body: string): Promise<boolean> {
+  const signingSecret = Deno.env.get("SLACK_SIGNING_SECRET");
+  if (!signingSecret) return false;
+
+  const timestamp = req.headers.get("x-slack-request-timestamp");
+  const signature = req.headers.get("x-slack-signature");
+  if (!timestamp || !signature) return false;
+
+  // Check timestamp freshness (5 minutes)
+  const now = Math.floor(Date.now() / 1000);
+  if (Math.abs(now - parseInt(timestamp)) > 300) return false;
+
+  const sigBasestring = `v0:${timestamp}:${body}`;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(signingSecret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(sigBasestring));
+  const mySignature = `v0=${Array.from(new Uint8Array(sig)).map(b => b.toString(16).padStart(2, "0")).join("")}`;
+
+  return mySignature === signature;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    // Read raw body for signature verification
+    const bodyText = await req.text();
+
+    // Verify Slack signature
+    const verified = await verifySlackRequest(req, bodyText);
+    if (!verified) {
+      console.error("Slack signature verification failed");
+      return new Response("Unauthorized", { status: 401 });
+    }
+
     // Slack sends interactive payloads as application/x-www-form-urlencoded
-    const formData = await req.formData();
-    const payloadStr = formData.get("payload") as string;
+    const params = new URLSearchParams(bodyText);
+    const payloadStr = params.get("payload");
     if (!payloadStr) throw new Error("No payload");
 
     const payload = JSON.parse(payloadStr);
