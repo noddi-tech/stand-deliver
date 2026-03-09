@@ -468,6 +468,9 @@ export function IntegrationsTab() {
 
       {/* ClickUp Integration */}
       <ClickUpSection orgId={orgId} />
+
+      {/* GitHub Integration */}
+      <GitHubSection orgId={orgId} />
     </div>
   );
 }
