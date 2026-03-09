@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { SlackPreview } from "./SlackPreview";
+import { ClickUpSection } from "./ClickUpSection";
 import { toast } from "sonner";
 import { Hash, Link2, Loader2, Unplug, UserCheck, Zap } from "lucide-react";
 
@@ -463,6 +464,9 @@ export function IntegrationsTab() {
 
       {/* Slack Preview */}
       <SlackPreview />
+
+      {/* ClickUp Integration */}
+      <ClickUpSection orgId={orgId} />
     </div>
   );
 }

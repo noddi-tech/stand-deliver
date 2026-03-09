@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserTeam } from "@/hooks/useAnalytics";
+import { useAuth } from "@/hooks/useAuth";
 import { format, formatDistanceToNow } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,7 +21,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Lock, Check, X, AlertTriangle, Loader2, Plus, ArrowRight, Clock, Edit2, CheckCircle2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Lock, Check, X, AlertTriangle, Loader2, Plus, ArrowRight, Clock, Edit2, CheckCircle2, SquareKanban } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { StandupCoachCard, type CoachSuggestion } from "@/components/ai/StandupCoachCard";
@@ -51,6 +54,7 @@ interface NewCommitment {
 }
 
 export default function MyStandup() {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const { data: teamData, isLoading: teamLoading } = useUserTeam();
   const memberId = teamData?.id;
@@ -85,7 +89,88 @@ export default function MyStandup() {
   const [coachSuggestions, setCoachSuggestions] = useState<CoachSuggestion[]>([]);
   const [coachTip, setCoachTip] = useState<string | null>(null);
 
-  // Fetch today's existing response
+  // ClickUp import state
+  const [showClickUpDialog, setShowClickUpDialog] = useState(false);
+  const [clickUpTasks, setClickUpTasks] = useState<any[]>([]);
+  const [selectedClickUpTasks, setSelectedClickUpTasks] = useState<Set<string>>(new Set());
+  const [loadingClickUp, setLoadingClickUp] = useState(false);
+
+  // Fetch user's org for ClickUp
+  const { data: orgMembership } = useQuery({
+    queryKey: ["org-membership-standup", user?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("organization_members")
+        .select("org_id")
+        .eq("user_id", user!.id)
+        .limit(1)
+        .single();
+      return data;
+    },
+    enabled: !!user,
+  });
+
+  // Check if ClickUp is connected
+  const { data: clickUpInstallation } = useQuery({
+    queryKey: ["clickup-installation-standup", orgMembership?.org_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("clickup_installations")
+        .select("id")
+        .eq("org_id", orgMembership!.org_id)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!orgMembership?.org_id,
+  });
+
+  // Check if current user has ClickUp mapping
+  const { data: clickUpMapping } = useQuery({
+    queryKey: ["clickup-mapping-standup", user?.id, orgMembership?.org_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("clickup_user_mappings")
+        .select("clickup_member_id")
+        .eq("user_id", user!.id)
+        .eq("org_id", orgMembership!.org_id)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!user && !!orgMembership?.org_id && !!clickUpInstallation,
+  });
+
+  const canImportFromClickUp = !!clickUpInstallation && !!clickUpMapping;
+
+  const fetchClickUpTasks = async () => {
+    if (!orgMembership?.org_id || !user?.id) return;
+    setLoadingClickUp(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("clickup-fetch-tasks", {
+        body: { org_id: orgMembership.org_id, user_id: user.id },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      setClickUpTasks(data?.tasks || []);
+      setSelectedClickUpTasks(new Set());
+      setShowClickUpDialog(true);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to fetch ClickUp tasks");
+    } finally {
+      setLoadingClickUp(false);
+    }
+  };
+
+  const importSelectedClickUpTasks = () => {
+    const tasksToImport = clickUpTasks.filter((t) => selectedClickUpTasks.has(t.id));
+    const newCommitments: NewCommitment[] = tasksToImport.map((t) => ({
+      title: t.name,
+      priority: t.priority === "urgent" || t.priority === "high" ? "high" as CommitmentPriority : t.priority === "low" ? "low" as CommitmentPriority : "medium" as CommitmentPriority,
+    }));
+    setTodayCommitments((prev) => [...prev, ...newCommitments]);
+    setShowClickUpDialog(false);
+    toast.success(`Imported ${tasksToImport.length} task${tasksToImport.length !== 1 ? "s" : ""} from ClickUp`);
+  };
+
   const { data: existingResponse, isLoading: existingLoading } = useQuery({
     queryKey: ["existing-response-today", memberId, teamId],
     enabled: !!memberId && !!teamId,
@@ -753,6 +838,22 @@ export default function MyStandup() {
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
+              {canImportFromClickUp && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={fetchClickUpTasks}
+                  disabled={loadingClickUp}
+                >
+                  {loadingClickUp ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <SquareKanban className="h-4 w-4" />
+                  )}
+                  Import from ClickUp
+                </Button>
+              )}
               {todayCommitments.map((c, i) => (
                 <div key={i} className="flex items-center gap-2 rounded-lg border p-2">
                   {editingIdx === i ? (
@@ -877,6 +978,79 @@ export default function MyStandup() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ClickUp Import Dialog */}
+      <Dialog open={showClickUpDialog} onOpenChange={setShowClickUpDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <SquareKanban className="h-5 w-5" />
+              Import from ClickUp
+            </DialogTitle>
+            <DialogDescription>
+              Select tasks to add as today's focus items.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 max-h-80 overflow-y-auto">
+            {clickUpTasks.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No in-progress or to-do tasks found.
+              </p>
+            ) : (
+              clickUpTasks.map((task) => (
+                <label
+                  key={task.id}
+                  className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer hover:bg-muted/50 transition-colors"
+                >
+                  <Checkbox
+                    checked={selectedClickUpTasks.has(task.id)}
+                    onCheckedChange={(checked) => {
+                      setSelectedClickUpTasks((prev) => {
+                        const next = new Set(prev);
+                        if (checked) next.add(task.id);
+                        else next.delete(task.id);
+                        return next;
+                      });
+                    }}
+                    className="mt-0.5"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground">{task.name}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Badge variant="outline" className="text-[10px]">
+                        {task.status}
+                      </Badge>
+                      {task.list_name && (
+                        <span className="text-[10px] text-muted-foreground">
+                          {task.list_name}
+                        </span>
+                      )}
+                      {task.priority && (
+                        <Badge variant="outline" className="text-[10px]">
+                          {task.priority}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </label>
+              ))
+            )}
+          </div>
+          {clickUpTasks.length > 0 && (
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setShowClickUpDialog(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={importSelectedClickUpTasks}
+                disabled={selectedClickUpTasks.size === 0}
+              >
+                Import {selectedClickUpTasks.size > 0 ? `(${selectedClickUpTasks.size})` : ""}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
