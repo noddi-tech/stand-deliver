@@ -51,6 +51,7 @@ interface NewCommitment {
   title: string;
   priority: CommitmentPriority;
   existingId?: string; // If editing an existing commitment
+  clickup_task_id?: string; // ClickUp task link
 }
 
 export default function MyStandup() {
@@ -165,6 +166,7 @@ export default function MyStandup() {
     const newCommitments: NewCommitment[] = tasksToImport.map((t) => ({
       title: t.name,
       priority: t.priority === "urgent" || t.priority === "high" ? "high" as CommitmentPriority : t.priority === "low" ? "low" as CommitmentPriority : "medium" as CommitmentPriority,
+      clickup_task_id: t.id,
     }));
     setTodayCommitments((prev) => [...prev, ...newCommitments]);
     setShowClickUpDialog(false);
@@ -405,7 +407,7 @@ export default function MyStandup() {
     try {
       const today = format(new Date(), "yyyy-MM-dd");
 
-      // Update previous commitments
+      // Update previous commitments and sync to ClickUp
       for (const [id, status] of Object.entries(statusOverrides)) {
         await updateCommitmentMutation.mutateAsync({
           id,
@@ -413,6 +415,22 @@ export default function MyStandup() {
           blocked_reason: blockedReasons[id],
           resolution_note: status === "dropped" ? dropReason : undefined,
         });
+
+        // Fire-and-forget: sync status to ClickUp if linked
+        const linkedCommitment = previousCommitments.find((c) => c.id === id);
+        if (linkedCommitment?.clickup_task_id && orgMembership?.org_id) {
+          supabase.functions
+            .invoke("clickup-update-task", {
+              body: {
+                org_id: orgMembership.org_id,
+                clickup_task_id: linkedCommitment.clickup_task_id,
+                new_status: status,
+              },
+            })
+            .then(({ error }) => {
+              if (error) console.error("ClickUp sync failed:", error);
+            });
+        }
       }
 
       // Upsert session
@@ -504,6 +522,7 @@ export default function MyStandup() {
             team_id: teamId,
             origin_session_id: sessionId,
             current_session_id: sessionId,
+            clickup_task_id: c.clickup_task_id || null,
           });
           if (error) throw error;
         }
@@ -517,6 +536,7 @@ export default function MyStandup() {
             team_id: teamId,
             origin_session_id: sessionId,
             current_session_id: sessionId,
+            clickup_task_id: c.clickup_task_id || null,
           });
           if (error) throw error;
         }

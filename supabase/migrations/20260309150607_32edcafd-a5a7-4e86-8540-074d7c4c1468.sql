@@ -1,0 +1,1 @@
+ALTER TABLE public.commitments ADD COLUMN clickup_task_id text;
