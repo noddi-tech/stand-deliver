@@ -1,58 +1,37 @@
-## Completed
 
-### Slack channel selector (IntegrationsTab)
-- Channel dropdown now saves to `teams.slack_channel_id` on change
-- Initializes with current team's linked channel
-- Shows success toast with channel name
 
-### Slack invite system (MembersTab + Edge Function)
-- New `slack-send-invite` edge function sends a DM with Block Kit invite button
-- MembersTab shows "Invite via Slack" card with user picker when Slack is connected
-- Invited users click the link, sign in with Slack OIDC, and auto-join the org
+## Improve ClickUp Task Picker UX
 
-### Edit Daily Standup
-- Added UPDATE RLS policy on `standup_responses`
-- Edit button loads existing data back into form
-- Re-submit updates existing response and commitments
+### Current State
+The "Import from ClickUp" button opens a dialog listing all tasks with checkboxes. No search/filter capability — users must scroll through everything to find the task they want.
 
-### AI Standup Coach (Phase 1)
-- `ai-coach-standup` edge function reviews commitments via Lovable AI Gateway
-- Uses tool calling for structured output (suggestions with category, issue, rewrite)
-- `StandupCoachCard` component shows inline coaching before submit
-- Submit button triggers AI review first; user can apply/dismiss/submit anyway
+### Changes
 
-### ClickUp Integration (Phase 2)
-- `clickup_installations` + `clickup_user_mappings` tables with RLS
-- `clickup-setup` edge function validates token, stores installation, lists members
-- `clickup-fetch-tasks` edge function pulls assigned tasks from ClickUp API
-- `ClickUpSection` component: 3-step wizard (token → connect → map users)
-- Settings > Integrations: ClickUp connection card with setup instructions
-- MyStandup: "Import from ClickUp" button + task picker dialog in Today's Focus
+#### 1. Add search & filter to ClickUp dialog (`src/pages/MyStandup.tsx`)
 
-### ClickUp Status Sync
-- Added `clickup_task_id` column to `commitments` table
-- `clickup-update-task` edge function syncs status changes to ClickUp API
-- Fuzzy-matches StandFlow statuses to ClickUp's custom per-list statuses
-- MyStandup stores `clickup_task_id` on import, fires sync on status change
+Replace the current static list dialog with an improved picker:
 
-### Bug Fixes (ClickUp RLS + Standup Duplicate Key)
-- Updated INSERT policy on `clickup_user_mappings` to allow org members to map any user
-- Replaced conditional insert/update on `standup_responses` with idempotent upsert
+- Add a **search input** at the top of the dialog that filters tasks by name in real-time (client-side, since tasks are already fetched)
+- Add **status filter tabs/chips** (e.g., "All", "In Progress", "To Do") so users can narrow by status
+- Show a **result count** (e.g., "3 of 12 tasks")
+- Keep the checkbox multi-select + Import button pattern
 
-### GitHub Integration + Cross-Platform Weekly Digest
-- `github_installations` + `github_user_mappings` tables with RLS
-- `github-setup` edge function validates PAT, stores installation, lists org members
-- `github-fetch-activity` edge function fetches commits, PRs, reviews via GitHub Search API
-- `GitHubSection` component: setup wizard (token + org name → user mapping)
-- Settings > Integrations: GitHub connection card after ClickUp
-- `ai-weekly-digest` enhanced to aggregate GitHub + ClickUp + StandFlow activity
-- `cross_platform_activity` JSONB column on `ai_weekly_digests`
-- WeeklyDigest page shows cross-platform activity card (StandFlow, GitHub, ClickUp)
-- Slack summary includes GitHub stats when available
+#### 2. Better button label & inline placement
 
-### Fix Duplicate Slack Summaries + Daily Digest Cron
-- Removed per-submission `slack-post-summary` call from MyStandup.tsx (was firing on every individual submission)
-- Removed duplicate Slack posting from `ai-summarize-session` (now only generates + stores AI summary)
-- Added `ai-summarize-session` + `slack-post-summary` calls to Meeting Mode completion
-- New `daily-summary-cron` edge function aggregates daily activity (completions, new tasks, carried, blockers) and posts end-of-day digest to Slack
-- pg_cron job scheduled at 17:00 UTC weekdays to trigger the daily digest automatically
+- Change button text from "Import from ClickUp" to **"Add from ClickUp"** — feels less like a bulk operation
+- Add the ClickUp icon inline with the "What will you work on today?" input row, as a small icon button next to the Plus button, rather than a separate button below
+
+#### 3. UX polish in the dialog
+
+- Show **empty search state** ("No tasks matching 'xyz'") vs **empty data state** ("No tasks found")
+- **Auto-focus** the search input when dialog opens
+- Highlight search matches in task names (bold the matching substring)
+- Show selected count in the Import button: "Add 2 tasks"
+- Add a "Select all visible" checkbox in the header when filtered results are manageable
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `src/pages/MyStandup.tsx` | Rework ClickUp dialog: add search input, status filter chips, better empty states, move button inline with focus input row, rename to "Add from ClickUp" |
+
