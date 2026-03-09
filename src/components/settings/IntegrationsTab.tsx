@@ -272,35 +272,78 @@ export function IntegrationsTab() {
                     <Hash className="h-4 w-4 text-muted-foreground" />
                     Default Channel
                   </label>
-                  <Select
-                    value={userTeam?.slack_channel_id || ""}
-                    onValueChange={async (channelId) => {
-                      if (!userTeam?.id) return;
-                      setSavingChannel(true);
-                      const { error } = await supabase
-                        .from("teams")
-                        .update({ slack_channel_id: channelId })
-                        .eq("id", userTeam.id);
-                      setSavingChannel(false);
-                      if (error) {
-                        toast.error("Failed to update channel");
-                      } else {
-                        queryClient.invalidateQueries({ queryKey: ["user-team"] });
-                        const chName = channels.find((c: any) => c.id === channelId)?.name;
-                        toast.success(`Standup summaries will post to #${chName}`);
-                      }
-                    }}
-                    disabled={savingChannel}
-                  >
-                    <SelectTrigger className="w-64">
-                      <SelectValue placeholder="Select a channel" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {channels.map((ch: { id: string; name: string }) => (
-                        <SelectItem key={ch.id} value={ch.id}>#{ch.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  {userTeam?.slack_channel_id && !isEditingChannel ? (
+                    <div className="flex items-center gap-3">
+                      <Badge className="bg-success/20 text-success border-success/30 text-sm gap-1.5 py-1 px-3">
+                        <Hash className="h-3.5 w-3.5" />
+                        {channels.find((c: any) => c.id === userTeam.slack_channel_id)?.name || "unknown"}
+                      </Badge>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs"
+                        onClick={() => {
+                          setPendingChannelId(userTeam.slack_channel_id);
+                          setIsEditingChannel(true);
+                        }}
+                      >
+                        Change
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <Select
+                        value={pendingChannelId || userTeam?.slack_channel_id || ""}
+                        onValueChange={(value) => setPendingChannelId(value)}
+                        disabled={savingChannel}
+                      >
+                        <SelectTrigger className="w-64">
+                          <SelectValue placeholder="Select a channel" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {channels.map((ch: { id: string; name: string }) => (
+                            <SelectItem key={ch.id} value={ch.id}>#{ch.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        size="sm"
+                        disabled={savingChannel || !pendingChannelId}
+                        onClick={async () => {
+                          if (!userTeam?.id || !pendingChannelId) return;
+                          setSavingChannel(true);
+                          const { error } = await supabase
+                            .from("teams")
+                            .update({ slack_channel_id: pendingChannelId })
+                            .eq("id", userTeam.id);
+                          setSavingChannel(false);
+                          if (error) {
+                            toast.error("Failed to update channel");
+                          } else {
+                            queryClient.invalidateQueries({ queryKey: ["user-team"] });
+                            const chName = channels.find((c: any) => c.id === pendingChannelId)?.name;
+                            toast.success(`Standup summaries will post to #${chName}`);
+                            setIsEditingChannel(false);
+                            setPendingChannelId(null);
+                          }
+                        }}
+                      >
+                        {savingChannel ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
+                      </Button>
+                      {isEditingChannel && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => {
+                            setIsEditingChannel(false);
+                            setPendingChannelId(null);
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
