@@ -50,3 +50,9 @@ verify_jwt = false
 
 [functions.clickup-update-task]
 verify_jwt = false
+
+[functions.github-setup]
+verify_jwt = false
+
+[functions.github-fetch-activity]
+verify_jwt = false
