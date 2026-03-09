@@ -162,8 +162,31 @@ export function GitHubSection({ orgId }: GitHubSectionProps) {
     onError: () => toast.error("Failed to save mapping"),
   });
 
+  const deleteMapping = useMutation({
+    mutationFn: async (userId: string) => {
+      const { error } = await supabase
+        .from("github_user_mappings")
+        .delete()
+        .eq("user_id", userId)
+        .eq("org_id", orgId!);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["github-mappings"] });
+      toast.success("Mapping removed");
+    },
+    onError: () => toast.error("Failed to remove mapping"),
+  });
+
   const getMappingForUser = (userId: string) =>
     githubMappings?.find((m: any) => m.user_id === userId);
+
+  const getAvailableGithubMembers = (currentUserId: string) => {
+    const mappedUsernames = (githubMappings || [])
+      .filter((m: any) => m.user_id !== currentUserId && m.github_username !== "__none__")
+      .map((m: any) => m.github_username);
+    return githubMembers.filter((gm) => !mappedUsernames.includes(gm.login));
+  };
 
   return (
     <Card>
@@ -297,65 +320,84 @@ export function GitHubSection({ orgId }: GitHubSectionProps) {
                           <TableCell>
                             {mapping ? (
                               <div className="flex items-center gap-2">
-                                {linkedMember?.avatar_url && (
-                                  <Avatar className="h-6 w-6">
-                                    <AvatarImage src={linkedMember.avatar_url} />
-                                    <AvatarFallback className="text-xs">{linkedMember.login?.[0]}</AvatarFallback>
-                                  </Avatar>
+                                {mapping.github_username === "__none__" ? (
+                                  <span className="text-sm text-muted-foreground italic">
+                                    No GitHub account
+                                  </span>
+                                ) : (
+                                  <>
+                                    {linkedMember?.avatar_url && (
+                                      <Avatar className="h-6 w-6">
+                                        <AvatarImage src={linkedMember.avatar_url} />
+                                        <AvatarFallback className="text-xs">{linkedMember.login?.[0]}</AvatarFallback>
+                                      </Avatar>
+                                    )}
+                                    <span className="text-sm text-foreground">
+                                      @{mapping.github_username}
+                                    </span>
+                                  </>
                                 )}
-                                <span className="text-sm text-foreground">
-                                  @{mapping.github_username}
-                                </span>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 px-2 text-xs text-muted-foreground"
+                                  onClick={() => deleteMapping.mutate(member.user_id)}
+                                >
+                                  Change
+                                </Button>
                               </div>
-                            ) : githubMembers.length > 0 ? (
-                              <Select
-                                onValueChange={(value) => {
-                                  const gm = githubMembers.find((m) => m.login === value);
-                                  saveMapping.mutate({
-                                    userId: member.user_id,
-                                    githubUsername: value,
-                                    displayName: gm?.login || value,
-                                  });
-                                }}
-                              >
-                                <SelectTrigger className="max-w-[240px] h-8 text-sm">
-                                  <SelectValue placeholder="Select GitHub user..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {githubMembers.map((gm) => (
-                                    <SelectItem key={gm.login} value={gm.login}>
-                                      <span className="flex items-center gap-2">
-                                        @{gm.login}
-                                      </span>
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            ) : (
-                              <Input
-                                placeholder="GitHub username"
-                                className="max-w-[240px] h-8 text-sm"
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {
-                                    const val = (e.target as HTMLInputElement).value.trim();
-                                    if (val) {
-                                      saveMapping.mutate({
-                                        userId: member.user_id,
-                                        githubUsername: val,
-                                        displayName: val,
-                                      });
-                                    }
-                                  }
-                                }}
-                              />
-                            )}
+                            ) : (() => {
+                              const available = getAvailableGithubMembers(member.user_id);
+                              return (
+                                <div className="flex items-center gap-2">
+                                  <Select
+                                    onValueChange={(value) => {
+                                      if (value === "__none__") {
+                                        saveMapping.mutate({
+                                          userId: member.user_id,
+                                          githubUsername: "__none__",
+                                          displayName: "No GitHub account",
+                                        });
+                                      } else {
+                                        const gm = githubMembers.find((m) => m.login === value);
+                                        saveMapping.mutate({
+                                          userId: member.user_id,
+                                          githubUsername: value,
+                                          displayName: gm?.login || value,
+                                        });
+                                      }
+                                    }}
+                                  >
+                                    <SelectTrigger className="max-w-[240px] h-8 text-sm">
+                                      <SelectValue placeholder="Select GitHub user..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="__none__">
+                                        <span className="text-muted-foreground">No GitHub account</span>
+                                      </SelectItem>
+                                      {available.map((gm) => (
+                                        <SelectItem key={gm.login} value={gm.login}>
+                                          <span className="flex items-center gap-2">
+                                            @{gm.login}
+                                          </span>
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                              );
+                            })()}
                           </TableCell>
                           <TableCell>
                             {mapping ? (
-                              <Badge className="bg-success/20 text-success border-success/30 text-xs gap-1">
-                                <UserCheck className="h-3 w-3" />
-                                Linked
-                              </Badge>
+                              mapping.github_username === "__none__" ? (
+                                <Badge variant="outline" className="text-muted-foreground text-xs">N/A</Badge>
+                              ) : (
+                                <Badge className="bg-success/20 text-success border-success/30 text-xs gap-1">
+                                  <UserCheck className="h-3 w-3" />
+                                  Linked
+                                </Badge>
+                              )
                             ) : (
                               <Badge variant="outline" className="text-muted-foreground text-xs">Unlinked</Badge>
                             )}
