@@ -350,8 +350,8 @@ export function IntegrationsTab() {
               )}
             </div>
           ) : (
-            <Button onClick={handleConnectSlack} className="gap-2">
-              <Unplug className="h-4 w-4" />
+            <Button onClick={handleConnectSlack} disabled={connectingSlack} className="gap-2">
+              {connectingSlack ? <Loader2 className="h-4 w-4 animate-spin" /> : <Unplug className="h-4 w-4" />}
               Connect to Slack
             </Button>
           )}
