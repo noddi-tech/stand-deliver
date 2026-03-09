@@ -251,7 +251,26 @@ export function IntegrationsTab() {
                     <Hash className="h-4 w-4 text-muted-foreground" />
                     Default Channel
                   </label>
-                  <Select>
+                  <Select
+                    value={userTeam?.slack_channel_id || ""}
+                    onValueChange={async (channelId) => {
+                      if (!userTeam?.id) return;
+                      setSavingChannel(true);
+                      const { error } = await supabase
+                        .from("teams")
+                        .update({ slack_channel_id: channelId })
+                        .eq("id", userTeam.id);
+                      setSavingChannel(false);
+                      if (error) {
+                        toast.error("Failed to update channel");
+                      } else {
+                        queryClient.invalidateQueries({ queryKey: ["user-team"] });
+                        const chName = channels.find((c: any) => c.id === channelId)?.name;
+                        toast.success(`Standup summaries will post to #${chName}`);
+                      }
+                    }}
+                    disabled={savingChannel}
+                  >
                     <SelectTrigger className="w-64">
                       <SelectValue placeholder="Select a channel" />
                     </SelectTrigger>

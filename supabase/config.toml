@@ -32,3 +32,6 @@ verify_jwt = false
 
 [functions.slack-auto-link]
 verify_jwt = false
+
+[functions.slack-send-invite]
+verify_jwt = false
