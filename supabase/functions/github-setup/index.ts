@@ -36,8 +36,8 @@ Deno.serve(async (req) => {
 
       if (!install) throw new Error("No GitHub installation found");
 
-      const members = await fetchOrgMembers(install.api_token_encrypted, install.github_org_name);
-      return new Response(JSON.stringify({ members }), {
+      const result = await fetchOrgMembers(install.api_token_encrypted, install.github_org_name);
+      return new Response(JSON.stringify({ members: result.members, members_error: result.error || null }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -76,13 +76,14 @@ Deno.serve(async (req) => {
     if (upsertErr) throw upsertErr;
 
     // Fetch org members if org name provided
-    const members = await fetchOrgMembers(api_token, github_org_name);
+    const result = await fetchOrgMembers(api_token, github_org_name);
 
     return new Response(
       JSON.stringify({
         username: ghUser.login,
         avatar_url: ghUser.avatar_url,
-        members,
+        members: result.members,
+        members_error: result.error || null,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
@@ -95,8 +96,8 @@ Deno.serve(async (req) => {
   }
 });
 
-async function fetchOrgMembers(token: string, orgName: string | null): Promise<any[]> {
-  if (!orgName) return [];
+async function fetchOrgMembers(token: string, orgName: string | null): Promise<{ members: any[]; error?: string }> {
+  if (!orgName) return { members: [] };
   try {
     const res = await fetch(`https://api.github.com/orgs/${orgName}/members?per_page=100`, {
       headers: {
@@ -105,14 +106,24 @@ async function fetchOrgMembers(token: string, orgName: string | null): Promise<a
         "User-Agent": "StandFlow",
       },
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      const status = res.status;
+      console.error(`GitHub org members fetch failed: ${status}`);
+      if (status === 403 || status === 404) {
+        return { members: [], error: "Token lacks Organization Members read permission" };
+      }
+      return { members: [], error: `GitHub API returned ${status}` };
+    }
     const members = await res.json();
-    return members.map((m: any) => ({
-      login: m.login,
-      avatar_url: m.avatar_url,
-      id: m.id,
-    }));
-  } catch {
-    return [];
+    return {
+      members: members.map((m: any) => ({
+        login: m.login,
+        avatar_url: m.avatar_url,
+        id: m.id,
+      })),
+    };
+  } catch (e) {
+    console.error("fetchOrgMembers error:", e);
+    return { members: [], error: "Failed to fetch org members" };
   }
 }
