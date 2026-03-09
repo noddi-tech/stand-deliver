@@ -20,6 +20,7 @@ export type Database = {
           ai_recommendations: Json | null
           completion_rate: number | null
           created_at: string
+          cross_platform_activity: Json | null
           health_score: number | null
           id: string
           team_id: string
@@ -37,6 +38,7 @@ export type Database = {
           ai_recommendations?: Json | null
           completion_rate?: number | null
           created_at?: string
+          cross_platform_activity?: Json | null
           health_score?: number | null
           id?: string
           team_id: string
@@ -54,6 +56,7 @@ export type Database = {
           ai_recommendations?: Json | null
           completion_rate?: number | null
           created_at?: string
+          cross_platform_activity?: Json | null
           health_score?: number | null
           id?: string
           team_id?: string
@@ -421,6 +424,76 @@ export type Database = {
             columns: ["team_id"]
             isOneToOne: false
             referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      github_installations: {
+        Row: {
+          api_token_encrypted: string
+          github_org_name: string | null
+          id: string
+          installed_at: string
+          installed_by: string | null
+          org_id: string
+        }
+        Insert: {
+          api_token_encrypted: string
+          github_org_name?: string | null
+          id?: string
+          installed_at?: string
+          installed_by?: string | null
+          org_id: string
+        }
+        Update: {
+          api_token_encrypted?: string
+          github_org_name?: string | null
+          id?: string
+          installed_at?: string
+          installed_by?: string | null
+          org_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "github_installations_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      github_user_mappings: {
+        Row: {
+          created_at: string
+          github_display_name: string | null
+          github_username: string
+          id: string
+          org_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          github_display_name?: string | null
+          github_username: string
+          id?: string
+          org_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          github_display_name?: string | null
+          github_username?: string
+          id?: string
+          org_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "github_user_mappings_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
