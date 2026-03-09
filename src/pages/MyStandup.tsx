@@ -54,6 +54,7 @@ interface NewCommitment {
 }
 
 export default function MyStandup() {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const { data: teamData, isLoading: teamLoading } = useUserTeam();
   const memberId = teamData?.id;
