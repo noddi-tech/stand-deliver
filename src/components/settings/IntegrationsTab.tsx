@@ -154,6 +154,25 @@ export function IntegrationsTab() {
     enabled: !!orgId,
   });
 
+  // Auto-link all unlinked members on page load
+  const autoLinkRan = useRef(false);
+  useEffect(() => {
+    if (autoLinkRan.current || !slackInstallation || !teamMembers || !orgId) return;
+    const unlinked = teamMembers.filter((m: any) => !m.slack_user_id && m.user_id);
+    if (unlinked.length === 0) return;
+    autoLinkRan.current = true;
+
+    Promise.allSettled(
+      unlinked.map((m: any) =>
+        supabase.functions.invoke("slack-auto-link", {
+          body: { org_id: orgId, member_id: m.id, user_id: m.user_id },
+        })
+      )
+    ).then(() => {
+      queryClient.invalidateQueries({ queryKey: ["team-members-for-mapping"] });
+    });
+  }, [slackInstallation, teamMembers, orgId, queryClient]);
+
   // Auto-link current user's Slack account
   const autoLink = useMutation({
     mutationFn: async ({ memberId, userId }: { memberId: string; userId: string }) => {
