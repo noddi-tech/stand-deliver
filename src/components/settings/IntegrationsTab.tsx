@@ -464,6 +464,9 @@ export function IntegrationsTab() {
 
       {/* Slack Preview */}
       <SlackPreview />
+
+      {/* ClickUp Integration */}
+      <ClickUpSection orgId={orgId} />
     </div>
   );
 }

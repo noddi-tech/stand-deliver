@@ -41,3 +41,9 @@ verify_jwt = false
 
 [functions.ai-coach-standup]
 verify_jwt = false
+
+[functions.clickup-setup]
+verify_jwt = false
+
+[functions.clickup-fetch-tasks]
+verify_jwt = false
