@@ -254,6 +254,57 @@ export default function MyStandup() {
     setEditingIdx(null);
   };
 
+  const requestCoachReview = async () => {
+    if (!mood) {
+      toast.error("Please select your mood");
+      return;
+    }
+    if (todayCommitments.length === 0) {
+      toast.error("Add at least one focus item for today");
+      return;
+    }
+    setCoachLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("ai-coach-standup", {
+        body: { commitments: todayCommitments.map((c) => ({ title: c.title })) },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      setCoachSuggestions(data?.suggestions || []);
+      setCoachTip(data?.overall_tip || null);
+      setShowCoach(true);
+    } catch (err: any) {
+      console.error("Coach review failed:", err);
+      // Fail gracefully — let them submit without review
+      toast.info("AI coach unavailable — you can submit directly");
+      await handleSubmit();
+    } finally {
+      setCoachLoading(false);
+    }
+  };
+
+  const handleCoachApply = (original: string, rewrite: string) => {
+    setTodayCommitments((prev) =>
+      prev.map((c) => (c.title === original ? { ...c, title: rewrite } : c))
+    );
+  };
+
+  const handleCoachDismiss = (_original: string) => {
+    // No-op — visual dismiss handled in StandupCoachCard
+  };
+
+  const handleCoachApplyAll = () => {
+    const actionable = coachSuggestions.filter((s) => s.category !== "good");
+    setTodayCommitments((prev) =>
+      prev.map((c) => {
+        const suggestion = actionable.find((s) => s.original === c.title);
+        return suggestion ? { ...c, title: suggestion.rewrite } : c;
+      })
+    );
+    setShowCoach(false);
+    toast.success("All suggestions applied!");
+  };
+
   const handleSubmit = async () => {
     if (!memberId || !teamId) return;
     if (!mood) {
