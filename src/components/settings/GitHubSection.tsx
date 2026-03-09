@@ -181,6 +181,13 @@ export function GitHubSection({ orgId }: GitHubSectionProps) {
   const getMappingForUser = (userId: string) =>
     githubMappings?.find((m: any) => m.user_id === userId);
 
+  const getAvailableGithubMembers = (currentUserId: string) => {
+    const mappedUsernames = (githubMappings || [])
+      .filter((m: any) => m.user_id !== currentUserId && m.github_username !== "__none__")
+      .map((m: any) => m.github_username);
+    return githubMembers.filter((gm) => !mappedUsernames.includes(gm.login));
+  };
+
   return (
     <Card>
       <CardHeader>
