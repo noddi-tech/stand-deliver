@@ -47,3 +47,6 @@ verify_jwt = false
 
 [functions.clickup-fetch-tasks]
 verify_jwt = false
+
+[functions.clickup-update-task]
+verify_jwt = false

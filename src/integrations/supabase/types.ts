@@ -282,6 +282,7 @@ export type Database = {
         Row: {
           blocked_reason: string | null
           carry_count: number
+          clickup_task_id: string | null
           created_at: string
           current_session_id: string | null
           description: string | null
@@ -299,6 +300,7 @@ export type Database = {
         Insert: {
           blocked_reason?: string | null
           carry_count?: number
+          clickup_task_id?: string | null
           created_at?: string
           current_session_id?: string | null
           description?: string | null
@@ -316,6 +318,7 @@ export type Database = {
         Update: {
           blocked_reason?: string | null
           carry_count?: number
+          clickup_task_id?: string | null
           created_at?: string
           current_session_id?: string | null
           description?: string | null
