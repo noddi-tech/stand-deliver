@@ -28,3 +28,9 @@
 - `ClickUpSection` component: 3-step wizard (token → connect → map users)
 - Settings > Integrations: ClickUp connection card with setup instructions
 - MyStandup: "Import from ClickUp" button + task picker dialog in Today's Focus
+
+### ClickUp Status Sync
+- Added `clickup_task_id` column to `commitments` table
+- `clickup-update-task` edge function syncs status changes to ClickUp API
+- Fuzzy-matches StandFlow statuses to ClickUp's custom per-list statuses
+- MyStandup stores `clickup_task_id` on import, fires sync on status change
