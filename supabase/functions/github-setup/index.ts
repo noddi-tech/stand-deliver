@@ -76,13 +76,14 @@ Deno.serve(async (req) => {
     if (upsertErr) throw upsertErr;
 
     // Fetch org members if org name provided
-    const members = await fetchOrgMembers(api_token, github_org_name);
+    const result = await fetchOrgMembers(api_token, github_org_name);
 
     return new Response(
       JSON.stringify({
         username: ghUser.login,
         avatar_url: ghUser.avatar_url,
-        members,
+        members: result.members,
+        members_error: result.error || null,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

@@ -293,6 +293,18 @@ export function GitHubSection({ orgId }: GitHubSectionProps) {
               </Button>
             </div>
 
+            {memberFetchError && installation?.github_org_name && (
+              <Alert variant="destructive" className="border-yellow-500/50 bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 [&>svg]:text-yellow-600">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription className="text-sm">
+                  Could not fetch org members — your token may need <strong>Organization → Members: Read</strong> permission.{" "}
+                  <a href="https://github.com/settings/tokens" target="_blank" rel="noopener noreferrer" className="underline inline-flex items-center gap-1">
+                    Update token permissions <ExternalLink className="h-3 w-3" />
+                  </a>
+                </AlertDescription>
+              </Alert>
+            )}
+
             {teamMembers && teamMembers.length > 0 && (
               <div className="space-y-2">
                 <h4 className="text-sm font-medium flex items-center gap-2">
