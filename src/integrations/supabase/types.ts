@@ -783,6 +783,38 @@ export type Database = {
           },
         ]
       }
+      slack_oauth_states: {
+        Row: {
+          created_at: string
+          id: string
+          nonce: string
+          org_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          nonce: string
+          org_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          nonce?: string
+          org_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "slack_oauth_states_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       slack_user_mappings: {
         Row: {
           created_at: string
