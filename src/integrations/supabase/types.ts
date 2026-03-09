@@ -484,6 +484,61 @@ export type Database = {
           },
         ]
       }
+      slack_invites: {
+        Row: {
+          created_at: string
+          id: string
+          invited_by: string
+          org_id: string
+          slack_display_name: string | null
+          slack_user_id: string
+          status: string
+          team_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          invited_by: string
+          org_id: string
+          slack_display_name?: string | null
+          slack_user_id: string
+          status?: string
+          team_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          invited_by?: string
+          org_id?: string
+          slack_display_name?: string | null
+          slack_user_id?: string
+          status?: string
+          team_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "slack_invites_invited_by_fkey"
+            columns: ["invited_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "slack_invites_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "slack_invites_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       slack_user_mappings: {
         Row: {
           created_at: string

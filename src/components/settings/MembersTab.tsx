@@ -10,7 +10,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, Send } from "lucide-react";
+import { Loader2, Send, Clock } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
 
 interface Member {
   id: string;
@@ -27,6 +28,14 @@ interface SlackUser {
   real_name: string;
   email: string | null;
   avatar: string | null;
+}
+
+interface SlackInvite {
+  id: string;
+  slack_user_id: string;
+  slack_display_name: string | null;
+  status: string;
+  created_at: string;
 }
 
 export function MembersTab() {
@@ -61,7 +70,6 @@ export function MembersTab() {
     setTeamId(membership.team_id);
     setIsLead(membership.role === "lead");
 
-    // Get org_id from team
     const { data: team } = await supabase
       .from("teams")
       .select("org_id")
@@ -117,19 +125,36 @@ export function MembersTab() {
     enabled: !!slackInstallation && !!orgId,
   });
 
-  // Filter out users already on the team (by matching emails or slack_user_id)
-  const existingUserIds = new Set(members.map((m) => m.user_id));
+  // Fetch pending invites
+  const { data: pendingInvites = [], refetch: refetchInvites } = useQuery<SlackInvite[]>({
+    queryKey: ["slack-invites", orgId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("slack_invites")
+        .select("id, slack_user_id, slack_display_name, status, created_at")
+        .eq("org_id", orgId!)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!orgId,
+  });
+
+  // Filter out already-invited and existing members from dropdown
+  const invitedSlackUserIds = new Set(pendingInvites.map((i) => i.slack_user_id));
   const availableSlackUsers = slackUsers?.filter((su) => {
-    // Simple filter: don't show bots, and we can't perfectly match but it's good enough
-    return su.email; // only show users with emails (excludes bots)
+    if (!su.email) return false; // exclude bots
+    if (invitedSlackUserIds.has(su.id)) return false;
+    return true;
   }) || [];
 
   const handleSendInvite = async () => {
-    if (!selectedSlackUser || !orgId) return;
+    if (!selectedSlackUser || !orgId || !teamId || !user) return;
     setSendingInvite(true);
     try {
       const { data, error } = await supabase.functions.invoke("slack-send-invite", {
-        body: { org_id: orgId, slack_user_id: selectedSlackUser },
+        body: { org_id: orgId, team_id: teamId, slack_user_id: selectedSlackUser, invited_by: user.id },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
@@ -137,6 +162,7 @@ export function MembersTab() {
       const invitedUser = slackUsers?.find((u) => u.id === selectedSlackUser);
       toast({ title: "Invite sent! 🎉", description: `DM sent to ${invitedUser?.real_name || "user"} on Slack.` });
       setSelectedSlackUser("");
+      refetchInvites();
     } catch (e: any) {
       toast({ title: "Failed to send invite", description: e.message, variant: "destructive" });
     } finally {
@@ -268,6 +294,41 @@ export function MembersTab() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Pending Invites */}
+      {pendingInvites.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Pending Invites</CardTitle>
+            <CardDescription>
+              {pendingInvites.length} invite{pendingInvites.length !== 1 ? "s" : ""} awaiting sign-in.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {pendingInvites.map((invite) => (
+                <div key={invite.id} className="flex items-center justify-between rounded-lg border p-3">
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-8 w-8">
+                      <AvatarFallback className="text-xs">
+                        {getInitials(invite.slack_display_name)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="text-sm font-medium">{invite.slack_display_name || invite.slack_user_id}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className="text-xs">Pending</Badge>
+                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      {formatDistanceToNow(new Date(invite.created_at), { addSuffix: true })}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Invite via Slack */}
       {slackInstallation && availableSlackUsers.length > 0 && (

@@ -4,7 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 serve(async (req) => {
@@ -13,7 +13,7 @@ serve(async (req) => {
   }
 
   try {
-    const { org_id, slack_user_id, app_url } = await req.json();
+    const { org_id, team_id, slack_user_id, invited_by, app_url } = await req.json();
     if (!org_id || !slack_user_id) {
       return new Response(
         JSON.stringify({ error: "org_id and slack_user_id are required" }),
@@ -42,6 +42,13 @@ serve(async (req) => {
     }
 
     const siteUrl = app_url || Deno.env.get("SITE_URL") || "https://standup-flow-app.lovable.app";
+
+    // Look up user info for display name
+    const userInfoRes = await fetch(`https://slack.com/api/users.info?user=${slack_user_id}`, {
+      headers: { Authorization: `Bearer ${installation.bot_token}` },
+    });
+    const userInfo = await userInfoRes.json();
+    const displayName = userInfo.ok ? (userInfo.user?.real_name || userInfo.user?.name || null) : null;
 
     // Open a DM channel with the user
     const openRes = await fetch("https://slack.com/api/conversations.open", {
@@ -100,6 +107,21 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ error: `Failed to send message: ${msgData.error}` }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Record the invite in slack_invites table
+    if (team_id && invited_by) {
+      await supabase.from("slack_invites").upsert(
+        {
+          org_id,
+          team_id,
+          slack_user_id,
+          slack_display_name: displayName,
+          invited_by,
+          status: "pending",
+        },
+        { onConflict: "org_id,slack_user_id" }
       );
     }
 
