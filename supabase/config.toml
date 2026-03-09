@@ -35,3 +35,6 @@ verify_jwt = false
 
 [functions.slack-send-invite]
 verify_jwt = false
+
+[functions.slack-list-channels]
+verify_jwt = false
