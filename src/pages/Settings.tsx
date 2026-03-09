@@ -4,6 +4,7 @@ import { IntegrationsTab } from "@/components/settings/IntegrationsTab";
 import { TeamTab } from "@/components/settings/TeamTab";
 import { ScheduleTab } from "@/components/settings/ScheduleTab";
 import { MembersTab } from "@/components/settings/MembersTab";
+import { NotificationsTab } from "@/components/settings/NotificationsTab";
 
 export default function Settings() {
   const [searchParams] = useSearchParams();
