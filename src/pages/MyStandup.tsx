@@ -840,23 +840,22 @@ export default function MyStandup() {
                 <Button size="icon" onClick={addTodayCommitment} disabled={!newFocusTitle.trim()}>
                   <Plus className="h-4 w-4" />
                 </Button>
+                {canImportFromClickUp && (
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    onClick={fetchClickUpTasks}
+                    disabled={loadingClickUp}
+                    title="Add from ClickUp"
+                  >
+                    {loadingClickUp ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <SquareKanban className="h-4 w-4" />
+                    )}
+                  </Button>
+                )}
               </div>
-              {canImportFromClickUp && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-2"
-                  onClick={fetchClickUpTasks}
-                  disabled={loadingClickUp}
-                >
-                  {loadingClickUp ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <SquareKanban className="h-4 w-4" />
-                  )}
-                  Import from ClickUp
-                </Button>
-              )}
               {todayCommitments.map((c, i) => (
                 <div key={i} className="flex items-center gap-2 rounded-lg border p-2">
                   {editingIdx === i ? (
