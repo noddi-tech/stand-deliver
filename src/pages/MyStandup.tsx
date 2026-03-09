@@ -735,6 +735,72 @@ export default function MyStandup() {
         )}
       </div>
 
+      {/* Recent Activity from ClickUp/GitHub */}
+      {!isEditing && externalActivity.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <GitBranch className="h-4 w-4 text-primary" />
+              Recent Activity
+              <Badge variant="secondary" className="text-[10px]">{externalActivity.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {externalActivity.map((activity: any) => {
+              const isGitHub = activity.source === "github";
+              const typeLabels: Record<string, string> = {
+                task_completed: "Completed",
+                task_started: "In Progress",
+                commit: "Commit",
+                pr_opened: "PR Opened",
+                pr_merged: "PR Merged",
+              };
+              const typeColors: Record<string, string> = {
+                task_completed: "text-emerald-600 border-emerald-300",
+                pr_merged: "text-purple-600 border-purple-300",
+                commit: "text-blue-600 border-blue-300",
+                pr_opened: "text-amber-600 border-amber-300",
+                task_started: "text-sky-600 border-sky-300",
+              };
+              return (
+                <div key={activity.id} className="flex items-center gap-3 rounded-lg border p-3">
+                  <span className="text-lg shrink-0">{isGitHub ? "🐙" : "📋"}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{activity.title}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <Badge variant="outline" className={`text-[10px] ${typeColors[activity.activity_type] || ""}`}>
+                        {typeLabels[activity.activity_type] || activity.activity_type}
+                      </Badge>
+                      {(activity.metadata as any)?.repo && (
+                        <span className="text-[10px] text-muted-foreground">{(activity.metadata as any).repo}</span>
+                      )}
+                      <span className="text-[10px] text-muted-foreground">
+                        {formatDistanceToNow(new Date(activity.occurred_at), { addSuffix: true })}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    {activity.external_url && (
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" asChild>
+                        <a href={activity.external_url} target="_blank" rel="noopener noreferrer">
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      </Button>
+                    )}
+                    <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => addActivityToStandup(activity)}>
+                      <Plus className="h-3 w-3 mr-1" /> Add
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => acknowledgeActivity(activity.id)}>
+                      <EyeOff className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Section 1: Resolve Previous Commitments */}
       {!isEditing && (
         <Card>
