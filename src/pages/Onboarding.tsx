@@ -87,7 +87,44 @@ export default function Onboarding() {
       if (onboardingStatus.hasOrg && !onboardingStatus.hasTeam) {
         setStep(1);
         setOrgId(onboardingStatus.orgId!);
+        setInitialized(true);
+        return;
       }
+
+      // Auto-join: if user has a Slack workspace ID but no org, try matching
+      if (!onboardingStatus.hasOrg && slackWorkspaceId) {
+        (async () => {
+          try {
+            const { data: result, error } = await supabase.rpc("create_org_and_join" as any, {
+              p_name: "auto",
+              p_slug: "auto",
+              p_slack_workspace_id: slackWorkspaceId,
+            });
+            if (!error && result) {
+              const rpcResult = result as any as { org_id: string; org_name: string; is_existing: boolean };
+              if (rpcResult.is_existing) {
+                setOrgId(rpcResult.org_id);
+                setIsExistingOrg(true);
+                setExistingOrgName(rpcResult.org_name);
+                // Fetch available teams
+                const { data: teams } = await supabase
+                  .from("teams")
+                  .select("id, name")
+                  .eq("org_id", rpcResult.org_id);
+                setAvailableTeams(teams || []);
+                setStep(1);
+                setInitialized(true);
+                return;
+              }
+            }
+          } catch {
+            // Fall through to normal onboarding
+          }
+          setInitialized(true);
+        })();
+        return;
+      }
+
       setInitialized(true);
     }
   }, [onboardingStatus.loading, initialized]);
