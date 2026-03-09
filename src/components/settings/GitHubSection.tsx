@@ -162,6 +162,22 @@ export function GitHubSection({ orgId }: GitHubSectionProps) {
     onError: () => toast.error("Failed to save mapping"),
   });
 
+  const deleteMapping = useMutation({
+    mutationFn: async (userId: string) => {
+      const { error } = await supabase
+        .from("github_user_mappings")
+        .delete()
+        .eq("user_id", userId)
+        .eq("org_id", orgId!);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["github-mappings"] });
+      toast.success("Mapping removed");
+    },
+    onError: () => toast.error("Failed to remove mapping"),
+  });
+
   const getMappingForUser = (userId: string) =>
     githubMappings?.find((m: any) => m.user_id === userId);
 
