@@ -51,6 +51,7 @@ interface NewCommitment {
   title: string;
   priority: CommitmentPriority;
   existingId?: string; // If editing an existing commitment
+  clickup_task_id?: string; // ClickUp task link
 }
 
 export default function MyStandup() {
