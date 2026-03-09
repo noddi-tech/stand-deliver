@@ -92,12 +92,16 @@ export function GitHubSection({ orgId }: GitHubSectionProps) {
     else setStep("token");
   }, [installation]);
 
+  const [memberFetchError, setMemberFetchError] = useState<string | null>(null);
+
   useEffect(() => {
     if (!installation || !orgId) return;
+    setMemberFetchError(null);
     supabase.functions
       .invoke("github-setup", { body: { org_id: orgId, action: "list-members" } })
       .then(({ data }) => {
         if (data?.members) setGithubMembers(data.members);
+        if (data?.members_error) setMemberFetchError(data.members_error);
       });
   }, [installation, orgId]);
 
