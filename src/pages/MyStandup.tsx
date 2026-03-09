@@ -442,6 +442,9 @@ export default function MyStandup() {
       queryClient.invalidateQueries({ queryKey: ["existing-response-today"] });
       setSubmitted(true);
       setIsEditing(false);
+      setShowCoach(false);
+      setCoachSuggestions([]);
+      setCoachTip(null);
 
       // Fire-and-forget: post summary to Slack if channel is configured
       supabase
