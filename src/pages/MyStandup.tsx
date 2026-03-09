@@ -23,6 +23,7 @@ import {
 import { Lock, Check, X, AlertTriangle, Loader2, Plus, ArrowRight, Clock, Edit2, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { StandupCoachCard, type CoachSuggestion } from "@/components/ai/StandupCoachCard";
 import type { Database } from "@/integrations/supabase/types";
 
 type CommitmentStatus = Database["public"]["Enums"]["commitment_status"];
@@ -77,6 +78,12 @@ export default function MyStandup() {
   // Editing state for today's commitments
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [editingText, setEditingText] = useState("");
+
+  // AI Coach state
+  const [showCoach, setShowCoach] = useState(false);
+  const [coachLoading, setCoachLoading] = useState(false);
+  const [coachSuggestions, setCoachSuggestions] = useState<CoachSuggestion[]>([]);
+  const [coachTip, setCoachTip] = useState<string | null>(null);
 
   // Fetch today's existing response
   const { data: existingResponse, isLoading: existingLoading } = useQuery({
@@ -247,6 +254,57 @@ export default function MyStandup() {
     setEditingIdx(null);
   };
 
+  const requestCoachReview = async () => {
+    if (!mood) {
+      toast.error("Please select your mood");
+      return;
+    }
+    if (todayCommitments.length === 0) {
+      toast.error("Add at least one focus item for today");
+      return;
+    }
+    setCoachLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("ai-coach-standup", {
+        body: { commitments: todayCommitments.map((c) => ({ title: c.title })) },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      setCoachSuggestions(data?.suggestions || []);
+      setCoachTip(data?.overall_tip || null);
+      setShowCoach(true);
+    } catch (err: any) {
+      console.error("Coach review failed:", err);
+      // Fail gracefully — let them submit without review
+      toast.info("AI coach unavailable — you can submit directly");
+      await handleSubmit();
+    } finally {
+      setCoachLoading(false);
+    }
+  };
+
+  const handleCoachApply = (original: string, rewrite: string) => {
+    setTodayCommitments((prev) =>
+      prev.map((c) => (c.title === original ? { ...c, title: rewrite } : c))
+    );
+  };
+
+  const handleCoachDismiss = (_original: string) => {
+    // No-op — visual dismiss handled in StandupCoachCard
+  };
+
+  const handleCoachApplyAll = () => {
+    const actionable = coachSuggestions.filter((s) => s.category !== "good");
+    setTodayCommitments((prev) =>
+      prev.map((c) => {
+        const suggestion = actionable.find((s) => s.original === c.title);
+        return suggestion ? { ...c, title: suggestion.rewrite } : c;
+      })
+    );
+    setShowCoach(false);
+    toast.success("All suggestions applied!");
+  };
+
   const handleSubmit = async () => {
     if (!memberId || !teamId) return;
     if (!mood) {
@@ -384,6 +442,9 @@ export default function MyStandup() {
       queryClient.invalidateQueries({ queryKey: ["existing-response-today"] });
       setSubmitted(true);
       setIsEditing(false);
+      setShowCoach(false);
+      setCoachSuggestions([]);
+      setCoachTip(null);
 
       // Fire-and-forget: post summary to Slack if channel is configured
       supabase
@@ -770,11 +831,31 @@ export default function MyStandup() {
         </CardContent>
       </Card>
 
+      {/* AI Coach Review */}
+      {showCoach && (
+        <StandupCoachCard
+          suggestions={coachSuggestions}
+          overallTip={coachTip}
+          onApply={handleCoachApply}
+          onDismiss={handleCoachDismiss}
+          onApplyAll={handleCoachApplyAll}
+          onSubmitAnyway={() => { setShowCoach(false); handleSubmit(); }}
+          submitting={submitting}
+        />
+      )}
+
       {/* Submit */}
-      <Button onClick={handleSubmit} disabled={submitting || (!isEditing && !allResolved)} className="w-full" size="lg">
-        {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-        {isEditing ? "Update Standup" : "Submit Standup"}
-      </Button>
+      {!showCoach && (
+        <Button
+          onClick={requestCoachReview}
+          disabled={submitting || coachLoading || (!isEditing && !allResolved)}
+          className="w-full"
+          size="lg"
+        >
+          {(submitting || coachLoading) ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+          {coachLoading ? "AI reviewing..." : isEditing ? "Update Standup" : "Submit Standup"}
+        </Button>
+      )}
 
       {/* Drop confirmation dialog */}
       <AlertDialog open={!!dropDialogId} onOpenChange={(open) => !open && setDropDialogId(null)}>

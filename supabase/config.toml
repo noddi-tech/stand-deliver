@@ -38,3 +38,6 @@ verify_jwt = false
 
 [functions.slack-list-channels]
 verify_jwt = false
+
+[functions.ai-coach-standup]
+verify_jwt = false
