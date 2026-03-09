@@ -49,3 +49,10 @@
 - `cross_platform_activity` JSONB column on `ai_weekly_digests`
 - WeeklyDigest page shows cross-platform activity card (StandFlow, GitHub, ClickUp)
 - Slack summary includes GitHub stats when available
+
+### Fix Duplicate Slack Summaries + Daily Digest Cron
+- Removed per-submission `slack-post-summary` call from MyStandup.tsx (was firing on every individual submission)
+- Removed duplicate Slack posting from `ai-summarize-session` (now only generates + stores AI summary)
+- Added `ai-summarize-session` + `slack-post-summary` calls to Meeting Mode completion
+- New `daily-summary-cron` edge function aggregates daily activity (completions, new tasks, carried, blockers) and posts end-of-day digest to Slack
+- pg_cron job scheduled at 17:00 UTC weekdays to trigger the daily digest automatically
