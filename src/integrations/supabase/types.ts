@@ -367,6 +367,66 @@ export type Database = {
           },
         ]
       }
+      external_activity: {
+        Row: {
+          activity_type: string
+          created_at: string
+          external_id: string
+          external_url: string | null
+          id: string
+          is_acknowledged: boolean
+          member_id: string
+          metadata: Json | null
+          occurred_at: string
+          source: string
+          team_id: string
+          title: string
+        }
+        Insert: {
+          activity_type: string
+          created_at?: string
+          external_id: string
+          external_url?: string | null
+          id?: string
+          is_acknowledged?: boolean
+          member_id: string
+          metadata?: Json | null
+          occurred_at?: string
+          source: string
+          team_id: string
+          title: string
+        }
+        Update: {
+          activity_type?: string
+          created_at?: string
+          external_id?: string
+          external_url?: string | null
+          id?: string
+          is_acknowledged?: boolean
+          member_id?: string
+          metadata?: Json | null
+          occurred_at?: string
+          source?: string
+          team_id?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "external_activity_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "team_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "external_activity_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       focus_recommendations: {
         Row: {
           created_at: string
