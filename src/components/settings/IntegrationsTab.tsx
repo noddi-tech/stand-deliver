@@ -99,7 +99,7 @@ export function IntegrationsTab() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("slack_installations")
-        .select("*")
+        .select("id, org_id, workspace_id, workspace_name, bot_user_id, installed_at, installing_user_id")
         .eq("org_id", orgId!)
         .limit(1)
         .maybeSingle();
