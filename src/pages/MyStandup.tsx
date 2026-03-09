@@ -981,63 +981,162 @@ export default function MyStandup() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* ClickUp Import Dialog */}
-      <Dialog open={showClickUpDialog} onOpenChange={setShowClickUpDialog}>
+      {/* ClickUp Task Picker Dialog */}
+      <Dialog open={showClickUpDialog} onOpenChange={(open) => {
+        setShowClickUpDialog(open);
+        if (!open) { setClickUpSearch(""); setClickUpStatusFilter("all"); }
+      }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <SquareKanban className="h-5 w-5" />
-              Import from ClickUp
+              Add from ClickUp
             </DialogTitle>
             <DialogDescription>
-              Select tasks to add as today's focus items.
+              Search and select tasks to add as today's focus items.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2 max-h-80 overflow-y-auto">
-            {clickUpTasks.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                No in-progress or to-do tasks found.
-              </p>
-            ) : (
-              clickUpTasks.map((task) => (
-                <label
-                  key={task.id}
-                  className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer hover:bg-muted/50 transition-colors"
+
+          {/* Search input */}
+          <Input
+            placeholder="Search tasks..."
+            value={clickUpSearch}
+            onChange={(e) => setClickUpSearch(e.target.value)}
+            autoFocus
+          />
+
+          {/* Status filter chips */}
+          {clickUpTasks.length > 0 && (() => {
+            const statuses = Array.from(new Set(clickUpTasks.map((t) => t.status?.toLowerCase()))).filter(Boolean);
+            return (
+              <div className="flex gap-1.5 flex-wrap">
+                <button
+                  onClick={() => setClickUpStatusFilter("all")}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+                    clickUpStatusFilter === "all"
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-muted text-muted-foreground border-border hover:border-primary/40"
+                  }`}
                 >
-                  <Checkbox
-                    checked={selectedClickUpTasks.has(task.id)}
-                    onCheckedChange={(checked) => {
-                      setSelectedClickUpTasks((prev) => {
-                        const next = new Set(prev);
-                        if (checked) next.add(task.id);
-                        else next.delete(task.id);
-                        return next;
-                      });
-                    }}
-                    className="mt-0.5"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground">{task.name}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Badge variant="outline" className="text-[10px]">
-                        {task.status}
-                      </Badge>
-                      {task.list_name && (
-                        <span className="text-[10px] text-muted-foreground">
-                          {task.list_name}
-                        </span>
-                      )}
-                      {task.priority && (
-                        <Badge variant="outline" className="text-[10px]">
-                          {task.priority}
-                        </Badge>
-                      )}
-                    </div>
+                  All
+                </button>
+                {statuses.map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setClickUpStatusFilter(s)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors capitalize ${
+                      clickUpStatusFilter === s
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-muted text-muted-foreground border-border hover:border-primary/40"
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
+
+          {/* Task list */}
+          {(() => {
+            const filtered = clickUpTasks.filter((task) => {
+              const matchesSearch = !clickUpSearch || task.name.toLowerCase().includes(clickUpSearch.toLowerCase());
+              const matchesStatus = clickUpStatusFilter === "all" || task.status?.toLowerCase() === clickUpStatusFilter;
+              return matchesSearch && matchesStatus;
+            });
+
+            const highlightMatch = (text: string) => {
+              if (!clickUpSearch) return text;
+              const idx = text.toLowerCase().indexOf(clickUpSearch.toLowerCase());
+              if (idx === -1) return text;
+              return (
+                <>
+                  {text.slice(0, idx)}
+                  <span className="bg-primary/20 text-primary font-semibold">{text.slice(idx, idx + clickUpSearch.length)}</span>
+                  {text.slice(idx + clickUpSearch.length)}
+                </>
+              );
+            };
+
+            return (
+              <>
+                {/* Result count & select all */}
+                {clickUpTasks.length > 0 && (
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>{filtered.length} of {clickUpTasks.length} tasks</span>
+                    {filtered.length > 0 && filtered.length <= 20 && (
+                      <button
+                        className="text-primary hover:underline"
+                        onClick={() => {
+                          const allVisible = filtered.every((t) => selectedClickUpTasks.has(t.id));
+                          setSelectedClickUpTasks((prev) => {
+                            const next = new Set(prev);
+                            filtered.forEach((t) => allVisible ? next.delete(t.id) : next.add(t.id));
+                            return next;
+                          });
+                        }}
+                      >
+                        {filtered.every((t) => selectedClickUpTasks.has(t.id)) ? "Deselect all" : "Select all"}
+                      </button>
+                    )}
                   </div>
-                </label>
-              ))
-            )}
-          </div>
+                )}
+
+                <div className="space-y-1.5 max-h-72 overflow-y-auto">
+                  {clickUpTasks.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-8">
+                      No tasks found in ClickUp.
+                    </p>
+                  ) : filtered.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-8">
+                      No tasks matching "{clickUpSearch}"
+                    </p>
+                  ) : (
+                    filtered.map((task) => (
+                      <label
+                        key={task.id}
+                        className={`flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-colors ${
+                          selectedClickUpTasks.has(task.id) ? "bg-primary/5 border-primary/30" : "hover:bg-muted/50"
+                        }`}
+                      >
+                        <Checkbox
+                          checked={selectedClickUpTasks.has(task.id)}
+                          onCheckedChange={(checked) => {
+                            setSelectedClickUpTasks((prev) => {
+                              const next = new Set(prev);
+                              if (checked) next.add(task.id);
+                              else next.delete(task.id);
+                              return next;
+                            });
+                          }}
+                          className="mt-0.5"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground">{highlightMatch(task.name)}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant="outline" className="text-[10px]">
+                              {task.status}
+                            </Badge>
+                            {task.list_name && (
+                              <span className="text-[10px] text-muted-foreground">
+                                {task.list_name}
+                              </span>
+                            )}
+                            {task.priority && (
+                              <Badge variant="outline" className="text-[10px]">
+                                {task.priority}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </label>
+                    ))
+                  )}
+                </div>
+              </>
+            );
+          })()}
+
           {clickUpTasks.length > 0 && (
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="outline" onClick={() => setShowClickUpDialog(false)}>
@@ -1047,7 +1146,7 @@ export default function MyStandup() {
                 onClick={importSelectedClickUpTasks}
                 disabled={selectedClickUpTasks.size === 0}
               >
-                Import {selectedClickUpTasks.size > 0 ? `(${selectedClickUpTasks.size})` : ""}
+                Add {selectedClickUpTasks.size > 0 ? `${selectedClickUpTasks.size} task${selectedClickUpTasks.size !== 1 ? "s" : ""}` : "tasks"}
               </Button>
             </div>
           )}
