@@ -15,7 +15,6 @@ import { GitHubSection } from "./GitHubSection";
 import { toast } from "sonner";
 import { Hash, Link2, Loader2, Unplug, UserCheck, Zap } from "lucide-react";
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
 interface SlackUser {
   id: string;
@@ -29,17 +28,9 @@ export function IntegrationsTab() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
-  const [slackClientId, setSlackClientId] = useState<string | null>(null);
   const [savingChannel, setSavingChannel] = useState(false);
   const [isEditingChannel, setIsEditingChannel] = useState(false);
   const [pendingChannelId, setPendingChannelId] = useState<string | null>(null);
-
-  // Fetch Slack client ID from edge function
-  useEffect(() => {
-    supabase.functions.invoke("get-slack-config").then(({ data }) => {
-      if (data?.client_id) setSlackClientId(data.client_id);
-    });
-  }, []);
 
   useEffect(() => {
     const slackStatus = searchParams.get("slack");
