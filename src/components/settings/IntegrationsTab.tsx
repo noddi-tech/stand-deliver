@@ -216,19 +216,28 @@ export function IntegrationsTab() {
     onError: () => toast.error("Failed to update mapping"),
   });
 
-  const handleConnectSlack = () => {
+  const [connectingSlack, setConnectingSlack] = useState(false);
+
+  const handleConnectSlack = async () => {
     if (!orgId) {
       toast.error("You need to be part of an organization first.");
       return;
     }
-    if (!slackClientId) {
-      toast.error("Slack Client ID is not configured. Check your Supabase secrets.");
-      return;
+    setConnectingSlack(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("slack-oauth-start", {
+        body: { org_id: orgId },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      if (data?.url) {
+        window.open(data.url, "_blank", "width=600,height=700");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to start Slack OAuth");
+    } finally {
+      setConnectingSlack(false);
     }
-    const scopes = "app_mentions:read,chat:write,chat:write.public,commands,im:write,im:read,im:history,users:read,users:read.email,channels:read,groups:read";
-    const redirectUri = `${SUPABASE_URL}/functions/v1/slack-oauth-callback`;
-    const url = `https://slack.com/oauth/v2/authorize?client_id=${slackClientId}&scope=${scopes}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${orgId}`;
-    window.open(url, "_blank", "width=600,height=700");
   };
 
   return (

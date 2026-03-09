@@ -48,7 +48,7 @@ export function GitHubSection({ orgId }: GitHubSectionProps) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("github_installations")
-        .select("*")
+        .select("id, org_id, github_org_name, installed_at, installed_by")
         .eq("org_id", orgId!)
         .maybeSingle();
       if (error) throw error;
