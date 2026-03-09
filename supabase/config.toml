@@ -56,3 +56,6 @@ verify_jwt = false
 
 [functions.github-fetch-activity]
 verify_jwt = false
+
+[functions.daily-summary-cron]
+verify_jwt = false
