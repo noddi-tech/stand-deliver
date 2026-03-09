@@ -160,6 +160,79 @@ export type Database = {
           },
         ]
       }
+      clickup_installations: {
+        Row: {
+          api_token_encrypted: string
+          clickup_team_id: string
+          clickup_team_name: string | null
+          id: string
+          installed_at: string
+          installed_by: string | null
+          org_id: string
+        }
+        Insert: {
+          api_token_encrypted: string
+          clickup_team_id: string
+          clickup_team_name?: string | null
+          id?: string
+          installed_at?: string
+          installed_by?: string | null
+          org_id: string
+        }
+        Update: {
+          api_token_encrypted?: string
+          clickup_team_id?: string
+          clickup_team_name?: string | null
+          id?: string
+          installed_at?: string
+          installed_by?: string | null
+          org_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clickup_installations_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      clickup_user_mappings: {
+        Row: {
+          clickup_display_name: string | null
+          clickup_member_id: string
+          created_at: string
+          id: string
+          org_id: string
+          user_id: string
+        }
+        Insert: {
+          clickup_display_name?: string | null
+          clickup_member_id: string
+          created_at?: string
+          id?: string
+          org_id: string
+          user_id: string
+        }
+        Update: {
+          clickup_display_name?: string | null
+          clickup_member_id?: string
+          created_at?: string
+          id?: string
+          org_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clickup_user_mappings_org_id_fkey"
+            columns: ["org_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       commitment_history: {
         Row: {
           changed_at: string
