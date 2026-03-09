@@ -79,6 +79,12 @@ export default function MyStandup() {
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [editingText, setEditingText] = useState("");
 
+  // AI Coach state
+  const [showCoach, setShowCoach] = useState(false);
+  const [coachLoading, setCoachLoading] = useState(false);
+  const [coachSuggestions, setCoachSuggestions] = useState<CoachSuggestion[]>([]);
+  const [coachTip, setCoachTip] = useState<string | null>(null);
+
   // Fetch today's existing response
   const { data: existingResponse, isLoading: existingLoading } = useQuery({
     queryKey: ["existing-response-today", memberId, teamId],
