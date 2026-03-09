@@ -59,3 +59,9 @@ verify_jwt = false
 
 [functions.daily-summary-cron]
 verify_jwt = false
+
+[functions.clickup-sync-activity]
+verify_jwt = false
+
+[functions.github-sync-activity]
+verify_jwt = false
