@@ -166,6 +166,7 @@ export default function MyStandup() {
     const newCommitments: NewCommitment[] = tasksToImport.map((t) => ({
       title: t.name,
       priority: t.priority === "urgent" || t.priority === "high" ? "high" as CommitmentPriority : t.priority === "low" ? "low" as CommitmentPriority : "medium" as CommitmentPriority,
+      clickup_task_id: t.id,
     }));
     setTodayCommitments((prev) => [...prev, ...newCommitments]);
     setShowClickUpDialog(false);
