@@ -23,6 +23,7 @@ import {
 import { Lock, Check, X, AlertTriangle, Loader2, Plus, ArrowRight, Clock, Edit2, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { StandupCoachCard, type CoachSuggestion } from "@/components/ai/StandupCoachCard";
 import type { Database } from "@/integrations/supabase/types";
 
 type CommitmentStatus = Database["public"]["Enums"]["commitment_status"];
