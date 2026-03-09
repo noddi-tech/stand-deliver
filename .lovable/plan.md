@@ -21,10 +21,10 @@
 - `StandupCoachCard` component shows inline coaching before submit
 - Submit button triggers AI review first; user can apply/dismiss/submit anyway
 
-## Planned
-
 ### ClickUp Integration (Phase 2)
-- `clickup_user_mappings` table + RLS
-- `clickup-fetch-tasks` edge function to pull assigned tasks
-- Settings > Integrations: ClickUp connection card
-- MyStandup: "Import from ClickUp" button in Today's Focus
+- `clickup_installations` + `clickup_user_mappings` tables with RLS
+- `clickup-setup` edge function validates token, stores installation, lists members
+- `clickup-fetch-tasks` edge function pulls assigned tasks from ClickUp API
+- `ClickUpSection` component: 3-step wizard (token → connect → map users)
+- Settings > Integrations: ClickUp connection card with setup instructions
+- MyStandup: "Import from ClickUp" button + task picker dialog in Today's Focus

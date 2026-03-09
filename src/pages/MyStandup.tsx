@@ -978,6 +978,79 @@ export default function MyStandup() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* ClickUp Import Dialog */}
+      <Dialog open={showClickUpDialog} onOpenChange={setShowClickUpDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <SquareKanban className="h-5 w-5" />
+              Import from ClickUp
+            </DialogTitle>
+            <DialogDescription>
+              Select tasks to add as today's focus items.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 max-h-80 overflow-y-auto">
+            {clickUpTasks.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No in-progress or to-do tasks found.
+              </p>
+            ) : (
+              clickUpTasks.map((task) => (
+                <label
+                  key={task.id}
+                  className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer hover:bg-muted/50 transition-colors"
+                >
+                  <Checkbox
+                    checked={selectedClickUpTasks.has(task.id)}
+                    onCheckedChange={(checked) => {
+                      setSelectedClickUpTasks((prev) => {
+                        const next = new Set(prev);
+                        if (checked) next.add(task.id);
+                        else next.delete(task.id);
+                        return next;
+                      });
+                    }}
+                    className="mt-0.5"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground">{task.name}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Badge variant="outline" className="text-[10px]">
+                        {task.status}
+                      </Badge>
+                      {task.list_name && (
+                        <span className="text-[10px] text-muted-foreground">
+                          {task.list_name}
+                        </span>
+                      )}
+                      {task.priority && (
+                        <Badge variant="outline" className="text-[10px]">
+                          {task.priority}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </label>
+              ))
+            )}
+          </div>
+          {clickUpTasks.length > 0 && (
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setShowClickUpDialog(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={importSelectedClickUpTasks}
+                disabled={selectedClickUpTasks.size === 0}
+              >
+                Import {selectedClickUpTasks.size > 0 ? `(${selectedClickUpTasks.size})` : ""}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
