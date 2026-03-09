@@ -98,34 +98,6 @@ Deno.serve(async (req) => {
       .update({ ai_summary: summary })
       .eq("id", session_id);
 
-    // Post to Slack if configured
-    const team = session.teams as any;
-    if (team?.slack_channel_id) {
-      try {
-        const { data: installation } = await supabaseAdmin
-          .from("slack_installations")
-          .select("bot_token")
-          .eq("org_id", team.org_id)
-          .limit(1)
-          .single();
-
-        if (installation?.bot_token) {
-          await fetch("https://slack.com/api/chat.postMessage", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${installation.bot_token}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              channel: team.slack_channel_id,
-              text: `✨ *AI Standup Summary — ${session.session_date}*\n\n${summary}`,
-            }),
-          });
-        }
-      } catch (e) {
-        console.error("Slack post failed:", e);
-      }
-    }
 
     return new Response(JSON.stringify({ summary, ai_available: !!LOVABLE_API_KEY }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

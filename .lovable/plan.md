@@ -1,62 +1,58 @@
+## Completed
 
+### Slack channel selector (IntegrationsTab)
+- Channel dropdown now saves to `teams.slack_channel_id` on change
+- Initializes with current team's linked channel
+- Shows success toast with channel name
 
-## Fix Duplicate Slack Summaries + Add End-of-Day Cron Summary
+### Slack invite system (MembersTab + Edge Function)
+- New `slack-send-invite` edge function sends a DM with Block Kit invite button
+- MembersTab shows "Invite via Slack" card with user picker when Slack is connected
+- Invited users click the link, sign in with Slack OIDC, and auto-join the org
 
-### Problem
-1. `slack-post-summary` fires on **every individual standup submission** (MyStandup.tsx line 551-564), causing duplicate Slack messages
-2. `ai-summarize-session` also posts to Slack independently (line 112-123), compounding duplicates
-3. No end-of-day summary of what actually changed throughout the day (completions, new tasks, blockers, etc.)
+### Edit Daily Standup
+- Added UPDATE RLS policy on `standup_responses`
+- Edit button loads existing data back into form
+- Re-submit updates existing response and commitments
 
-### Changes
+### AI Standup Coach (Phase 1)
+- `ai-coach-standup` edge function reviews commitments via Lovable AI Gateway
+- Uses tool calling for structured output (suggestions with category, issue, rewrite)
+- `StandupCoachCard` component shows inline coaching before submit
+- Submit button triggers AI review first; user can apply/dismiss/submit anyway
 
-#### 1. Remove per-submission Slack posting from MyStandup.tsx
-Delete the fire-and-forget `slack-post-summary` call (lines 550-564). Individual submissions should not trigger a channel summary.
+### ClickUp Integration (Phase 2)
+- `clickup_installations` + `clickup_user_mappings` tables with RLS
+- `clickup-setup` edge function validates token, stores installation, lists members
+- `clickup-fetch-tasks` edge function pulls assigned tasks from ClickUp API
+- `ClickUpSection` component: 3-step wizard (token → connect → map users)
+- Settings > Integrations: ClickUp connection card with setup instructions
+- MyStandup: "Import from ClickUp" button + task picker dialog in Today's Focus
 
-#### 2. Add summary call to Meeting Mode completion
-In `MeetingMode.tsx`, after marking the session as completed (line 153-162), call `ai-summarize-session` which already handles both AI summary generation and Slack posting. This covers the "live standup" use case -- one summary when the meeting ends.
+### ClickUp Status Sync
+- Added `clickup_task_id` column to `commitments` table
+- `clickup-update-task` edge function syncs status changes to ClickUp API
+- Fuzzy-matches StandFlow statuses to ClickUp's custom per-list statuses
+- MyStandup stores `clickup_task_id` on import, fires sync on status change
 
-#### 3. Remove Slack posting from ai-summarize-session
-Remove the Slack posting code from `ai-summarize-session/index.ts` (lines 98-123). This function should only generate and store the AI summary. Slack posting will be handled by `slack-post-summary` called separately.
+### Bug Fixes (ClickUp RLS + Standup Duplicate Key)
+- Updated INSERT policy on `clickup_user_mappings` to allow org members to map any user
+- Replaced conditional insert/update on `standup_responses` with idempotent upsert
 
-#### 4. Create end-of-day cron edge function
-New edge function: `daily-summary-cron/index.ts`
+### GitHub Integration + Cross-Platform Weekly Digest
+- `github_installations` + `github_user_mappings` tables with RLS
+- `github-setup` edge function validates PAT, stores installation, lists org members
+- `github-fetch-activity` edge function fetches commits, PRs, reviews via GitHub Search API
+- `GitHubSection` component: setup wizard (token + org name → user mapping)
+- Settings > Integrations: GitHub connection card after ClickUp
+- `ai-weekly-digest` enhanced to aggregate GitHub + ClickUp + StandFlow activity
+- `cross_platform_activity` JSONB column on `ai_weekly_digests`
+- WeeklyDigest page shows cross-platform activity card (StandFlow, GitHub, ClickUp)
+- Slack summary includes GitHub stats when available
 
-This function runs daily (e.g., 17:00 UTC, configurable) and for each team with a session that day:
-- Gathers all **commitment status changes** from `commitment_history` for that day
-- Counts completions, new commitments, carried/postponed items, new blockers, resolved blockers
-- Calls `ai-summarize-session` to generate/store the AI summary
-- Calls `slack-post-summary` to post a rich end-of-day digest to Slack
-
-The summary message will look like:
-```
-📊 Daily Standup Digest — March 9
-✅ 5 tasks completed
-🆕 3 new commitments added  
-🔄 2 tasks carried forward
-🚫 1 new blocker · 2 blockers resolved
-👥 4 of 6 members submitted standups
-
-✨ AI Summary: The team made strong progress on...
-```
-
-#### 5. Set up pg_cron job
-Enable `pg_cron` and `pg_net` extensions, then schedule:
-```sql
-select cron.schedule(
-  'daily-standup-summary',
-  '0 17 * * 1-5',  -- weekdays at 17:00 UTC
-  $$ select net.http_post(...) $$
-);
-```
-
-### Files Changed
-
-| File | Change |
-|------|--------|
-| `src/pages/MyStandup.tsx` | Remove slack-post-summary call (lines 550-564) |
-| `src/pages/MeetingMode.tsx` | Add `ai-summarize-session` + `slack-post-summary` calls after session completion |
-| `supabase/functions/ai-summarize-session/index.ts` | Remove Slack posting code (keep AI summary generation only) |
-| `supabase/functions/daily-summary-cron/index.ts` | **New** -- end-of-day cron function that aggregates daily activity and posts digest |
-| `supabase/config.toml` | Add `daily-summary-cron` with `verify_jwt = false` |
-| Database | Enable pg_cron + pg_net, create scheduled job |
-
+### Fix Duplicate Slack Summaries + Daily Digest Cron
+- Removed per-submission `slack-post-summary` call from MyStandup.tsx (was firing on every individual submission)
+- Removed duplicate Slack posting from `ai-summarize-session` (now only generates + stores AI summary)
+- Added `ai-summarize-session` + `slack-post-summary` calls to Meeting Mode completion
+- New `daily-summary-cron` edge function aggregates daily activity (completions, new tasks, carried, blockers) and posts end-of-day digest to Slack
+- pg_cron job scheduled at 17:00 UTC weekdays to trigger the daily digest automatically

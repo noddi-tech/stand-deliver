@@ -158,6 +158,16 @@ export default function MeetingMode() {
         status: "completed" as any,
         completed_at: new Date().toISOString(),
       }).eq("id", sid);
+
+      // Generate AI summary (stored in DB)
+      await supabase.functions.invoke("ai-summarize-session", {
+        body: { session_id: sid },
+      });
+
+      // Post formatted summary to Slack
+      await supabase.functions.invoke("slack-post-summary", {
+        body: { session_id: sid },
+      });
     },
   });
 
