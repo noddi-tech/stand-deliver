@@ -1,51 +1,47 @@
-## Completed
 
-### Slack channel selector (IntegrationsTab)
-- Channel dropdown now saves to `teams.slack_channel_id` on change
-- Initializes with current team's linked channel
-- Shows success toast with channel name
 
-### Slack invite system (MembersTab + Edge Function)
-- New `slack-send-invite` edge function sends a DM with Block Kit invite button
-- MembersTab shows "Invite via Slack" card with user picker when Slack is connected
-- Invited users click the link, sign in with Slack OIDC, and auto-join the org
+## Fix: Auto-join existing org for Slack-invited users
 
-### Edit Daily Standup
-- Added UPDATE RLS policy on `standup_responses`
-- Edit button loads existing data back into form
-- Re-submit updates existing response and commitments
+### Problem
+When a user is invited via Slack and signs in, they land on step 0 "Create your organization" and have to manually type an org name. The `create_org_and_join` RPC already handles matching by `slack_workspace_id`, but it's only called when the user clicks "Continue" — which requires them to fill in a name they don't know.
 
-### AI Standup Coach (Phase 1)
-- `ai-coach-standup` edge function reviews commitments via Lovable AI Gateway
-- Uses tool calling for structured output (suggestions with category, issue, rewrite)
-- `StandupCoachCard` component shows inline coaching before submit
-- Submit button triggers AI review first; user can apply/dismiss/submit anyway
+### Root cause
+The onboarding page doesn't attempt auto-join on load. It waits for the user to type an org name and submit before `create_org_and_join` checks for an existing workspace.
 
-### ClickUp Integration (Phase 2)
-- `clickup_installations` + `clickup_user_mappings` tables with RLS
-- `clickup-setup` edge function validates token, stores installation, lists members
-- `clickup-fetch-tasks` edge function pulls assigned tasks from ClickUp API
-- `ClickUpSection` component: 3-step wizard (token → connect → map users)
-- Settings > Integrations: ClickUp connection card with setup instructions
-- MyStandup: "Import from ClickUp" button + task picker dialog in Today's Focus
+### Fix
+In `Onboarding.tsx`, add an auto-join attempt during initialization:
 
-### ClickUp Status Sync
-- Added `clickup_task_id` column to `commitments` table
-- `clickup-update-task` edge function syncs status changes to ClickUp API
-- Fuzzy-matches StandFlow statuses to ClickUp's custom per-list statuses
-- MyStandup stores `clickup_task_id` on import, fires sync on status change
+1. If the user has a `slackWorkspaceId` and `!onboardingStatus.hasOrg`, automatically call `create_org_and_join` with placeholder name/slug (these are ignored when an existing org is found by workspace ID)
+2. If `is_existing: true` is returned, set the org state and skip directly to the team picker (step 1)
+3. If no match found (new workspace), show step 0 normally
+4. Show a loading state ("Looking for your workspace...") during the auto-join check
 
-### Bug Fixes (ClickUp RLS + Standup Duplicate Key)
-- Updated INSERT policy on `clickup_user_mappings` to allow org members to map any user
-- Replaced conditional insert/update on `standup_responses` with idempotent upsert
+### Changes
 
-### GitHub Integration + Cross-Platform Weekly Digest
-- `github_installations` + `github_user_mappings` tables with RLS
-- `github-setup` edge function validates PAT, stores installation, lists org members
-- `github-fetch-activity` edge function fetches commits, PRs, reviews via GitHub Search API
-- `GitHubSection` component: setup wizard (token + org name → user mapping)
-- Settings > Integrations: GitHub connection card after ClickUp
-- `ai-weekly-digest` enhanced to aggregate GitHub + ClickUp + StandFlow activity
-- `cross_platform_activity` JSONB column on `ai_weekly_digests`
-- WeeklyDigest page shows cross-platform activity card (StandFlow, GitHub, ClickUp)
-- Slack summary includes GitHub stats when available
+| File | Change |
+|------|--------|
+| `src/pages/Onboarding.tsx` | Add auto-join logic in the `useEffect` initialization block: call `create_org_and_join` with `slackWorkspaceId`, skip to step 1 if existing org found, fetch available teams |
+
+### Detail
+
+In the existing `useEffect` (lines 81-93), after confirming user has no org but has a `slackWorkspaceId`:
+
+```typescript
+// Auto-join: try matching by Slack workspace ID
+const { data: result } = await supabase.rpc("create_org_and_join", {
+  p_name: "auto",  // ignored when existing match found
+  p_slug: "auto",
+  p_slack_workspace_id: slackWorkspaceId,
+});
+if (result?.is_existing) {
+  // Skip step 0 entirely — go to team picker
+  setOrgId(result.org_id);
+  setIsExistingOrg(true);
+  setExistingOrgName(result.org_name);
+  // fetch teams...
+  setStep(1);
+}
+```
+
+This means invited users who share the same Slack workspace will never see "Create your organization" — they'll go straight to "Join a team".
+
