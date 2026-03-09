@@ -407,7 +407,7 @@ export default function MyStandup() {
     try {
       const today = format(new Date(), "yyyy-MM-dd");
 
-      // Update previous commitments
+      // Update previous commitments and sync to ClickUp
       for (const [id, status] of Object.entries(statusOverrides)) {
         await updateCommitmentMutation.mutateAsync({
           id,
@@ -415,6 +415,22 @@ export default function MyStandup() {
           blocked_reason: blockedReasons[id],
           resolution_note: status === "dropped" ? dropReason : undefined,
         });
+
+        // Fire-and-forget: sync status to ClickUp if linked
+        const linkedCommitment = previousCommitments.find((c) => c.id === id);
+        if (linkedCommitment?.clickup_task_id && orgMembership?.org_id) {
+          supabase.functions
+            .invoke("clickup-update-task", {
+              body: {
+                org_id: orgMembership.org_id,
+                clickup_task_id: linkedCommitment.clickup_task_id,
+                new_status: status,
+              },
+            })
+            .then(({ error }) => {
+              if (error) console.error("ClickUp sync failed:", error);
+            });
+        }
       }
 
       // Upsert session
