@@ -89,7 +89,88 @@ export default function MyStandup() {
   const [coachSuggestions, setCoachSuggestions] = useState<CoachSuggestion[]>([]);
   const [coachTip, setCoachTip] = useState<string | null>(null);
 
-  // Fetch today's existing response
+  // ClickUp import state
+  const [showClickUpDialog, setShowClickUpDialog] = useState(false);
+  const [clickUpTasks, setClickUpTasks] = useState<any[]>([]);
+  const [selectedClickUpTasks, setSelectedClickUpTasks] = useState<Set<string>>(new Set());
+  const [loadingClickUp, setLoadingClickUp] = useState(false);
+
+  // Fetch user's org for ClickUp
+  const { data: orgMembership } = useQuery({
+    queryKey: ["org-membership-standup", user?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("organization_members")
+        .select("org_id")
+        .eq("user_id", user!.id)
+        .limit(1)
+        .single();
+      return data;
+    },
+    enabled: !!user,
+  });
+
+  // Check if ClickUp is connected
+  const { data: clickUpInstallation } = useQuery({
+    queryKey: ["clickup-installation-standup", orgMembership?.org_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("clickup_installations")
+        .select("id")
+        .eq("org_id", orgMembership!.org_id)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!orgMembership?.org_id,
+  });
+
+  // Check if current user has ClickUp mapping
+  const { data: clickUpMapping } = useQuery({
+    queryKey: ["clickup-mapping-standup", user?.id, orgMembership?.org_id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("clickup_user_mappings")
+        .select("clickup_member_id")
+        .eq("user_id", user!.id)
+        .eq("org_id", orgMembership!.org_id)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!user && !!orgMembership?.org_id && !!clickUpInstallation,
+  });
+
+  const canImportFromClickUp = !!clickUpInstallation && !!clickUpMapping;
+
+  const fetchClickUpTasks = async () => {
+    if (!orgMembership?.org_id || !user?.id) return;
+    setLoadingClickUp(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("clickup-fetch-tasks", {
+        body: { org_id: orgMembership.org_id, user_id: user.id },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      setClickUpTasks(data?.tasks || []);
+      setSelectedClickUpTasks(new Set());
+      setShowClickUpDialog(true);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to fetch ClickUp tasks");
+    } finally {
+      setLoadingClickUp(false);
+    }
+  };
+
+  const importSelectedClickUpTasks = () => {
+    const tasksToImport = clickUpTasks.filter((t) => selectedClickUpTasks.has(t.id));
+    const newCommitments: NewCommitment[] = tasksToImport.map((t) => ({
+      title: t.name,
+      priority: t.priority === "urgent" || t.priority === "high" ? "high" as CommitmentPriority : t.priority === "low" ? "low" as CommitmentPriority : "medium" as CommitmentPriority,
+    }));
+    setTodayCommitments((prev) => [...prev, ...newCommitments]);
+    setShowClickUpDialog(false);
+    toast.success(`Imported ${tasksToImport.length} task${tasksToImport.length !== 1 ? "s" : ""} from ClickUp`);
+  };
+
   const { data: existingResponse, isLoading: existingLoading } = useQuery({
     queryKey: ["existing-response-today", memberId, teamId],
     enabled: !!memberId && !!teamId,
