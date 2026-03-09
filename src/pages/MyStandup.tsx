@@ -547,21 +547,6 @@ export default function MyStandup() {
       setCoachSuggestions([]);
       setCoachTip(null);
 
-      // Fire-and-forget: post summary to Slack if channel is configured
-      supabase
-        .from("teams")
-        .select("slack_channel_id")
-        .eq("id", teamId)
-        .single()
-        .then(({ data: team }) => {
-          if (team?.slack_channel_id) {
-            supabase.functions
-              .invoke("slack-post-summary", { body: { session_id: sessionId } })
-              .then(({ error }) => {
-                if (error) console.error("Failed to post Slack summary:", error);
-              });
-          }
-        });
     } catch (err: any) {
       toast.error(err.message || "Failed to submit standup");
     } finally {
