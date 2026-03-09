@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
 import {
+  AlertTriangle,
   ExternalLink,
   Github,
   Key,
@@ -20,6 +21,7 @@ import {
   UserCheck,
   Users,
 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface GitHubMember {
   login: string;
