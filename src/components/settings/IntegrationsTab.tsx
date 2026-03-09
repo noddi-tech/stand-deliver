@@ -67,6 +67,28 @@ export function IntegrationsTab() {
 
   const orgId = orgMembership?.org_id;
 
+  // Fetch user's team (for channel linking)
+  const { data: userTeam } = useQuery({
+    queryKey: ["user-team", user?.id],
+    queryFn: async () => {
+      const { data: membership } = await supabase
+        .from("team_members")
+        .select("team_id")
+        .eq("user_id", user!.id)
+        .eq("is_active", true)
+        .limit(1)
+        .single();
+      if (!membership) return null;
+      const { data: team } = await supabase
+        .from("teams")
+        .select("id, slack_channel_id")
+        .eq("id", membership.team_id)
+        .single();
+      return team;
+    },
+    enabled: !!user,
+  });
+
   // Fetch slack installation
   const { data: slackInstallation, isLoading: loadingInstallation } = useQuery({
     queryKey: ["slack-installation", orgId],
