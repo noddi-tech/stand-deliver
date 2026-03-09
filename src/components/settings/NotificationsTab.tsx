@@ -15,7 +15,6 @@ interface NotificationType {
   description: string;
   icon: React.ReactNode;
   destination: "channel" | "dm";
-  destinationLabel: string;
 }
 
 const NOTIFICATION_TYPES: NotificationType[] = [
@@ -25,7 +24,6 @@ const NOTIFICATION_TYPES: NotificationType[] = [
     description: "Posts a formatted summary of all responses to your Slack channel after the standup window closes.",
     icon: <MessageSquare className="h-5 w-5" />,
     destination: "channel",
-    destinationLabel: "Slack channel",
   },
   {
     key: "daily_reminder",
@@ -33,7 +31,6 @@ const NOTIFICATION_TYPES: NotificationType[] = [
     description: "Sends a DM to each team member at the scheduled standup time prompting them to submit their update.",
     icon: <Bell className="h-5 w-5" />,
     destination: "dm",
-    destinationLabel: "DM to each member",
   },
   {
     key: "blocker_alert",
@@ -41,7 +38,6 @@ const NOTIFICATION_TYPES: NotificationType[] = [
     description: "Posts a notification to the channel when a team member reports a new blocker during standup.",
     icon: <AlertTriangle className="h-5 w-5" />,
     destination: "channel",
-    destinationLabel: "Slack channel",
   },
   {
     key: "weekly_digest",
@@ -49,7 +45,6 @@ const NOTIFICATION_TYPES: NotificationType[] = [
     description: "Posts an AI-generated weekly summary with trends, health score, and recommendations every Monday.",
     icon: <BarChart3 className="h-5 w-5" />,
     destination: "channel",
-    destinationLabel: "Slack channel",
   },
 ];
 
@@ -65,7 +60,6 @@ export function NotificationsTab() {
   useEffect(() => {
     if (!user) return;
     (async () => {
-      // Get team membership
       const { data: membership } = await supabase
         .from("team_members")
         .select("team_id")
@@ -79,26 +73,38 @@ export function NotificationsTab() {
       const tId = membership.team_id;
       setTeamId(tId);
 
-      // Fetch team + org info in parallel
       const [teamRes, prefsRes] = await Promise.all([
         supabase.from("teams").select("slack_channel_id, org_id").eq("id", tId).single(),
         supabase.from("notification_preferences").select("notification_type, enabled").eq("team_id", tId),
       ]);
 
       if (teamRes.data) {
-        setSlackChannelName(teamRes.data.slack_channel_id ? `#channel` : null);
+        const orgId = teamRes.data.org_id;
+        const channelId = teamRes.data.slack_channel_id;
 
         // Check if slack is connected
         const { data: installation } = await supabase
           .from("slack_installations")
           .select("id")
-          .eq("org_id", teamRes.data.org_id)
+          .eq("org_id", orgId)
           .limit(1)
           .maybeSingle();
         setHasSlack(!!installation);
+
+        // Fetch actual channel name if slack is connected and channel is set
+        if (installation && channelId) {
+          try {
+            const { data: channelData } = await supabase.functions.invoke("slack-list-channels", {
+              body: { org_id: orgId },
+            });
+            const match = channelData?.channels?.find((c: { id: string; name: string }) => c.id === channelId);
+            setSlackChannelName(match ? `#${match.name}` : null);
+          } catch {
+            setSlackChannelName(null);
+          }
+        }
       }
 
-      // Build preferences map (default = enabled)
       const prefsMap: Record<string, boolean> = {};
       NOTIFICATION_TYPES.forEach((n) => { prefsMap[n.key] = true; });
       if (prefsRes.data) {
@@ -128,6 +134,12 @@ export function NotificationsTab() {
       setPreferences((prev) => ({ ...prev, [key]: !enabled }));
       toast({ title: "Failed to update preference", description: error.message, variant: "destructive" });
     }
+  };
+
+  const getDestinationLabel = (notif: NotificationType) => {
+    if (notif.destination === "dm") return "DM to each member";
+    if (slackChannelName) return slackChannelName;
+    return "No channel set";
   };
 
   if (loading) {
@@ -178,7 +190,7 @@ export function NotificationsTab() {
                     ) : (
                       <AtSign className="h-3 w-3" />
                     )}
-                    {notif.destinationLabel}
+                    {getDestinationLabel(notif)}
                   </Badge>
                 </div>
                 <p className="text-sm text-muted-foreground">{notif.description}</p>

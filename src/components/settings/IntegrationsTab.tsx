@@ -29,6 +29,8 @@ export function IntegrationsTab() {
   const [searchParams] = useSearchParams();
   const [slackClientId, setSlackClientId] = useState<string | null>(null);
   const [savingChannel, setSavingChannel] = useState(false);
+  const [isEditingChannel, setIsEditingChannel] = useState(false);
+  const [pendingChannelId, setPendingChannelId] = useState<string | null>(null);
 
   // Fetch Slack client ID from edge function
   useEffect(() => {
