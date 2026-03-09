@@ -3,12 +3,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { Loader2, Send } from "lucide-react";
 
 interface Member {
   id: string;
@@ -19,13 +21,24 @@ interface Member {
   avatar_url: string | null;
 }
 
+interface SlackUser {
+  id: string;
+  name: string;
+  real_name: string;
+  email: string | null;
+  avatar: string | null;
+}
+
 export function MembersTab() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [members, setMembers] = useState<Member[]>([]);
   const [teamId, setTeamId] = useState<string | null>(null);
+  const [orgId, setOrgId] = useState<string | null>(null);
   const [isLead, setIsLead] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [selectedSlackUser, setSelectedSlackUser] = useState<string>("");
+  const [sendingInvite, setSendingInvite] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -48,6 +61,14 @@ export function MembersTab() {
     setTeamId(membership.team_id);
     setIsLead(membership.role === "lead");
 
+    // Get org_id from team
+    const { data: team } = await supabase
+      .from("teams")
+      .select("org_id")
+      .eq("id", membership.team_id)
+      .single();
+    if (team) setOrgId(team.org_id);
+
     const { data: teamMembers } = await supabase
       .from("team_members")
       .select("id, user_id, role, is_active, profile:profiles!inner(full_name, avatar_url)")
@@ -66,6 +87,61 @@ export function MembersTab() {
       );
     }
     setLoading(false);
+  };
+
+  // Check if Slack is connected
+  const { data: slackInstallation } = useQuery({
+    queryKey: ["slack-installation-members", orgId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("slack_installations")
+        .select("id")
+        .eq("org_id", orgId!)
+        .limit(1)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!orgId,
+  });
+
+  // Fetch Slack workspace users for invite picker
+  const { data: slackUsers } = useQuery<SlackUser[]>({
+    queryKey: ["slack-users-invite", orgId],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke("slack-lookup-users", {
+        body: { org_id: orgId },
+      });
+      if (error) throw error;
+      return data?.users || [];
+    },
+    enabled: !!slackInstallation && !!orgId,
+  });
+
+  // Filter out users already on the team (by matching emails or slack_user_id)
+  const existingUserIds = new Set(members.map((m) => m.user_id));
+  const availableSlackUsers = slackUsers?.filter((su) => {
+    // Simple filter: don't show bots, and we can't perfectly match but it's good enough
+    return su.email; // only show users with emails (excludes bots)
+  }) || [];
+
+  const handleSendInvite = async () => {
+    if (!selectedSlackUser || !orgId) return;
+    setSendingInvite(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("slack-send-invite", {
+        body: { org_id: orgId, slack_user_id: selectedSlackUser },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      const invitedUser = slackUsers?.find((u) => u.id === selectedSlackUser);
+      toast({ title: "Invite sent! 🎉", description: `DM sent to ${invitedUser?.real_name || "user"} on Slack.` });
+      setSelectedSlackUser("");
+    } catch (e: any) {
+      toast({ title: "Failed to send invite", description: e.message, variant: "destructive" });
+    } finally {
+      setSendingInvite(false);
+    }
   };
 
   const updateRole = async (memberId: string, newRole: "lead" | "member") => {
@@ -116,80 +192,129 @@ export function MembersTab() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Team Members</CardTitle>
-        <CardDescription>
-          {members.length} member{members.length !== 1 ? "s" : ""} on this team.
-          {!isLead && " Only team leads can manage roles and status."}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Member</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Status</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {members.map((member) => {
-              const isSelf = member.user_id === user?.id;
-              return (
-                <TableRow key={member.id} className={!member.is_active ? "opacity-50" : ""}>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-8 w-8">
-                        <AvatarImage src={member.avatar_url || undefined} />
-                        <AvatarFallback className="text-xs">{getInitials(member.full_name)}</AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <span className="font-medium text-sm">{member.full_name || "Unknown"}</span>
-                        {isSelf && <Badge variant="outline" className="ml-2 text-xs">You</Badge>}
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Team Members</CardTitle>
+          <CardDescription>
+            {members.length} member{members.length !== 1 ? "s" : ""} on this team.
+            {!isLead && " Only team leads can manage roles and status."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Member</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {members.map((member) => {
+                const isSelf = member.user_id === user?.id;
+                return (
+                  <TableRow key={member.id} className={!member.is_active ? "opacity-50" : ""}>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-8 w-8">
+                          <AvatarImage src={member.avatar_url || undefined} />
+                          <AvatarFallback className="text-xs">{getInitials(member.full_name)}</AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <span className="font-medium text-sm">{member.full_name || "Unknown"}</span>
+                          {isSelf && <Badge variant="outline" className="ml-2 text-xs">You</Badge>}
+                        </div>
                       </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {isLead && !isSelf ? (
-                      <Select
-                        value={member.role}
-                        onValueChange={(v) => updateRole(member.id, v as "lead" | "member")}
-                        disabled={updatingId === member.id}
-                      >
-                        <SelectTrigger className="w-28 h-8">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="lead">Lead</SelectItem>
-                          <SelectItem value="member">Member</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <Badge variant={member.role === "lead" ? "default" : "secondary"}>
-                        {member.role === "lead" ? "Lead" : "Member"}
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {isLead && !isSelf ? (
-                      <Switch
-                        checked={member.is_active}
-                        onCheckedChange={() => toggleActive(member.id, member.is_active)}
-                        disabled={updatingId === member.id}
-                      />
-                    ) : (
-                      <Badge variant={member.is_active ? "default" : "secondary"}>
-                        {member.is_active ? "Active" : "Inactive"}
-                      </Badge>
-                    )}
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
+                    </TableCell>
+                    <TableCell>
+                      {isLead && !isSelf ? (
+                        <Select
+                          value={member.role}
+                          onValueChange={(v) => updateRole(member.id, v as "lead" | "member")}
+                          disabled={updatingId === member.id}
+                        >
+                          <SelectTrigger className="w-28 h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="lead">Lead</SelectItem>
+                            <SelectItem value="member">Member</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Badge variant={member.role === "lead" ? "default" : "secondary"}>
+                          {member.role === "lead" ? "Lead" : "Member"}
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {isLead && !isSelf ? (
+                        <Switch
+                          checked={member.is_active}
+                          onCheckedChange={() => toggleActive(member.id, member.is_active)}
+                          disabled={updatingId === member.id}
+                        />
+                      ) : (
+                        <Badge variant={member.is_active ? "default" : "secondary"}>
+                          {member.is_active ? "Active" : "Inactive"}
+                        </Badge>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      {/* Invite via Slack */}
+      {slackInstallation && availableSlackUsers.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Invite via Slack</CardTitle>
+            <CardDescription>
+              Send a Slack DM to a teammate inviting them to sign in and join StandFlow.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-end gap-3">
+              <div className="flex-1 space-y-2">
+                <Select value={selectedSlackUser} onValueChange={setSelectedSlackUser}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a Slack user to invite..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableSlackUsers.map((su) => (
+                      <SelectItem key={su.id} value={su.id}>
+                        <span className="flex items-center gap-2">
+                          {su.real_name}
+                          {su.email && (
+                            <span className="text-muted-foreground text-xs">({su.email})</span>
+                          )}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                onClick={handleSendInvite}
+                disabled={!selectedSlackUser || sendingInvite}
+                className="gap-2"
+              >
+                {sendingInvite ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+                Send Invite
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
   );
 }

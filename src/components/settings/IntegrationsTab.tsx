@@ -28,6 +28,7 @@ export function IntegrationsTab() {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const [slackClientId, setSlackClientId] = useState<string | null>(null);
+  const [savingChannel, setSavingChannel] = useState(false);
 
   // Fetch Slack client ID from edge function
   useEffect(() => {
@@ -65,6 +66,28 @@ export function IntegrationsTab() {
   });
 
   const orgId = orgMembership?.org_id;
+
+  // Fetch user's team (for channel linking)
+  const { data: userTeam } = useQuery({
+    queryKey: ["user-team", user?.id],
+    queryFn: async () => {
+      const { data: membership } = await supabase
+        .from("team_members")
+        .select("team_id")
+        .eq("user_id", user!.id)
+        .eq("is_active", true)
+        .limit(1)
+        .single();
+      if (!membership) return null;
+      const { data: team } = await supabase
+        .from("teams")
+        .select("id, slack_channel_id")
+        .eq("id", membership.team_id)
+        .single();
+      return team;
+    },
+    enabled: !!user,
+  });
 
   // Fetch slack installation
   const { data: slackInstallation, isLoading: loadingInstallation } = useQuery({
@@ -228,7 +251,26 @@ export function IntegrationsTab() {
                     <Hash className="h-4 w-4 text-muted-foreground" />
                     Default Channel
                   </label>
-                  <Select>
+                  <Select
+                    value={userTeam?.slack_channel_id || ""}
+                    onValueChange={async (channelId) => {
+                      if (!userTeam?.id) return;
+                      setSavingChannel(true);
+                      const { error } = await supabase
+                        .from("teams")
+                        .update({ slack_channel_id: channelId })
+                        .eq("id", userTeam.id);
+                      setSavingChannel(false);
+                      if (error) {
+                        toast.error("Failed to update channel");
+                      } else {
+                        queryClient.invalidateQueries({ queryKey: ["user-team"] });
+                        const chName = channels.find((c: any) => c.id === channelId)?.name;
+                        toast.success(`Standup summaries will post to #${chName}`);
+                      }
+                    }}
+                    disabled={savingChannel}
+                  >
                     <SelectTrigger className="w-64">
                       <SelectValue placeholder="Select a channel" />
                     </SelectTrigger>
