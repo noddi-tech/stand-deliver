@@ -7,14 +7,89 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import HealthGauge from "@/components/analytics/HealthGauge";
 import MetricCard from "@/components/analytics/MetricCard";
-import { Sparkles, ArrowLeft, Target, AlertTriangle, TrendingUp, CheckCircle } from "lucide-react";
+import { Sparkles, ArrowLeft, Target, AlertTriangle, TrendingUp, CheckCircle, Github, SquareKanban, Zap } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+
+function CrossPlatformCard({ activity }: { activity: Record<string, any> }) {
+  const gh = activity?.github || {};
+  const cu = activity?.clickup || {};
+  const sf = activity?.standflow || {};
+
+  const hasGithub = gh.commits > 0 || gh.prs_opened > 0;
+  const hasClickup = cu.tasks_tracked > 0;
+  const hasStandflow = sf.commitments_made > 0;
+
+  if (!hasGithub && !hasClickup && !hasStandflow) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Zap className="h-5 w-5 text-primary" />
+          Cross-Platform Activity
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {hasStandflow && (
+          <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10">
+              <Target className="h-4 w-4 text-primary" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-foreground">StandFlow</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {sf.commitments_completed}/{sf.commitments_made} commitments completed · {sf.blockers_resolved} blockers resolved
+                {sf.blockers_unresolved > 0 && ` · ${sf.blockers_unresolved} unresolved`}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {hasGithub && (
+          <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#24292f]/10">
+              <Github className="h-4 w-4 text-foreground" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-foreground">GitHub</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {gh.commits} commits · {gh.prs_opened} PRs opened · {gh.prs_merged} merged · {gh.reviews} reviews
+              </p>
+              {gh.top_repos?.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {gh.top_repos.map((repo: string) => (
+                    <Badge key={repo} variant="secondary" className="text-xs">
+                      {repo}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {hasClickup && (
+          <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#7B68EE]/10">
+              <SquareKanban className="h-4 w-4 text-[#7B68EE]" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-foreground">ClickUp</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {cu.tasks_completed}/{cu.tasks_tracked} tasks completed
+              </p>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function WeeklyDigest() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  // Get user's team
   const { data: membership } = useQuery({
     queryKey: ["my-membership", user?.id],
     queryFn: async () => {
@@ -61,6 +136,7 @@ export default function WeeklyDigest() {
 
   const recommendations = (digest?.ai_recommendations as any[]) || [];
   const workDist = (digest?.work_distribution as Record<string, number>) || {};
+  const crossPlatform = (digest?.cross_platform_activity as Record<string, any>) || {};
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -148,6 +224,9 @@ export default function WeeklyDigest() {
                 <p className="text-sm leading-relaxed text-foreground">{digest.ai_narrative}</p>
               </CardContent>
             </Card>
+
+            {/* Cross-Platform Activity */}
+            <CrossPlatformCard activity={crossPlatform} />
 
             {/* Work Distribution */}
             {Object.keys(workDist).length > 0 && (
