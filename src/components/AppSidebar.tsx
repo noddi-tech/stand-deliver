@@ -1,4 +1,4 @@
-import { LayoutDashboard, PenSquare, Users, Presentation, BarChart3, Settings, LogOut } from "lucide-react";
+import { LayoutDashboard, PenSquare, Users, Presentation, BarChart3, Activity, Settings, LogOut } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
@@ -36,6 +36,7 @@ const navItems = [
   { title: "My Standup", url: "/standup", icon: PenSquare },
   { title: "Team Feed", url: "/team", icon: Users },
   { title: "Meeting Mode", url: "/meeting", icon: Presentation },
+  { title: "Activity", url: "/activity", icon: Activity },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
   { title: "Settings", url: "/settings", icon: Settings },
 ];

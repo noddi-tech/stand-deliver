@@ -226,7 +226,7 @@ export default function Dashboard() {
       {/* Recent Activity */}
       <section>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-semibold text-foreground">Recent Activity</h2>
+          <h2 className="text-lg font-semibold text-foreground cursor-pointer hover:text-primary transition-colors" onClick={() => navigate("/activity")}>Recent Activity →</h2>
           <div className="flex gap-1">
             {["all", "github", "clickup", "standup"].map((s) => (
               <Button

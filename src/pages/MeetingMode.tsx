@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserTeam } from "@/hooks/useAnalytics";
-import { format } from "date-fns";
+import { format, addDays, getDay } from "date-fns";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -48,7 +48,7 @@ export default function MeetingMode() {
     queryKey: ["team-info", teamId],
     enabled: !!teamId,
     queryFn: async () => {
-      const { data } = await supabase.from("teams").select("name, timer_seconds_per_person").eq("id", teamId!).single();
+      const { data } = await supabase.from("teams").select("name, timer_seconds_per_person, standup_days").eq("id", teamId!).single();
       return data;
     },
   });
@@ -105,6 +105,24 @@ export default function MeetingMode() {
   });
 
   const submittedMemberIds = new Set(responses.map((r) => r.member_id));
+  const skippedMemberIds = new Set(
+    responses.filter((r) => r.yesterday_text === "Skipped" && !r.mood).map((r) => r.member_id)
+  );
+
+  // Compute next standup date
+  const dayMap: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+  const getNextStandupDate = () => {
+    const standupDays = (teamInfo?.standup_days || []).map((d: string) => dayMap[d.toLowerCase()]).filter((n: number) => n !== undefined);
+    if (standupDays.length === 0) return null;
+    const now = new Date();
+    const todayDow = getDay(now);
+    for (let offset = 1; offset <= 7; offset++) {
+      const nextDow = (todayDow + offset) % 7;
+      if (standupDays.includes(nextDow)) return addDays(now, offset);
+    }
+    return null;
+  };
+  const nextStandupDate = getNextStandupDate();
 
   const getProfile = (memberId: string) => {
     const m = members.find((m) => m.id === memberId);
@@ -244,34 +262,48 @@ export default function MeetingMode() {
         <div className="max-w-4xl mx-auto space-y-8">
           <div className="text-center space-y-2">
             <h1 className="text-3xl font-bold">Meeting Mode</h1>
-            <p className="text-slate-400">{teamInfo?.name || "Your Team"} · {format(new Date(), "EEEE, MMM d")}</p>
-            <p className="text-sm text-slate-500">
-              Est. duration: {Math.ceil((members.length * timerDuration) / 60)} min ({members.length} members × {Math.floor(timerDuration / 60)}:{String(timerDuration % 60).padStart(2, "0")})
-            </p>
+             <p className="text-slate-400">{teamInfo?.name || "Your Team"} · {format(new Date(), "EEEE, MMM d")}</p>
+             {nextStandupDate && (
+               <p className="text-sm text-slate-500">Next standup: {format(nextStandupDate, "EEEE, MMM d")}</p>
+             )}
+             <p className="text-sm text-slate-500">
+               Est. duration: {Math.ceil((members.length * timerDuration) / 60)} min ({members.length} members × {Math.floor(timerDuration / 60)}:{String(timerDuration % 60).padStart(2, "0")})
+             </p>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
             {members.map((m) => {
               const profile = m.profile as any;
               const submitted = submittedMemberIds.has(m.id);
+              const skipped = skippedMemberIds.has(m.id);
               const initials = (profile?.full_name || "?").split(" ").map((w: string) => w[0]).join("").slice(0, 2);
+              
+              const statusLabel = skipped ? "Skipped" : submitted ? "Submitted" : "Pending";
+              const borderClass = skipped ? "border-amber-500/30" : submitted ? "border-primary/30" : "opacity-60";
+              const badgeVariant = skipped ? "secondary" : submitted ? "default" : "secondary";
+              
               return (
-                <Card key={m.id} className={`bg-slate-900 border-slate-800 ${submitted ? "border-primary/30" : "opacity-60"}`}>
+                <Card key={m.id} className={`bg-slate-900 border-slate-800 ${borderClass}`}>
                   <CardContent className="p-4 flex flex-col items-center gap-2">
                     <div className="relative">
                       <Avatar className="h-12 w-12">
                         <AvatarImage src={profile?.avatar_url} />
                         <AvatarFallback className="bg-primary text-primary-foreground">{initials}</AvatarFallback>
                       </Avatar>
-                      {submitted && (
+                      {submitted && !skipped && (
                         <div className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-emerald-500 flex items-center justify-center">
                           <Check className="h-3 w-3 text-white" />
                         </div>
                       )}
+                      {skipped && (
+                        <div className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-amber-500 flex items-center justify-center">
+                          <SkipForward className="h-3 w-3 text-white" />
+                        </div>
+                      )}
                     </div>
                     <span className="text-xs font-medium text-slate-200">{profile?.full_name || "Unknown"}</span>
-                    <Badge variant={submitted ? "default" : "secondary"} className="text-[10px]">
-                      {submitted ? "Submitted" : "Pending"}
+                    <Badge variant={badgeVariant} className={`text-[10px] ${skipped ? "bg-amber-500/20 text-amber-300 border-amber-500/30" : ""}`}>
+                      {statusLabel}
                     </Badge>
                   </CardContent>
                 </Card>
