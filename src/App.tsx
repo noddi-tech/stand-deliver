@@ -19,6 +19,7 @@ import Analytics from "@/pages/Analytics";
 import MyAnalytics from "@/pages/MyAnalytics";
 import TeamInsights from "@/pages/TeamInsights";
 import WeeklyDigest from "@/pages/WeeklyDigest";
+import Activity from "@/pages/Activity";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient(); // force rebuild
