@@ -84,9 +84,10 @@ Deno.serve(async (req) => {
               statusName.includes(s)
             );
 
-            if (!isCompleted && !isInProgress) continue;
+            let activityType = "task_updated";
+            if (isCompleted) activityType = "task_completed";
+            else if (isInProgress) activityType = "task_started";
 
-            const activityType = isCompleted ? "task_completed" : "task_started";
             const taskUrl = task.url || `https://app.clickup.com/t/${task.id}`;
 
             // Insert for each team the user belongs to

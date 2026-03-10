@@ -1,0 +1,1 @@
+DELETE FROM external_activity WHERE member_id = '47249d29-92e7-445f-b43a-4d022d0f8c59' AND source = 'github';

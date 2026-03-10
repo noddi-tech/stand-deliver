@@ -1,62 +1,72 @@
+## Completed
 
+### Slack channel selector (IntegrationsTab)
+- Channel dropdown now saves to `teams.slack_channel_id` on change
+- Initializes with current team's linked channel
+- Shows success toast with channel name
 
-## Bug Fix Plan: Activity Feed Issues
+### Slack invite system (MembersTab + Edge Function)
+- New `slack-send-invite` edge function sends a DM with Block Kit invite button
+- MembersTab shows "Invite via Slack" card with user picker when Slack is connected
+- Invited users click the link, sign in with Slack OIDC, and auto-join the org
 
-### Bugs Found
+### Edit Daily Standup
+- Added UPDATE RLS policy on `standup_responses`
+- Edit button loads existing data back into form
+- Re-submit updates existing response and commitments
 
-**Bug 1: Tom Arne's `__none__` username polluting GitHub data**
-Tom Arne is mapped with `github_username: '__none__'` (meaning "No GitHub account"). The `github-sync-activity` function doesn't skip this sentinel value, so it queries GitHub's search API with `author:__none__` — which returns random public commits from strangers. Tom Arne now has 176 bogus activity rows (out of 258 total). This is why only his commits appear in the feed — they dominate the 25-item limit.
+### AI Standup Coach (Phase 1)
+- `ai-coach-standup` edge function reviews commitments via Lovable AI Gateway
+- Uses tool calling for structured output (suggestions with category, issue, rewrite)
+- `StandupCoachCard` component shows inline coaching before submit
+- Submit button triggers AI review first; user can apply/dismiss/submit anyway
 
-**Bug 2: Standup responses not showing in activity feed**
-The `useRecentActivity` hook uses `.eq("session.team_id", teamId!)` to filter standup responses via a nested relation. This PostgREST nested filter pattern on an `!inner` join doesn't work as a WHERE clause — it silently returns no rows. There ARE standup responses (4 from yesterday), but the query never finds them.
+### ClickUp Integration (Phase 2)
+- `clickup_installations` + `clickup_user_mappings` tables with RLS
+- `clickup-setup` edge function validates token, stores installation, lists members
+- `clickup-fetch-tasks` edge function pulls assigned tasks from ClickUp API
+- `ClickUpSection` component: 3-step wizard (token → connect → map users)
+- Settings > Integrations: ClickUp connection card with setup instructions
+- MyStandup: "Import from ClickUp" button + task picker dialog in Today's Focus
 
-**Bug 3: No ClickUp activity in feed**
-The database has 0 ClickUp rows. The ClickUp sync function exists but likely hasn't run (no cron trigger was set up for it, or no tasks matched the status filters). The `clickup-sync-activity` only captures tasks with status "complete/done/closed" or "in progress/in review/working" — any other status is skipped. This is probably too restrictive.
+### ClickUp Status Sync
+- Added `clickup_task_id` column to `commitments` table
+- `clickup-update-task` edge function syncs status changes to ClickUp API
+- Fuzzy-matches StandFlow statuses to ClickUp's custom per-list statuses
+- MyStandup stores `clickup_task_id` on import, fires sync on status change
 
-### Fixes
+### Bug Fixes (ClickUp RLS + Standup Duplicate Key)
+- Updated INSERT policy on `clickup_user_mappings` to allow org members to map any user
+- Replaced conditional insert/update on `standup_responses` with idempotent upsert
 
-**Fix 1: Skip `__none__` in GitHub sync + clean up bad data**
+### GitHub Integration + Cross-Platform Weekly Digest
+- `github_installations` + `github_user_mappings` tables with RLS
+- `github-setup` edge function validates PAT, stores installation, lists org members
+- `github-fetch-activity` edge function fetches commits, PRs, reviews via GitHub Search API
+- `GitHubSection` component: setup wizard (token + org name → user mapping)
+- Settings > Integrations: GitHub connection card after ClickUp
+- `ai-weekly-digest` enhanced to aggregate GitHub + ClickUp + StandFlow activity
+- `cross_platform_activity` JSONB column on `ai_weekly_digests`
+- WeeklyDigest page shows cross-platform activity card (StandFlow, GitHub, ClickUp)
+- Slack summary includes GitHub stats when available
 
-In `github-sync-activity/index.ts`, add a check after line 66:
-```typescript
-if (username === '__none__') continue;
-```
+### Fix Duplicate Slack Summaries + Daily Digest Cron
+- Removed per-submission `slack-post-summary` call from MyStandup.tsx (was firing on every individual submission)
+- Removed duplicate Slack posting from `ai-summarize-session` (now only generates + stores AI summary)
+- Added `ai-summarize-session` + `slack-post-summary` calls to Meeting Mode completion
+- New `daily-summary-cron` edge function aggregates daily activity (completions, new tasks, carried, blockers) and posts end-of-day digest to Slack
+- pg_cron job scheduled at 17:00 UTC weekdays to trigger the daily digest automatically
 
-Migration to delete Tom Arne's bogus data:
-```sql
-DELETE FROM external_activity WHERE member_id = '47249d29-92e7-445f-b43a-4d022d0f8c59' AND source = 'github';
-```
+### Auto-Sync External Activity (ClickUp + GitHub)
+- New `external_activity` table with RLS, unique dedup constraint on `(external_id, activity_type, source)`
+- `clickup-sync-activity` edge function polls ClickUp for task status changes (completed, in-progress)
+- `github-sync-activity` edge function polls GitHub for commits, PRs opened, PRs merged
+- pg_cron jobs run both sync functions every 30 minutes, 7 days/week (including weekends)
+- `daily-summary-cron` updated: removed standup-day gate, Monday digest covers Sat+Sun, includes external activity counts (commits, PRs, ClickUp tasks)
+- MyStandup "Recent Activity" section shows unacknowledged external events with Add/Dismiss actions
+- Completed items get acknowledged; in-progress/opened items get added as today's focus commitments
 
-**Fix 2: Fix standup responses query in `useRecentActivity.ts`**
-
-Replace the nested `.eq("session.team_id", teamId!)` filter with a proper approach — first fetch today's session IDs for the team, then query responses by those session IDs. Or simpler: use a two-step query or just query all responses where the member belongs to the team.
-
-Revised approach — join through `team_members` instead of `standup_sessions`:
-```typescript
-supabase
-  .from("standup_responses")
-  .select("id, member_id, submitted_at, mood, session:standup_sessions!inner(team_id), member:team_members!inner(id, profile:profiles!inner(full_name, avatar_url))")
-  .eq("member.team_id", teamId!)
-  .gte("submitted_at", sevenDaysAgo)
-  .order("submitted_at", { ascending: false })
-  .limit(20)
-```
-
-Actually, the most reliable approach: query `standup_sessions` for the team first, then query responses by session IDs. But that's two round trips. Instead, filter via `team_members` relation which is more reliable than filtering through `standup_sessions`.
-
-**Fix 3: ClickUp sync — broaden status filter + add all task changes**
-
-The current ClickUp sync only captures "complete/done/closed" and "in progress" statuses, skipping everything else. Broaden to capture any task that was updated today (since the API already filters by `date_updated_gt`), recording the current status as the activity type. This ensures all ClickUp task updates show up.
-
-Also ensure the `github-fetch-activity` function (used for weekly digests) also skips `__none__`.
-
-### Files Changed
-
-| File | Change |
-|------|--------|
-| `supabase/functions/github-sync-activity/index.ts` | Skip `__none__` usernames |
-| `supabase/functions/github-fetch-activity/index.ts` | Skip `__none__` usernames |
-| `src/hooks/useRecentActivity.ts` | Fix standup response query to use team_members join |
-| `supabase/functions/clickup-sync-activity/index.ts` | Broaden status filter to capture all updated tasks |
-| Migration | Delete bogus Tom Arne external_activity rows |
-
+### Activity Feed Bug Fixes
+- Fixed `__none__` GitHub username causing bogus commits from random strangers (176 rows deleted)
+- Fixed standup responses not appearing in activity feed (broken PostgREST nested filter)
+- Broadened ClickUp sync to capture all task updates, not just completed/in-progress
