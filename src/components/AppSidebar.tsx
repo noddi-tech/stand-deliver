@@ -1,4 +1,4 @@
-import { LayoutDashboard, PenSquare, Users, Presentation, BarChart3, Settings, LogOut } from "lucide-react";
+import { LayoutDashboard, PenSquare, Users, Presentation, BarChart3, Activity, Settings, LogOut } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
