@@ -81,8 +81,8 @@ Deno.serve(async (req) => {
           // Fetch commits - search both author: and committer: to catch bot-authored commits
           const commitHeaders = { ...headers, Accept: "application/vnd.github.cloak-preview+json" };
           const [authorRes, committerRes] = await Promise.all([
-            fetch(`${GH_API}/search/commits?q=author:${username}+committer-date:${today}&per_page=50`, { headers: commitHeaders }),
-            fetch(`${GH_API}/search/commits?q=committer:${username}+committer-date:${today}&per_page=50`, { headers: commitHeaders }),
+            fetch(`${GH_API}/search/commits?q=author:${username}+committer-date:${dateRange}&per_page=50`, { headers: commitHeaders }),
+            fetch(`${GH_API}/search/commits?q=committer:${username}+committer-date:${dateRange}&per_page=50`, { headers: commitHeaders }),
           ]);
           const authorData = authorRes.ok ? await authorRes.json() : { items: [] };
           const committerData = committerRes.ok ? await committerRes.json() : { items: [] };
