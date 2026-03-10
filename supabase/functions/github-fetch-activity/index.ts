@@ -41,12 +41,25 @@ Deno.serve(async (req) => {
     const token = install.api_token_encrypted;
     const headers = GH_HEADERS(token);
 
-    // Fetch commits
-    const commitsRes = await fetch(
-      `${GH_API}/search/commits?q=author:${github_username}+committer-date:${week_start}..${week_end}&per_page=100`,
-      { headers: { ...headers, Accept: "application/vnd.github.cloak-preview+json" } }
-    );
-    const commitsData = commitsRes.ok ? await commitsRes.json() : { total_count: 0, items: [] };
+    // Fetch commits (both author and committer to catch bot-authored commits)
+    const commitAccept = "application/vnd.github.cloak-preview+json";
+    const [authorCommitsRes, committerCommitsRes] = await Promise.all([
+      fetch(`${GH_API}/search/commits?q=author:${github_username}+committer-date:${week_start}..${week_end}&per_page=100`, { headers: { ...headers, Accept: commitAccept } }),
+      fetch(`${GH_API}/search/commits?q=committer:${github_username}+committer-date:${week_start}..${week_end}&per_page=100`, { headers: { ...headers, Accept: commitAccept } }),
+    ]);
+    const authorData = authorCommitsRes.ok ? await authorCommitsRes.json() : { total_count: 0, items: [] };
+    const committerData = committerCommitsRes.ok ? await committerCommitsRes.json() : { total_count: 0, items: [] };
+
+    // Merge and deduplicate by SHA
+    const seenShas = new Set<string>();
+    const mergedCommitItems: any[] = [];
+    for (const item of [...(authorData.items || []), ...(committerData.items || [])]) {
+      if (item.sha && !seenShas.has(item.sha)) {
+        seenShas.add(item.sha);
+        mergedCommitItems.push(item);
+      }
+    }
+    const commitsData = { total_count: mergedCommitItems.length, items: mergedCommitItems };
 
     // Fetch PRs opened
     const prsRes = await fetch(
