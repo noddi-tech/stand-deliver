@@ -48,7 +48,7 @@ export default function MeetingMode() {
     queryKey: ["team-info", teamId],
     enabled: !!teamId,
     queryFn: async () => {
-      const { data } = await supabase.from("teams").select("name, timer_seconds_per_person").eq("id", teamId!).single();
+      const { data } = await supabase.from("teams").select("name, timer_seconds_per_person, standup_days").eq("id", teamId!).single();
       return data;
     },
   });
