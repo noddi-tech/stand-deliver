@@ -67,14 +67,26 @@ Deno.serve(async (req) => {
         if (username === '__none__') continue;
 
         try {
-          // Fetch commits
-          const commitsRes = await fetch(
-            `${GH_API}/search/commits?q=author:${username}+committer-date:${today}&per_page=50`,
-            { headers: { ...headers, Accept: "application/vnd.github.cloak-preview+json" } }
-          );
-          if (commitsRes.ok) {
-            const data = await commitsRes.json();
-            for (const item of data.items || []) {
+          // Fetch commits - search both author: and committer: to catch bot-authored commits
+          const commitHeaders = { ...headers, Accept: "application/vnd.github.cloak-preview+json" };
+          const [authorRes, committerRes] = await Promise.all([
+            fetch(`${GH_API}/search/commits?q=author:${username}+committer-date:${today}&per_page=50`, { headers: commitHeaders }),
+            fetch(`${GH_API}/search/commits?q=committer:${username}+committer-date:${today}&per_page=50`, { headers: commitHeaders }),
+          ]);
+          const authorData = authorRes.ok ? await authorRes.json() : { items: [] };
+          const committerData = committerRes.ok ? await committerRes.json() : { items: [] };
+
+          // Merge and deduplicate by SHA
+          const seenShas = new Set<string>();
+          const allCommits: any[] = [];
+          for (const item of [...(authorData.items || []), ...(committerData.items || [])]) {
+            if (item.sha && !seenShas.has(item.sha)) {
+              seenShas.add(item.sha);
+              allCommits.push(item);
+            }
+          }
+
+          for (const item of allCommits) {
               const sha = item.sha;
               const repo = item.repository?.full_name || "";
               const message = item.commit?.message?.split("\n")[0] || "Commit";
