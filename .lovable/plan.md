@@ -1,74 +1,22 @@
-## Completed
 
-### Slack channel selector (IntegrationsTab)
-- Channel dropdown now saves to `teams.slack_channel_id` on change
-- Initializes with current team's linked channel
-- Shows success toast with channel name
 
-### Slack invite system (MembersTab + Edge Function)
-- New `slack-send-invite` edge function sends a DM with Block Kit invite button
-- MembersTab shows "Invite via Slack" card with user picker when Slack is connected
-- Invited users click the link, sign in with Slack OIDC, and auto-join the org
+## Fix: Stale Pending Invites + Add Manual Sync Button
 
-### Edit Daily Standup
-- Added UPDATE RLS policy on `standup_responses`
-- Edit button loads existing data back into form
-- Re-submit updates existing response and commitments
+### Issue 1: Manual Sync Invocation
+Add a "Sync Now" button to the Integrations tab (or Activity page) that lets leads manually trigger `github-sync-activity` and `clickup-sync-activity` edge functions. This avoids needing to go to the Supabase dashboard.
 
-### AI Standup Coach (Phase 1)
-- `ai-coach-standup` edge function reviews commitments via Lovable AI Gateway
-- Uses tool calling for structured output (suggestions with category, issue, rewrite)
-- `StandupCoachCard` component shows inline coaching before submit
-- Submit button triggers AI review first; user can apply/dismiss/submit anyway
+### Issue 2: Stian's Pending Invite
+The `slack_invites` table never gets updated when an invited user actually signs up and joins the team. Stian is already in `team_members` but his invite row still says `status = 'pending'`.
 
-### ClickUp Integration (Phase 2)
-- `clickup_installations` + `clickup_user_mappings` tables with RLS
-- `clickup-setup` edge function validates token, stores installation, lists members
-- `clickup-fetch-tasks` edge function pulls assigned tasks from ClickUp API
-- `ClickUpSection` component: 3-step wizard (token → connect → map users)
-- Settings > Integrations: ClickUp connection card with setup instructions
-- MyStandup: "Import from ClickUp" button + task picker dialog in Today's Focus
+**Fix approach:** In `MembersTab.tsx`, after fetching both `members` and `pendingInvites`, filter out any pending invites where the `slack_user_id` matches a Slack user ID of an existing team member. This requires cross-referencing with `slack_user_mappings` or simply checking if the invite's display name matches an existing member.
 
-### ClickUp Status Sync
-- Added `clickup_task_id` column to `commitments` table
-- `clickup-update-task` edge function syncs status changes to ClickUp API
-- Fuzzy-matches StandFlow statuses to ClickUp's custom per-list statuses
-- MyStandup stores `clickup_task_id` on import, fires sync on status change
+**Better approach:** Update the invite status to `accepted` when a user joins. The `slack-auto-link` or onboarding flow should mark matching invites as accepted. Additionally, add a defensive client-side filter as a fallback.
 
-### Bug Fixes (ClickUp RLS + Standup Duplicate Key)
-- Updated INSERT policy on `clickup_user_mappings` to allow org members to map any user
-- Replaced conditional insert/update on `standup_responses` with idempotent upsert
+### Files Changed
 
-### GitHub Integration + Cross-Platform Weekly Digest
-- `github_installations` + `github_user_mappings` tables with RLS
-- `github-setup` edge function validates PAT, stores installation, lists org members
-- `github-fetch-activity` edge function fetches commits, PRs, reviews via GitHub Search API
-- `GitHubSection` component: setup wizard (token + org name → user mapping)
-- Settings > Integrations: GitHub connection card after ClickUp
-- `ai-weekly-digest` enhanced to aggregate GitHub + ClickUp + StandFlow activity
-- `cross_platform_activity` JSONB column on `ai_weekly_digests`
-- WeeklyDigest page shows cross-platform activity card (StandFlow, GitHub, ClickUp)
-- Slack summary includes GitHub stats when available
+| File | Change |
+|------|--------|
+| `src/components/settings/MembersTab.tsx` | Filter pending invites against existing team members by cross-referencing slack_user_mappings |
+| `supabase/functions/slack-auto-link/index.ts` | When auto-linking a user, update any matching `slack_invites` row to `status = 'accepted'` |
+| `src/components/settings/IntegrationsTab.tsx` | Add "Sync Now" buttons for GitHub and ClickUp that invoke the sync edge functions |
 
-### Fix Duplicate Slack Summaries + Daily Digest Cron
-- Removed per-submission `slack-post-summary` call from MyStandup.tsx (was firing on every individual submission)
-- Removed duplicate Slack posting from `ai-summarize-session` (now only generates + stores AI summary)
-- Added `ai-summarize-session` + `slack-post-summary` calls to Meeting Mode completion
-- New `daily-summary-cron` edge function aggregates daily activity (completions, new tasks, carried, blockers) and posts end-of-day digest to Slack
-- pg_cron job scheduled at 17:00 UTC weekdays to trigger the daily digest automatically
-
-### Auto-Sync External Activity (ClickUp + GitHub)
-- New `external_activity` table with RLS, unique dedup constraint on `(external_id, activity_type, source)`
-- `clickup-sync-activity` edge function polls ClickUp for task status changes (completed, in-progress)
-- `github-sync-activity` edge function polls GitHub for commits, PRs opened, PRs merged
-- pg_cron jobs run both sync functions every 30 minutes, 7 days/week (including weekends)
-- `daily-summary-cron` updated: removed standup-day gate, Monday digest covers Sat+Sun, includes external activity counts (commits, PRs, ClickUp tasks)
-- MyStandup "Recent Activity" section shows unacknowledged external events with Add/Dismiss actions
-- Completed items get acknowledged; in-progress/opened items get added as today's focus commitments
-
-### Activity Feed Bug Fixes
-- Fixed `__none__` GitHub username causing bogus commits from random strangers (176 rows deleted)
-- Fixed standup responses not appearing in activity feed (broken PostgREST nested filter)
-- Broadened ClickUp sync to capture all task updates, not just completed/in-progress
-- Redeployed all sync edge functions (clickup-sync-activity, github-sync-activity, github-fetch-activity)
-- Replaced fragile nested PostgREST filter with two-step session-based query for standup responses
