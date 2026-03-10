@@ -22,23 +22,35 @@ export function useRecentActivity(teamId: string | undefined) {
     staleTime: 30000,
     queryFn: async () => {
       const sevenDaysAgo = subDays(new Date(), 7).toISOString();
+      const sevenDaysAgoDate = sevenDaysAgo.split("T")[0];
 
-      const [extRes, respRes] = await Promise.all([
-        supabase
-          .from("external_activity")
-          .select("id, source, activity_type, title, member_id, occurred_at, external_url, member:team_members!inner(id, profile:profiles!inner(full_name, avatar_url))")
-          .eq("team_id", teamId!)
-          .gte("occurred_at", sevenDaysAgo)
-          .order("occurred_at", { ascending: false })
-          .limit(30),
-        supabase
+      // Fetch external activity
+      const extRes = await supabase
+        .from("external_activity")
+        .select("id, source, activity_type, title, member_id, occurred_at, external_url, member:team_members!inner(id, profile:profiles!inner(full_name, avatar_url))")
+        .eq("team_id", teamId!)
+        .gte("occurred_at", sevenDaysAgo)
+        .order("occurred_at", { ascending: false })
+        .limit(30);
+
+      // Two-step standup query: first get session IDs, then responses
+      const { data: sessions } = await supabase
+        .from("standup_sessions")
+        .select("id")
+        .eq("team_id", teamId!)
+        .gte("session_date", sevenDaysAgoDate);
+
+      const sessionIds = (sessions || []).map((s) => s.id);
+
+      let respRes: { data: any[] | null } = { data: [] };
+      if (sessionIds.length > 0) {
+        respRes = await supabase
           .from("standup_responses")
-          .select("id, member_id, submitted_at, mood, member:team_members!inner(id, team_id, profile:profiles!inner(full_name, avatar_url))")
-          .eq("member.team_id", teamId!)
-          .gte("submitted_at", sevenDaysAgo)
+          .select("id, member_id, submitted_at, mood, member:team_members!inner(id, profile:profiles!inner(full_name, avatar_url))")
+          .in("session_id", sessionIds)
           .order("submitted_at", { ascending: false })
-          .limit(20),
-      ]);
+          .limit(20);
+      }
 
       const items: ActivityItem[] = [];
 
