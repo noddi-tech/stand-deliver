@@ -108,7 +108,6 @@ Deno.serve(async (req) => {
                   );
                 } catch (e) { /* dedup conflict */ }
               }
-            }
           }
 
           // Fetch PRs opened today
