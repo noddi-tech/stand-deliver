@@ -107,6 +107,46 @@ async function fetchCommitsPerRepo(
   return allCommits;
 }
 
+// Fetch user events (PushEvent) to capture merges where user is neither author nor committer
+async function fetchUserEvents(
+  token: string,
+  username: string,
+  startDate: string,
+  endDate: string
+): Promise<any[]> {
+  const commits: any[] = [];
+  try {
+    const res = await fetchWithTimeout(
+      `${GH_API}/users/${username}/events?per_page=100`,
+      { headers: GH_HEADERS(token) }
+    );
+    if (!res.ok) {
+      console.log(`Events API returned ${res.status} for ${username}`);
+      return [];
+    }
+    const events = await res.json();
+    if (!Array.isArray(events)) return [];
+    for (const event of events) {
+      if (event.type !== "PushEvent") continue;
+      const eventDate = event.created_at?.split("T")[0];
+      if (!eventDate || eventDate < startDate || eventDate > endDate) continue;
+      const repo = event.repo?.name || "";
+      for (const c of event.payload?.commits || []) {
+        commits.push({
+          sha: c.sha,
+          html_url: `https://github.com/${repo}/commit/${c.sha}`,
+          commit: { message: c.message, author: { date: event.created_at }, committer: { date: event.created_at } },
+          repository: { full_name: repo },
+        });
+      }
+    }
+    console.log(`Events API found ${commits.length} commits for ${username}`);
+  } catch (e) {
+    console.error(`Events API error for ${username}:`, e);
+  }
+  return commits;
+}
+
 // Per-repo fallback: fetch PRs
 async function fetchPRsPerRepo(
   token: string,
@@ -254,6 +294,18 @@ Deno.serve(async (req) => {
             if (!orgRepos) orgRepos = await fetchOrgRepos(token, orgName);
             allCommits = await fetchCommitsPerRepo(token, orgRepos, username, startDate, endDate);
             console.log(`Per-repo fallback found ${allCommits.length} commits for ${username}`);
+          }
+
+          // FALLBACK 2: Events API to capture merges (user is neither author nor committer)
+          const eventCommits = await fetchUserEvents(token, username, startDate, endDate);
+          for (const c of eventCommits) {
+            if (c.sha && !seenShas.has(c.sha)) {
+              seenShas.add(c.sha);
+              allCommits.push(c);
+            }
+          }
+          if (eventCommits.length > 0) {
+            console.log(`Events API added ${eventCommits.length} new commits for ${username}, total now ${allCommits.length}`);
           }
 
           for (const item of allCommits) {
