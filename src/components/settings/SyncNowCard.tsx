@@ -45,7 +45,8 @@ export function SyncNowCard({ orgId }: { orgId: string }) {
     const fnName = source === "github" ? "github-sync-activity" : "clickup-sync-activity";
     setter(true);
     try {
-      const { data, error } = await supabase.functions.invoke(fnName, { body: {} });
+      const body = source === "github" ? { days_back: 30 } : {};
+      const { data, error } = await supabase.functions.invoke(fnName, { body });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
       toast.success(`${source === "github" ? "GitHub" : "ClickUp"} activity synced! ✅`);

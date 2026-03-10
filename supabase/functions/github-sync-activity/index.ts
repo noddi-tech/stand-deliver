@@ -155,7 +155,7 @@ Deno.serve(async (req) => {
 
           // Fetch PRs merged today
           const mergedRes = await fetch(
-            `${GH_API}/search/issues?q=author:${username}+type:pr+merged:${today}&per_page=50`,
+            `${GH_API}/search/issues?q=author:${username}+type:pr+merged:${dateRange}&per_page=50`,
             { headers }
           );
           if (mergedRes.ok) {
