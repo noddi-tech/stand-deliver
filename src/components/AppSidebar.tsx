@@ -36,6 +36,7 @@ const navItems = [
   { title: "My Standup", url: "/standup", icon: PenSquare },
   { title: "Team Feed", url: "/team", icon: Users },
   { title: "Meeting Mode", url: "/meeting", icon: Presentation },
+  { title: "Activity", url: "/activity", icon: Activity },
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
   { title: "Settings", url: "/settings", icon: Settings },
 ];

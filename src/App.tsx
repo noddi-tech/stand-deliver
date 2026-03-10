@@ -49,6 +49,7 @@ const App = () => (
                 <Route path="/team" element={<TeamFeed />} />
                 <Route path="/meeting" element={<MeetingMode />} />
                 <Route path="/analytics" element={<Analytics />} />
+                <Route path="/activity" element={<Activity />} />
                 <Route path="/my-analytics" element={<MyAnalytics />} />
                 <Route path="/team-insights" element={<TeamInsights />} />
                 <Route path="/weekly-digest" element={<WeeklyDigest />} />

@@ -74,3 +74,6 @@ verify_jwt = false
 
 [functions.slack-send-reminder]
 verify_jwt = false
+
+[functions.ai-team-summary]
+verify_jwt = false
