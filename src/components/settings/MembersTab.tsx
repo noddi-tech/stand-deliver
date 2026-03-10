@@ -314,12 +314,12 @@ export function MembersTab() {
           <CardHeader>
             <CardTitle className="text-base">Pending Invites</CardTitle>
             <CardDescription>
-              {pendingInvites.length} invite{pendingInvites.length !== 1 ? "s" : ""} awaiting sign-in.
+              {filteredPendingInvites.length} invite{filteredPendingInvites.length !== 1 ? "s" : ""} awaiting sign-in.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {pendingInvites.map((invite) => (
+              {filteredPendingInvites.map((invite) => (
                 <div key={invite.id} className="flex items-center justify-between rounded-lg border p-3">
                   <div className="flex items-center gap-3">
                     <Avatar className="h-8 w-8">
