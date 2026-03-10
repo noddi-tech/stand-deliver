@@ -728,11 +728,16 @@ export default function MyStandup() {
         <h1 className="text-2xl font-bold text-foreground">
           {isEditing ? "Edit Standup" : "My Standup"}
         </h1>
-        {isEditing && (
-          <Button variant="ghost" size="sm" onClick={cancelEdit}>
-            Cancel
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {isEditing && (
+            <Button variant="ghost" size="sm" onClick={cancelEdit}>
+              Cancel
+            </Button>
+          )}
+          {!isEditing && !submitted && memberId && teamId && (
+            <SkipTodayButton memberId={memberId} teamId={teamId} />
+          )}
+        </div>
       </div>
 
       {/* Recent Activity from ClickUp/GitHub */}
