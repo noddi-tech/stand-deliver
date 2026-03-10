@@ -20,6 +20,11 @@ Deno.serve(async (req) => {
     if (!org_id || !github_username || !week_start || !week_end) {
       throw new Error("org_id, github_username, week_start, week_end required");
     }
+    if (github_username === '__none__') {
+      return new Response(JSON.stringify({ commits: 0, prs_opened: 0, prs_merged: 0, reviews: 0, top_repos: [] }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL")!,

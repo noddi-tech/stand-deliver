@@ -64,6 +64,7 @@ Deno.serve(async (req) => {
         if (memberRecords.length === 0) continue;
 
         const username = mapping.github_username;
+        if (username === '__none__') continue;
 
         try {
           // Fetch commits

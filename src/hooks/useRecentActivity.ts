@@ -33,8 +33,8 @@ export function useRecentActivity(teamId: string | undefined) {
           .limit(30),
         supabase
           .from("standup_responses")
-          .select("id, member_id, submitted_at, mood, member:team_members!inner(id, profile:profiles!inner(full_name, avatar_url)), session:standup_sessions!inner(team_id)")
-          .eq("session.team_id", teamId!)
+          .select("id, member_id, submitted_at, mood, member:team_members!inner(id, team_id, profile:profiles!inner(full_name, avatar_url))")
+          .eq("member.team_id", teamId!)
           .gte("submitted_at", sevenDaysAgo)
           .order("submitted_at", { ascending: false })
           .limit(20),
