@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Lock, Check, X, AlertTriangle, Loader2, Plus, ArrowRight, Clock, Edit2, CheckCircle2, SquareKanban, GitBranch, ExternalLink, Eye, EyeOff } from "lucide-react";
+import { Lock, Check, X, AlertTriangle, Loader2, Plus, ArrowRight, Clock, Edit2, CheckCircle2, SquareKanban, GitBranch, ExternalLink, Eye, EyeOff, SkipForward } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { StandupCoachCard, type CoachSuggestion } from "@/components/ai/StandupCoachCard";
