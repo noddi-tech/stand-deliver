@@ -12,6 +12,102 @@ const GH_HEADERS = (token: string) => ({
   "User-Agent": "StandFlow",
 });
 
+// Fetch all org repos (cached per org per invocation)
+async function fetchOrgRepos(token: string, orgName: string): Promise<string[]> {
+  const repos: string[] = [];
+  let page = 1;
+  while (true) {
+    const res = await fetch(`${GH_API}/orgs/${orgName}/repos?per_page=100&page=${page}`, {
+      headers: GH_HEADERS(token),
+    });
+    if (!res.ok) break;
+    const data = await res.json();
+    if (!Array.isArray(data) || data.length === 0) break;
+    for (const r of data) repos.push(r.full_name);
+    if (data.length < 100) break;
+    page++;
+  }
+  return repos;
+}
+
+// Per-repo fallback: fetch commits from each repo's Commits API
+async function fetchCommitsPerRepo(
+  token: string,
+  repos: string[],
+  username: string,
+  since: string,
+  until: string
+): Promise<any[]> {
+  const allCommits: any[] = [];
+  const seenShas = new Set<string>();
+  for (const repoFullName of repos) {
+    try {
+      const res = await fetch(
+        `${GH_API}/repos/${repoFullName}/commits?author=${username}&since=${since}T00:00:00Z&until=${until}T23:59:59Z&per_page=100`,
+        { headers: GH_HEADERS(token) }
+      );
+      if (!res.ok) continue;
+      const commits = await res.json();
+      if (!Array.isArray(commits)) continue;
+      for (const c of commits) {
+        if (c.sha && !seenShas.has(c.sha)) {
+          seenShas.add(c.sha);
+          allCommits.push({
+            sha: c.sha,
+            html_url: c.html_url,
+            commit: c.commit,
+            repository: { full_name: repoFullName },
+          });
+        }
+      }
+    } catch { /* skip repo */ }
+  }
+  return allCommits;
+}
+
+// Per-repo fallback: fetch PRs from each repo's Pulls API
+async function fetchPRsPerRepo(
+  token: string,
+  repos: string[],
+  username: string,
+  startDate: string,
+  endDate: string,
+  type: "opened" | "merged"
+): Promise<any[]> {
+  const allPRs: any[] = [];
+  const seenIds = new Set<number>();
+  for (const repoFullName of repos) {
+    try {
+      const res = await fetch(
+        `${GH_API}/repos/${repoFullName}/pulls?state=all&sort=updated&direction=desc&per_page=100`,
+        { headers: GH_HEADERS(token) }
+      );
+      if (!res.ok) continue;
+      const prs = await res.json();
+      if (!Array.isArray(prs)) continue;
+      for (const pr of prs) {
+        if (seenIds.has(pr.id)) continue;
+        if (pr.user?.login?.toLowerCase() !== username.toLowerCase()) continue;
+        if (type === "opened") {
+          const created = pr.created_at?.split("T")[0];
+          if (created >= startDate && created <= endDate) {
+            seenIds.add(pr.id);
+            allPRs.push({ ...pr, repository_url: `${GH_API}/repos/${repoFullName}` });
+          }
+        } else {
+          if (!pr.merged_at) continue;
+          const merged = pr.merged_at.split("T")[0];
+          if (merged >= startDate && merged <= endDate) {
+            seenIds.add(pr.id);
+            allPRs.push({ ...pr, repository_url: `${GH_API}/repos/${repoFullName}` });
+          }
+        }
+      }
+    } catch { /* skip repo */ }
+  }
+  return allPRs;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -52,6 +148,7 @@ Deno.serve(async (req) => {
     for (const install of installations) {
       const token = install.api_token_encrypted;
       const headers = GH_HEADERS(token);
+      const orgName = install.github_org_name;
 
       // Get all user mappings for this org
       const { data: mappings } = await supabaseAdmin
@@ -70,6 +167,9 @@ Deno.serve(async (req) => {
 
       if (!teamMembers || teamMembers.length === 0) continue;
 
+      // Cache org repos for fallback (fetched lazily)
+      let orgRepos: string[] | null = null;
+
       for (const mapping of mappings) {
         const memberRecords = teamMembers.filter((tm) => tm.user_id === mapping.user_id);
         if (memberRecords.length === 0) continue;
@@ -78,7 +178,7 @@ Deno.serve(async (req) => {
         if (username === '__none__') continue;
 
         try {
-          // Fetch commits - search both author: and committer: to catch bot-authored commits
+          // --- COMMITS ---
           const commitHeaders = { ...headers, Accept: "application/vnd.github.cloak-preview+json" };
           const [authorRes, committerRes] = await Promise.all([
             fetch(`${GH_API}/search/commits?q=author:${username}+committer-date:${dateRange}&per_page=50`, { headers: commitHeaders }),
@@ -89,7 +189,7 @@ Deno.serve(async (req) => {
 
           // Merge and deduplicate by SHA
           const seenShas = new Set<string>();
-          const allCommits: any[] = [];
+          let allCommits: any[] = [];
           for (const item of [...(authorData.items || []), ...(committerData.items || [])]) {
             if (item.sha && !seenShas.has(item.sha)) {
               seenShas.add(item.sha);
@@ -97,95 +197,121 @@ Deno.serve(async (req) => {
             }
           }
 
-          for (const item of allCommits) {
-              const sha = item.sha;
-              const repo = item.repository?.full_name || "";
-              const message = item.commit?.message?.split("\n")[0] || "Commit";
-              for (const member of memberRecords) {
-                try {
-                  await supabaseAdmin.from("external_activity").upsert(
-                    {
-                      team_id: member.team_id,
-                      member_id: member.id,
-                      source: "github",
-                      activity_type: "commit",
-                      title: message,
-                      external_id: sha,
-                      external_url: item.html_url || `https://github.com/${repo}/commit/${sha}`,
-                      metadata: { repo, sha: sha.slice(0, 7) },
-                      occurred_at: item.commit?.committer?.date || new Date().toISOString(),
-                    },
-                    { onConflict: "external_id,activity_type,source" }
-                  );
-                } catch (e) { /* dedup conflict */ }
-              }
+          // FALLBACK: If Search API returned 0 commits, try per-repo approach
+          if (allCommits.length === 0 && orgName) {
+            console.log(`Search API returned 0 commits for ${username}, falling back to per-repo`);
+            if (!orgRepos) orgRepos = await fetchOrgRepos(token, orgName);
+            allCommits = await fetchCommitsPerRepo(token, orgRepos, username, startDate, endDate);
+            console.log(`Per-repo fallback found ${allCommits.length} commits for ${username}`);
           }
 
-          // Fetch PRs opened today
+          for (const item of allCommits) {
+            const sha = item.sha;
+            const repo = item.repository?.full_name || "";
+            const message = item.commit?.message?.split("\n")[0] || "Commit";
+            for (const member of memberRecords) {
+              try {
+                await supabaseAdmin.from("external_activity").upsert(
+                  {
+                    team_id: member.team_id,
+                    member_id: member.id,
+                    source: "github",
+                    activity_type: "commit",
+                    title: message,
+                    external_id: sha,
+                    external_url: item.html_url || `https://github.com/${repo}/commit/${sha}`,
+                    metadata: { repo, sha: sha.slice(0, 7) },
+                    occurred_at: item.commit?.committer?.date || item.commit?.author?.date || new Date().toISOString(),
+                  },
+                  { onConflict: "external_id,activity_type,source" }
+                );
+              } catch (e) { /* dedup conflict */ }
+            }
+          }
+
+          // --- PRs OPENED ---
           const prsRes = await fetch(
             `${GH_API}/search/issues?q=author:${username}+type:pr+created:${dateRange}&per_page=50`,
             { headers }
           );
+          let prsItems: any[] = [];
           if (prsRes.ok) {
             const data = await prsRes.json();
-            for (const item of data.items || []) {
-              for (const member of memberRecords) {
-                try {
-                  await supabaseAdmin.from("external_activity").upsert(
-                    {
-                      team_id: member.team_id,
-                      member_id: member.id,
-                      source: "github",
-                      activity_type: "pr_opened",
-                      title: item.title,
-                      external_id: String(item.id),
-                      external_url: item.html_url,
-                      metadata: {
-                        repo: item.repository_url?.split("/").slice(-2).join("/"),
-                        number: item.number,
-                      },
-                      occurred_at: item.created_at,
+            prsItems = data.items || [];
+          }
+
+          // FALLBACK for PRs opened
+          if (prsItems.length === 0 && orgName) {
+            if (!orgRepos) orgRepos = await fetchOrgRepos(token, orgName);
+            prsItems = await fetchPRsPerRepo(token, orgRepos, username, startDate, endDate, "opened");
+          }
+
+          for (const item of prsItems) {
+            for (const member of memberRecords) {
+              try {
+                await supabaseAdmin.from("external_activity").upsert(
+                  {
+                    team_id: member.team_id,
+                    member_id: member.id,
+                    source: "github",
+                    activity_type: "pr_opened",
+                    title: item.title,
+                    external_id: String(item.id),
+                    external_url: item.html_url,
+                    metadata: {
+                      repo: item.repository_url?.split("/").slice(-2).join("/"),
+                      number: item.number,
                     },
-                    { onConflict: "external_id,activity_type,source" }
-                  );
-                } catch (e) { /* dedup conflict */ }
-              }
+                    occurred_at: item.created_at,
+                  },
+                  { onConflict: "external_id,activity_type,source" }
+                );
+              } catch (e) { /* dedup conflict */ }
             }
           }
 
-          // Fetch PRs merged today
+          // --- PRs MERGED ---
           const mergedRes = await fetch(
             `${GH_API}/search/issues?q=author:${username}+type:pr+merged:${dateRange}&per_page=50`,
             { headers }
           );
+          let mergedItems: any[] = [];
           if (mergedRes.ok) {
             const data = await mergedRes.json();
-            for (const item of data.items || []) {
-              for (const member of memberRecords) {
-                try {
-                  await supabaseAdmin.from("external_activity").upsert(
-                    {
-                      team_id: member.team_id,
-                      member_id: member.id,
-                      source: "github",
-                      activity_type: "pr_merged",
-                      title: item.title,
-                      external_id: `merged-${item.id}`,
-                      external_url: item.html_url,
-                      metadata: {
-                        repo: item.repository_url?.split("/").slice(-2).join("/"),
-                        number: item.number,
-                      },
-                      occurred_at: item.closed_at || item.updated_at,
+            mergedItems = data.items || [];
+          }
+
+          // FALLBACK for PRs merged
+          if (mergedItems.length === 0 && orgName) {
+            if (!orgRepos) orgRepos = await fetchOrgRepos(token, orgName);
+            mergedItems = await fetchPRsPerRepo(token, orgRepos, username, startDate, endDate, "merged");
+          }
+
+          for (const item of mergedItems) {
+            for (const member of memberRecords) {
+              try {
+                await supabaseAdmin.from("external_activity").upsert(
+                  {
+                    team_id: member.team_id,
+                    member_id: member.id,
+                    source: "github",
+                    activity_type: "pr_merged",
+                    title: item.title,
+                    external_id: `merged-${item.id}`,
+                    external_url: item.html_url,
+                    metadata: {
+                      repo: item.repository_url?.split("/").slice(-2).join("/"),
+                      number: item.number,
                     },
-                    { onConflict: "external_id,activity_type,source" }
-                  );
-                } catch (e) { /* dedup conflict */ }
-              }
+                    occurred_at: item.merged_at || item.closed_at || item.updated_at,
+                  },
+                  { onConflict: "external_id,activity_type,source" }
+                );
+              } catch (e) { /* dedup conflict */ }
             }
           }
 
-          results.push({ org: install.github_org_name, user: username });
+          results.push({ org: orgName, user: username, commits: allCommits.length });
         } catch (e) {
           console.error(`GitHub sync error for ${username}:`, e);
         }
