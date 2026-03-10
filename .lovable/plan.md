@@ -65,3 +65,8 @@
 - `daily-summary-cron` updated: removed standup-day gate, Monday digest covers Sat+Sun, includes external activity counts (commits, PRs, ClickUp tasks)
 - MyStandup "Recent Activity" section shows unacknowledged external events with Add/Dismiss actions
 - Completed items get acknowledged; in-progress/opened items get added as today's focus commitments
+
+### Activity Feed Bug Fixes
+- Fixed `__none__` GitHub username causing bogus commits from random strangers (176 rows deleted)
+- Fixed standup responses not appearing in activity feed (broken PostgREST nested filter)
+- Broadened ClickUp sync to capture all task updates, not just completed/in-progress
