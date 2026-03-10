@@ -141,6 +141,19 @@ export function MembersTab() {
     enabled: !!orgId,
   });
 
+  // Filter out pending invites where the user is already a team member (stale invites)
+  const memberSlackIds = new Set(members.map((m) => {
+    // We don't have slack_user_id on our Member interface, so cross-reference isn't possible here.
+    // Instead, filter by checking if the invite's slack_display_name matches a member's full_name.
+    return m.full_name?.toLowerCase();
+  }).filter(Boolean));
+
+  const filteredPendingInvites = pendingInvites.filter((invite) => {
+    const inviteName = invite.slack_display_name?.toLowerCase();
+    if (inviteName && memberSlackIds.has(inviteName)) return false;
+    return true;
+  });
+
   // Filter out already-invited and existing members from dropdown
   const invitedSlackUserIds = new Set(pendingInvites.map((i) => i.slack_user_id));
   const availableSlackUsers = slackUsers?.filter((su) => {
@@ -296,17 +309,17 @@ export function MembersTab() {
       </Card>
 
       {/* Pending Invites */}
-      {pendingInvites.length > 0 && (
+      {filteredPendingInvites.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Pending Invites</CardTitle>
             <CardDescription>
-              {pendingInvites.length} invite{pendingInvites.length !== 1 ? "s" : ""} awaiting sign-in.
+              {filteredPendingInvites.length} invite{filteredPendingInvites.length !== 1 ? "s" : ""} awaiting sign-in.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {pendingInvites.map((invite) => (
+              {filteredPendingInvites.map((invite) => (
                 <div key={invite.id} className="flex items-center justify-between rounded-lg border p-3">
                   <div className="flex items-center gap-3">
                     <Avatar className="h-8 w-8">
