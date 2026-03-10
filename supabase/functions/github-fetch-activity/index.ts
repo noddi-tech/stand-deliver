@@ -12,6 +12,20 @@ const GH_HEADERS = (token: string) => ({
   "User-Agent": "StandFlow",
 });
 
+const BATCH_SIZE = 10;
+const REQUEST_TIMEOUT_MS = 5000;
+
+async function fetchWithTimeout(url: string, options: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    return res;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 // Fetch all org repos
 async function fetchOrgRepos(token: string, orgName: string): Promise<string[]> {
   const repos: string[] = [];
@@ -27,10 +41,11 @@ async function fetchOrgRepos(token: string, orgName: string): Promise<string[]> 
     if (data.length < 100) break;
     page++;
   }
+  console.log(`fetchOrgRepos: found ${repos.length} repos for org ${orgName}`);
   return repos;
 }
 
-// Per-repo fallback for commits
+// Per-repo fallback for commits — no ?author= filter, match client-side
 async function fetchCommitsPerRepo(
   token: string,
   repos: string[],
@@ -40,32 +55,59 @@ async function fetchCommitsPerRepo(
 ): Promise<{ items: any[]; total_count: number }> {
   const allCommits: any[] = [];
   const seenShas = new Set<string>();
-  for (const repoFullName of repos) {
-    try {
-      const res = await fetch(
-        `${GH_API}/repos/${repoFullName}/commits?author=${username}&since=${since}T00:00:00Z&until=${until}T23:59:59Z&per_page=100`,
-        { headers: GH_HEADERS(token) }
-      );
-      if (!res.ok) continue;
-      const commits = await res.json();
-      if (!Array.isArray(commits)) continue;
-      for (const c of commits) {
-        if (c.sha && !seenShas.has(c.sha)) {
-          seenShas.add(c.sha);
-          allCommits.push({
-            sha: c.sha,
-            html_url: c.html_url,
-            commit: c.commit,
-            repository: { full_name: repoFullName },
-          });
+  const userLower = username.toLowerCase();
+
+  for (let i = 0; i < repos.length; i += BATCH_SIZE) {
+    const batch = repos.slice(i, i + BATCH_SIZE);
+    const results = await Promise.allSettled(
+      batch.map(async (repoFullName) => {
+        try {
+          const res = await fetchWithTimeout(
+            `${GH_API}/repos/${repoFullName}/commits?since=${since}T00:00:00Z&until=${until}T23:59:59Z&per_page=100`,
+            { headers: GH_HEADERS(token) }
+          );
+          if (!res.ok) return [];
+          const commits = await res.json();
+          if (!Array.isArray(commits)) return [];
+          return commits
+            .filter((c: any) => {
+              const authorLogin = c.author?.login?.toLowerCase();
+              const committerLogin = c.committer?.login?.toLowerCase();
+              const commitAuthorName = c.commit?.author?.name?.toLowerCase();
+              const commitCommitterName = c.commit?.committer?.name?.toLowerCase();
+              return (
+                authorLogin === userLower ||
+                committerLogin === userLower ||
+                commitAuthorName === userLower ||
+                commitCommitterName === userLower
+              );
+            })
+            .map((c: any) => ({
+              sha: c.sha,
+              html_url: c.html_url,
+              commit: c.commit,
+              repository: { full_name: repoFullName },
+            }));
+        } catch {
+          return [];
+        }
+      })
+    );
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        for (const c of result.value) {
+          if (c.sha && !seenShas.has(c.sha)) {
+            seenShas.add(c.sha);
+            allCommits.push(c);
+          }
         }
       }
-    } catch { /* skip */ }
+    }
   }
   return { items: allCommits, total_count: allCommits.length };
 }
 
-// Per-repo fallback for PRs
+// Per-repo fallback for PRs (returns count only)
 async function fetchPRsPerRepo(
   token: string,
   repos: string[],
@@ -75,27 +117,41 @@ async function fetchPRsPerRepo(
   type: "opened" | "merged"
 ): Promise<number> {
   let count = 0;
-  for (const repoFullName of repos) {
-    try {
-      const res = await fetch(
-        `${GH_API}/repos/${repoFullName}/pulls?state=all&sort=updated&direction=desc&per_page=100`,
-        { headers: GH_HEADERS(token) }
-      );
-      if (!res.ok) continue;
-      const prs = await res.json();
-      if (!Array.isArray(prs)) continue;
-      for (const pr of prs) {
-        if (pr.user?.login?.toLowerCase() !== username.toLowerCase()) continue;
-        if (type === "opened") {
-          const created = pr.created_at?.split("T")[0];
-          if (created >= startDate && created <= endDate) count++;
-        } else {
-          if (!pr.merged_at) continue;
-          const merged = pr.merged_at.split("T")[0];
-          if (merged >= startDate && merged <= endDate) count++;
+  const userLower = username.toLowerCase();
+
+  for (let i = 0; i < repos.length; i += BATCH_SIZE) {
+    const batch = repos.slice(i, i + BATCH_SIZE);
+    const results = await Promise.allSettled(
+      batch.map(async (repoFullName) => {
+        try {
+          const res = await fetchWithTimeout(
+            `${GH_API}/repos/${repoFullName}/pulls?state=all&sort=updated&direction=desc&per_page=100`,
+            { headers: GH_HEADERS(token) }
+          );
+          if (!res.ok) return 0;
+          const prs = await res.json();
+          if (!Array.isArray(prs)) return 0;
+          let repoCount = 0;
+          for (const pr of prs) {
+            if (pr.user?.login?.toLowerCase() !== userLower) continue;
+            if (type === "opened") {
+              const created = pr.created_at?.split("T")[0];
+              if (created >= startDate && created <= endDate) repoCount++;
+            } else {
+              if (!pr.merged_at) continue;
+              const merged = pr.merged_at.split("T")[0];
+              if (merged >= startDate && merged <= endDate) repoCount++;
+            }
+          }
+          return repoCount;
+        } catch {
+          return 0;
         }
-      }
-    } catch { /* skip */ }
+      })
+    );
+    for (const result of results) {
+      if (result.status === "fulfilled") count += result.value;
+    }
   }
   return count;
 }
@@ -139,7 +195,6 @@ Deno.serve(async (req) => {
     const authorData = authorCommitsRes.ok ? await authorCommitsRes.json() : { total_count: 0, items: [] };
     const committerData = committerCommitsRes.ok ? await committerCommitsRes.json() : { total_count: 0, items: [] };
 
-    // Merge and deduplicate by SHA
     const seenShas = new Set<string>();
     const mergedCommitItems: any[] = [];
     for (const item of [...(authorData.items || []), ...(committerData.items || [])]) {
@@ -151,7 +206,7 @@ Deno.serve(async (req) => {
 
     let commitsData = { total_count: mergedCommitItems.length, items: mergedCommitItems };
 
-    // FALLBACK: if Search API returned 0, use per-repo approach
+    // FALLBACK: per-repo with client-side author+committer matching
     if (commitsData.total_count === 0 && orgName) {
       console.log(`Search API returned 0 commits for ${github_username}, falling back to per-repo`);
       const orgRepos = await fetchOrgRepos(token, orgName);
@@ -183,20 +238,18 @@ Deno.serve(async (req) => {
 
     // FALLBACK for PRs if search returned 0
     if ((prsOpened === 0 || prsMerged === 0) && orgName && commitsData.total_count > 0) {
-      // Only fallback if we know the user has activity (commits found via fallback)
       const orgRepos = await fetchOrgRepos(token, orgName);
       if (prsOpened === 0) prsOpened = await fetchPRsPerRepo(token, orgRepos, github_username, week_start, week_end, "opened");
       if (prsMerged === 0) prsMerged = await fetchPRsPerRepo(token, orgRepos, github_username, week_start, week_end, "merged");
     }
 
-    // Fetch reviews (keep search-only, less critical)
+    // Fetch reviews
     const reviewsRes = await fetch(
       `${GH_API}/search/issues?q=reviewed-by:${github_username}+type:pr+updated:${week_start}..${week_end}&per_page=100`,
       { headers }
     );
     const reviewsData = reviewsRes.ok ? await reviewsRes.json() : { total_count: 0 };
 
-    // Extract top repos from commits
     const repoSet = new Set<string>();
     for (const item of commitsData.items || []) {
       const repoName = item.repository?.full_name?.split("/").pop();

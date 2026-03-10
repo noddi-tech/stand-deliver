@@ -1,55 +1,87 @@
+## Completed
 
+### Slack channel selector (IntegrationsTab)
+- Channel dropdown now saves to `teams.slack_channel_id` on change
+- Initializes with current team's linked channel
+- Shows success toast with channel name
 
-## Root Cause: `?author=` Doesn't Match Committers
+### Slack invite system (MembersTab + Edge Function)
+- New `slack-send-invite` edge function sends a DM with Block Kit invite button
+- MembersTab shows "Invite via Slack" card with user picker when Slack is connected
+- Invited users click the link, sign in with Slack OIDC, and auto-join the org
 
-The per-repo fallback queries `/repos/{owner}/{repo}/commits?author=ClickUpBotGOAT`. The GitHub Commits API `author` parameter matches against the **git author** (name/email/login), not the **committer**.
+### Edit Daily Standup
+- Added UPDATE RLS policy on `standup_responses`
+- Edit button loads existing data back into form
+- Re-submit updates existing response and commitments
 
-Joachim's commits on repos like `stand-deliver` are made through Lovable, meaning:
-- **Author**: `lovable-dev[bot]` (the bot that writes the code)
-- **Committer**: `ClickUpBotGOAT` (Joachim, who approves/merges)
+### AI Standup Coach (Phase 1)
+- `ai-coach-standup` edge function reviews commitments via Lovable AI Gateway
+- Uses tool calling for structured output (suggestions with category, issue, rewrite)
+- `StandupCoachCard` component shows inline coaching before submit
+- Submit button triggers AI review first; user can apply/dismiss/submit anyway
 
-So `?author=ClickUpBotGOAT` returns 0 results because he's the committer, not the author. The GitHub Commits API has **no `?committer=` filter parameter**.
+### ClickUp Integration (Phase 2)
+- `clickup_installations` + `clickup_user_mappings` tables with RLS
+- `clickup-setup` edge function validates token, stores installation, lists members
+- `clickup-fetch-tasks` edge function pulls assigned tasks from ClickUp API
+- `ClickUpSection` component: 3-step wizard (token → connect → map users)
+- Settings > Integrations: ClickUp connection card with setup instructions
+- MyStandup: "Import from ClickUp" button + task picker dialog in Today's Focus
 
-This also explains why the Search API (`/search/commits?q=committer:ClickUpBotGOAT`) returns 0 — GitHub's search indexer doesn't index bot-committed content reliably.
+### ClickUp Status Sync
+- Added `clickup_task_id` column to `commitments` table
+- `clickup-update-task` edge function syncs status changes to ClickUp API
+- Fuzzy-matches StandFlow statuses to ClickUp's custom per-list statuses
+- MyStandup stores `clickup_task_id` on import, fires sync on status change
 
-## Fix: Query Without Author Filter, Match Client-Side
+### Bug Fixes (ClickUp RLS + Standup Duplicate Key)
+- Updated INSERT policy on `clickup_user_mappings` to allow org members to map any user
+- Replaced conditional insert/update on `standup_responses` with idempotent upsert
 
-For the per-repo fallback, fetch recent commits from each repo **without** the `?author=` filter, then check both `author.login` and `committer.login` client-side.
+### GitHub Integration + Cross-Platform Weekly Digest
+- `github_installations` + `github_user_mappings` tables with RLS
+- `github-setup` edge function validates PAT, stores installation, lists org members
+- `github-fetch-activity` edge function fetches commits, PRs, reviews via GitHub Search API
+- `GitHubSection` component: setup wizard (token + org name → user mapping)
+- Settings > Integrations: GitHub connection card after ClickUp
+- `ai-weekly-digest` enhanced to aggregate GitHub + ClickUp + StandFlow activity
+- `cross_platform_activity` JSONB column on `ai_weekly_digests`
+- WeeklyDigest page shows cross-platform activity card (StandFlow, GitHub, ClickUp)
+- Slack summary includes GitHub stats when available
 
-To keep this performant:
-1. **Parallelize** repo fetches in batches of 10 with `Promise.allSettled`
-2. **Add per-request timeout** (5s) via `AbortController`
-3. **Limit scope**: only fetch commits in the date range (`?since=` and `?until=` still work without `?author=`)
-4. **Match both author AND committer** login against the username
+### Fix Duplicate Slack Summaries + Daily Digest Cron
+- Removed per-submission `slack-post-summary` call from MyStandup.tsx (was firing on every individual submission)
+- Removed duplicate Slack posting from `ai-summarize-session` (now only generates + stores AI summary)
+- Added `ai-summarize-session` + `slack-post-summary` calls to Meeting Mode completion
+- New `daily-summary-cron` edge function aggregates daily activity (completions, new tasks, carried, blockers) and posts end-of-day digest to Slack
+- pg_cron job scheduled at 17:00 UTC weekdays to trigger the daily digest automatically
 
-### Changes
+### Auto-Sync External Activity (ClickUp + GitHub)
+- New `external_activity` table with RLS, unique dedup constraint on `(external_id, activity_type, source)`
+- `clickup-sync-activity` edge function polls ClickUp for task status changes (completed, in-progress)
+- `github-sync-activity` edge function polls GitHub for commits, PRs opened, PRs merged
+- pg_cron jobs run both sync functions every 30 minutes, 7 days/week (including weekends)
+- `daily-summary-cron` updated: removed standup-day gate, Monday digest covers Sat+Sun, includes external activity counts (commits, PRs, ClickUp tasks)
+- MyStandup "Recent Activity" section shows unacknowledged external events with Add/Dismiss actions
+- Completed items get acknowledged; in-progress/opened items get added as today's focus commitments
 
-**`supabase/functions/github-sync-activity/index.ts`**:
-- `fetchCommitsPerRepo`: Remove `?author=${username}`, fetch all commits in date range, then filter where `commit.author.name`, `author.login`, or `committer.login` matches the username (case-insensitive)
-- Parallelize with `Promise.allSettled` in batches of 10
-- Add 5s `AbortController` timeout per request
+### Activity Feed Bug Fixes
+- Fixed `__none__` GitHub username causing bogus commits from random strangers (176 rows deleted)
+- Fixed standup responses not appearing in activity feed (broken PostgREST nested filter)
+- Broadened ClickUp sync to capture all task updates, not just completed/in-progress
+- Redeployed all sync edge functions (clickup-sync-activity, github-sync-activity, github-fetch-activity)
+- Replaced fragile nested PostgREST filter with two-step session-based query for standup responses
 
-**`supabase/functions/github-fetch-activity/index.ts`**:
-- Same changes to `fetchCommitsPerRepo`
+### GitHub Sync Date Range Fix
+- Changed `github-sync-activity` from single-date to range-based queries (`committer-date:${start}..${end}`)
+- Added optional `days_back` parameter (default: 1, max: 90)
+- Manual "Sync GitHub" button now passes `days_back: 30` to backfill historical activity
+- Fixes missing activity for users whose commits weren't captured by single-date GitHub Search API queries
 
-### Key code change:
-
-```typescript
-// Before (misses committer-only commits):
-`/repos/${repo}/commits?author=${username}&since=...`
-
-// After (catches both author and committer):
-`/repos/${repo}/commits?since=${since}T00:00:00Z&until=${until}T23:59:59Z&per_page=100`
-// Then filter client-side:
-const isMatch = (c) =>
-  c.author?.login?.toLowerCase() === username.toLowerCase() ||
-  c.committer?.login?.toLowerCase() === username.toLowerCase();
-```
-
-### Files Changed
-
-| File | Change |
-|------|--------|
-| `supabase/functions/github-sync-activity/index.ts` | Remove `?author=` from fallback, match author+committer client-side, parallelize with batches of 10 + 5s timeout |
-| `supabase/functions/github-fetch-activity/index.ts` | Same fix |
-
+### GitHub Per-Repo Fallback for Unindexed Users
+- GitHub Search API does not index certain accounts (bot/machine users like `ClickUpBotGOAT`)
+- Added per-repo fallback: if Search API returns 0 commits for a user, lists org repos via `/orgs/{org}/repos` and queries each repo's Commits API (`/repos/{owner}/{repo}/commits?author={username}&since=...`)
+- Same fallback for PRs opened/merged using the Pulls API
+- Applied to both `github-sync-activity` and `github-fetch-activity` edge functions
+- Org repos list is cached per sync invocation; fallback only triggers when Search returns 0

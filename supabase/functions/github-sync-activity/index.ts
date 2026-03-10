@@ -12,7 +12,21 @@ const GH_HEADERS = (token: string) => ({
   "User-Agent": "StandFlow",
 });
 
-// Fetch all org repos (cached per org per invocation)
+const BATCH_SIZE = 10;
+const REQUEST_TIMEOUT_MS = 5000;
+
+async function fetchWithTimeout(url: string, options: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    return res;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// Fetch all org repos (paginated)
 async function fetchOrgRepos(token: string, orgName: string): Promise<string[]> {
   const repos: string[] = [];
   let page = 1;
@@ -27,10 +41,11 @@ async function fetchOrgRepos(token: string, orgName: string): Promise<string[]> 
     if (data.length < 100) break;
     page++;
   }
+  console.log(`fetchOrgRepos: found ${repos.length} repos for org ${orgName}`);
   return repos;
 }
 
-// Per-repo fallback: fetch commits from each repo's Commits API
+// Per-repo fallback: fetch commits without ?author= filter, match client-side
 async function fetchCommitsPerRepo(
   token: string,
   repos: string[],
@@ -40,32 +55,59 @@ async function fetchCommitsPerRepo(
 ): Promise<any[]> {
   const allCommits: any[] = [];
   const seenShas = new Set<string>();
-  for (const repoFullName of repos) {
-    try {
-      const res = await fetch(
-        `${GH_API}/repos/${repoFullName}/commits?author=${username}&since=${since}T00:00:00Z&until=${until}T23:59:59Z&per_page=100`,
-        { headers: GH_HEADERS(token) }
-      );
-      if (!res.ok) continue;
-      const commits = await res.json();
-      if (!Array.isArray(commits)) continue;
-      for (const c of commits) {
-        if (c.sha && !seenShas.has(c.sha)) {
-          seenShas.add(c.sha);
-          allCommits.push({
-            sha: c.sha,
-            html_url: c.html_url,
-            commit: c.commit,
-            repository: { full_name: repoFullName },
-          });
+  const userLower = username.toLowerCase();
+
+  for (let i = 0; i < repos.length; i += BATCH_SIZE) {
+    const batch = repos.slice(i, i + BATCH_SIZE);
+    const results = await Promise.allSettled(
+      batch.map(async (repoFullName) => {
+        try {
+          const res = await fetchWithTimeout(
+            `${GH_API}/repos/${repoFullName}/commits?since=${since}T00:00:00Z&until=${until}T23:59:59Z&per_page=100`,
+            { headers: GH_HEADERS(token) }
+          );
+          if (!res.ok) return [];
+          const commits = await res.json();
+          if (!Array.isArray(commits)) return [];
+          return commits
+            .filter((c: any) => {
+              const authorLogin = c.author?.login?.toLowerCase();
+              const committerLogin = c.committer?.login?.toLowerCase();
+              const commitAuthorName = c.commit?.author?.name?.toLowerCase();
+              const commitCommitterName = c.commit?.committer?.name?.toLowerCase();
+              return (
+                authorLogin === userLower ||
+                committerLogin === userLower ||
+                commitAuthorName === userLower ||
+                commitCommitterName === userLower
+              );
+            })
+            .map((c: any) => ({
+              sha: c.sha,
+              html_url: c.html_url,
+              commit: c.commit,
+              repository: { full_name: repoFullName },
+            }));
+        } catch {
+          return [];
+        }
+      })
+    );
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        for (const c of result.value) {
+          if (c.sha && !seenShas.has(c.sha)) {
+            seenShas.add(c.sha);
+            allCommits.push(c);
+          }
         }
       }
-    } catch { /* skip repo */ }
+    }
   }
   return allCommits;
 }
 
-// Per-repo fallback: fetch PRs from each repo's Pulls API
+// Per-repo fallback: fetch PRs
 async function fetchPRsPerRepo(
   token: string,
   repos: string[],
@@ -76,34 +118,48 @@ async function fetchPRsPerRepo(
 ): Promise<any[]> {
   const allPRs: any[] = [];
   const seenIds = new Set<number>();
-  for (const repoFullName of repos) {
-    try {
-      const res = await fetch(
-        `${GH_API}/repos/${repoFullName}/pulls?state=all&sort=updated&direction=desc&per_page=100`,
-        { headers: GH_HEADERS(token) }
-      );
-      if (!res.ok) continue;
-      const prs = await res.json();
-      if (!Array.isArray(prs)) continue;
-      for (const pr of prs) {
+  const userLower = username.toLowerCase();
+
+  for (let i = 0; i < repos.length; i += BATCH_SIZE) {
+    const batch = repos.slice(i, i + BATCH_SIZE);
+    const results = await Promise.allSettled(
+      batch.map(async (repoFullName) => {
+        try {
+          const res = await fetchWithTimeout(
+            `${GH_API}/repos/${repoFullName}/pulls?state=all&sort=updated&direction=desc&per_page=100`,
+            { headers: GH_HEADERS(token) }
+          );
+          if (!res.ok) return [];
+          const prs = await res.json();
+          if (!Array.isArray(prs)) return [];
+          return prs
+            .filter((pr: any) => pr.user?.login?.toLowerCase() === userLower)
+            .map((pr: any) => ({ ...pr, _repoFullName: repoFullName }));
+        } catch {
+          return [];
+        }
+      })
+    );
+    for (const result of results) {
+      if (result.status !== "fulfilled") continue;
+      for (const pr of result.value) {
         if (seenIds.has(pr.id)) continue;
-        if (pr.user?.login?.toLowerCase() !== username.toLowerCase()) continue;
         if (type === "opened") {
           const created = pr.created_at?.split("T")[0];
           if (created >= startDate && created <= endDate) {
             seenIds.add(pr.id);
-            allPRs.push({ ...pr, repository_url: `${GH_API}/repos/${repoFullName}` });
+            allPRs.push({ ...pr, repository_url: `${GH_API}/repos/${pr._repoFullName}` });
           }
         } else {
           if (!pr.merged_at) continue;
           const merged = pr.merged_at.split("T")[0];
           if (merged >= startDate && merged <= endDate) {
             seenIds.add(pr.id);
-            allPRs.push({ ...pr, repository_url: `${GH_API}/repos/${repoFullName}` });
+            allPRs.push({ ...pr, repository_url: `${GH_API}/repos/${pr._repoFullName}` });
           }
         }
       }
-    } catch { /* skip repo */ }
+    }
   }
   return allPRs;
 }
@@ -119,20 +175,18 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Parse optional days_back from request body (default: 1)
     let daysBack = 1;
     try {
       const body = await req.json();
       if (body?.days_back && Number.isFinite(body.days_back)) {
         daysBack = Math.max(1, Math.min(body.days_back, 90));
       }
-    } catch { /* no body or invalid JSON — use default */ }
+    } catch { /* no body */ }
 
     const endDate = new Date().toISOString().split("T")[0];
     const startDate = new Date(Date.now() - (daysBack - 1) * 86400000).toISOString().split("T")[0];
     const dateRange = daysBack === 1 ? endDate : `${startDate}..${endDate}`;
 
-    // Get all orgs with GitHub installed
     const { data: installations } = await supabaseAdmin
       .from("github_installations")
       .select("org_id, api_token_encrypted, github_org_name");
@@ -150,7 +204,6 @@ Deno.serve(async (req) => {
       const headers = GH_HEADERS(token);
       const orgName = install.github_org_name;
 
-      // Get all user mappings for this org
       const { data: mappings } = await supabaseAdmin
         .from("github_user_mappings")
         .select("user_id, github_username, github_display_name")
@@ -167,7 +220,6 @@ Deno.serve(async (req) => {
 
       if (!teamMembers || teamMembers.length === 0) continue;
 
-      // Cache org repos for fallback (fetched lazily)
       let orgRepos: string[] | null = null;
 
       for (const mapping of mappings) {
@@ -187,7 +239,6 @@ Deno.serve(async (req) => {
           const authorData = authorRes.ok ? await authorRes.json() : { items: [] };
           const committerData = committerRes.ok ? await committerRes.json() : { items: [] };
 
-          // Merge and deduplicate by SHA
           const seenShas = new Set<string>();
           let allCommits: any[] = [];
           for (const item of [...(authorData.items || []), ...(committerData.items || [])]) {
@@ -197,7 +248,7 @@ Deno.serve(async (req) => {
             }
           }
 
-          // FALLBACK: If Search API returned 0 commits, try per-repo approach
+          // FALLBACK: per-repo with client-side author+committer matching
           if (allCommits.length === 0 && orgName) {
             console.log(`Search API returned 0 commits for ${username}, falling back to per-repo`);
             if (!orgRepos) orgRepos = await fetchOrgRepos(token, orgName);
@@ -225,7 +276,7 @@ Deno.serve(async (req) => {
                   },
                   { onConflict: "external_id,activity_type,source" }
                 );
-              } catch (e) { /* dedup conflict */ }
+              } catch (e) { /* dedup */ }
             }
           }
 
@@ -240,7 +291,6 @@ Deno.serve(async (req) => {
             prsItems = data.items || [];
           }
 
-          // FALLBACK for PRs opened
           if (prsItems.length === 0 && orgName) {
             if (!orgRepos) orgRepos = await fetchOrgRepos(token, orgName);
             prsItems = await fetchPRsPerRepo(token, orgRepos, username, startDate, endDate, "opened");
@@ -266,7 +316,7 @@ Deno.serve(async (req) => {
                   },
                   { onConflict: "external_id,activity_type,source" }
                 );
-              } catch (e) { /* dedup conflict */ }
+              } catch (e) { /* dedup */ }
             }
           }
 
@@ -281,7 +331,6 @@ Deno.serve(async (req) => {
             mergedItems = data.items || [];
           }
 
-          // FALLBACK for PRs merged
           if (mergedItems.length === 0 && orgName) {
             if (!orgRepos) orgRepos = await fetchOrgRepos(token, orgName);
             mergedItems = await fetchPRsPerRepo(token, orgRepos, username, startDate, endDate, "merged");
@@ -307,7 +356,7 @@ Deno.serve(async (req) => {
                   },
                   { onConflict: "external_id,activity_type,source" }
                 );
-              } catch (e) { /* dedup conflict */ }
+              } catch (e) { /* dedup */ }
             }
           }
 
