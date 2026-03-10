@@ -23,7 +23,18 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const today = new Date().toISOString().split("T")[0];
+    // Parse optional days_back from request body (default: 1)
+    let daysBack = 1;
+    try {
+      const body = await req.json();
+      if (body?.days_back && Number.isFinite(body.days_back)) {
+        daysBack = Math.max(1, Math.min(body.days_back, 90));
+      }
+    } catch { /* no body or invalid JSON — use default */ }
+
+    const endDate = new Date().toISOString().split("T")[0];
+    const startDate = new Date(Date.now() - (daysBack - 1) * 86400000).toISOString().split("T")[0];
+    const dateRange = daysBack === 1 ? endDate : `${startDate}..${endDate}`;
 
     // Get all orgs with GitHub installed
     const { data: installations } = await supabaseAdmin
