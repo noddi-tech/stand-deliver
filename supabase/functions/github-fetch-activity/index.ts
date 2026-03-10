@@ -107,6 +107,43 @@ async function fetchCommitsPerRepo(
   return { items: allCommits, total_count: allCommits.length };
 }
 
+// Fetch user events (PushEvent) to capture merges where user is neither author nor committer
+async function fetchUserEvents(
+  token: string,
+  username: string,
+  startDate: string,
+  endDate: string
+): Promise<any[]> {
+  const commits: any[] = [];
+  try {
+    const res = await fetchWithTimeout(
+      `${GH_API}/users/${username}/events?per_page=100`,
+      { headers: GH_HEADERS(token) }
+    );
+    if (!res.ok) return [];
+    const events = await res.json();
+    if (!Array.isArray(events)) return [];
+    for (const event of events) {
+      if (event.type !== "PushEvent") continue;
+      const eventDate = event.created_at?.split("T")[0];
+      if (!eventDate || eventDate < startDate || eventDate > endDate) continue;
+      const repo = event.repo?.name || "";
+      for (const c of event.payload?.commits || []) {
+        commits.push({
+          sha: c.sha,
+          html_url: `https://github.com/${repo}/commit/${c.sha}`,
+          commit: { message: c.message, author: { date: event.created_at } },
+          repository: { full_name: repo },
+        });
+      }
+    }
+    console.log(`Events API found ${commits.length} commits for ${username}`);
+  } catch {
+    // ignore
+  }
+  return commits;
+}
+
 // Per-repo fallback for PRs (returns count only)
 async function fetchPRsPerRepo(
   token: string,
