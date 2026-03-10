@@ -1,30 +1,80 @@
+## Completed
 
+### Slack channel selector (IntegrationsTab)
+- Channel dropdown now saves to `teams.slack_channel_id` on change
+- Initializes with current team's linked channel
+- Shows success toast with channel name
 
-## Fix: GitHub Sync Uses Unreliable Single-Date Format
+### Slack invite system (MembersTab + Edge Function)
+- New `slack-send-invite` edge function sends a DM with Block Kit invite button
+- MembersTab shows "Invite via Slack" card with user picker when Slack is connected
+- Invited users click the link, sign in with Slack OIDC, and auto-join the org
 
-### Root Cause
+### Edit Daily Standup
+- Added UPDATE RLS policy on `standup_responses`
+- Edit button loads existing data back into form
+- Re-submit updates existing response and commitments
 
-`github-sync-activity` queries with `committer-date:${today}` (e.g. `committer-date:2026-03-10`) — a single date string. The GitHub Search API is unreliable with single-date filters and often returns 0 results even when commits exist.
+### AI Standup Coach (Phase 1)
+- `ai-coach-standup` edge function reviews commitments via Lovable AI Gateway
+- Uses tool calling for structured output (suggestions with category, issue, rewrite)
+- `StandupCoachCard` component shows inline coaching before submit
+- Submit button triggers AI review first; user can apply/dismiss/submit anyway
 
-Meanwhile, `github-fetch-activity` uses a **range** format (`committer-date:${start}..${end}`) and successfully finds Joachim's commits. The fix is to align the sync function with the same range format.
+### ClickUp Integration (Phase 2)
+- `clickup_installations` + `clickup_user_mappings` tables with RLS
+- `clickup-setup` edge function validates token, stores installation, lists members
+- `clickup-fetch-tasks` edge function pulls assigned tasks from ClickUp API
+- `ClickUpSection` component: 3-step wizard (token → connect → map users)
+- Settings > Integrations: ClickUp connection card with setup instructions
+- MyStandup: "Import from ClickUp" button + task picker dialog in Today's Focus
 
-### Changes
+### ClickUp Status Sync
+- Added `clickup_task_id` column to `commitments` table
+- `clickup-update-task` edge function syncs status changes to ClickUp API
+- Fuzzy-matches StandFlow statuses to ClickUp's custom per-list statuses
+- MyStandup stores `clickup_task_id` on import, fires sync on status change
 
-**`supabase/functions/github-sync-activity/index.ts`:**
-1. Parse optional `days_back` from request body (default: `1`)
-2. Compute `startDate` and `endDate` as date strings
-3. Replace all single-date queries with range format:
-   - Commits: `committer-date:${startDate}..${endDate}` (for both author and committer searches)
-   - PRs opened: `created:${startDate}..${endDate}`
-   - PRs merged: `merged:${startDate}..${endDate}`
+### Bug Fixes (ClickUp RLS + Standup Duplicate Key)
+- Updated INSERT policy on `clickup_user_mappings` to allow org members to map any user
+- Replaced conditional insert/update on `standup_responses` with idempotent upsert
 
-**`src/components/settings/SyncNowCard.tsx`:**
-- Pass `{ days_back: 30 }` in the body when manually syncing GitHub, to backfill the last 30 days
+### GitHub Integration + Cross-Platform Weekly Digest
+- `github_installations` + `github_user_mappings` tables with RLS
+- `github-setup` edge function validates PAT, stores installation, lists org members
+- `github-fetch-activity` edge function fetches commits, PRs, reviews via GitHub Search API
+- `GitHubSection` component: setup wizard (token + org name → user mapping)
+- Settings > Integrations: GitHub connection card after ClickUp
+- `ai-weekly-digest` enhanced to aggregate GitHub + ClickUp + StandFlow activity
+- `cross_platform_activity` JSONB column on `ai_weekly_digests`
+- WeeklyDigest page shows cross-platform activity card (StandFlow, GitHub, ClickUp)
+- Slack summary includes GitHub stats when available
 
-### Files Changed
+### Fix Duplicate Slack Summaries + Daily Digest Cron
+- Removed per-submission `slack-post-summary` call from MyStandup.tsx (was firing on every individual submission)
+- Removed duplicate Slack posting from `ai-summarize-session` (now only generates + stores AI summary)
+- Added `ai-summarize-session` + `slack-post-summary` calls to Meeting Mode completion
+- New `daily-summary-cron` edge function aggregates daily activity (completions, new tasks, carried, blockers) and posts end-of-day digest to Slack
+- pg_cron job scheduled at 17:00 UTC weekdays to trigger the daily digest automatically
 
-| File | Change |
-|------|--------|
-| `supabase/functions/github-sync-activity/index.ts` | Accept `days_back`, use date range format instead of single date |
-| `src/components/settings/SyncNowCard.tsx` | Pass `days_back: 30` for manual GitHub sync |
+### Auto-Sync External Activity (ClickUp + GitHub)
+- New `external_activity` table with RLS, unique dedup constraint on `(external_id, activity_type, source)`
+- `clickup-sync-activity` edge function polls ClickUp for task status changes (completed, in-progress)
+- `github-sync-activity` edge function polls GitHub for commits, PRs opened, PRs merged
+- pg_cron jobs run both sync functions every 30 minutes, 7 days/week (including weekends)
+- `daily-summary-cron` updated: removed standup-day gate, Monday digest covers Sat+Sun, includes external activity counts (commits, PRs, ClickUp tasks)
+- MyStandup "Recent Activity" section shows unacknowledged external events with Add/Dismiss actions
+- Completed items get acknowledged; in-progress/opened items get added as today's focus commitments
 
+### Activity Feed Bug Fixes
+- Fixed `__none__` GitHub username causing bogus commits from random strangers (176 rows deleted)
+- Fixed standup responses not appearing in activity feed (broken PostgREST nested filter)
+- Broadened ClickUp sync to capture all task updates, not just completed/in-progress
+- Redeployed all sync edge functions (clickup-sync-activity, github-sync-activity, github-fetch-activity)
+- Replaced fragile nested PostgREST filter with two-step session-based query for standup responses
+
+### GitHub Sync Date Range Fix
+- Changed `github-sync-activity` from single-date to range-based queries (`committer-date:${start}..${end}`)
+- Added optional `days_back` parameter (default: 1, max: 90)
+- Manual "Sync GitHub" button now passes `days_back: 30` to backfill historical activity
+- Fixes missing activity for users whose commits weren't captured by single-date GitHub Search API queries
