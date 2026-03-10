@@ -110,6 +110,14 @@ Deno.serve(async (req) => {
         { onConflict: "user_id,org_id" }
       );
 
+    // Mark any matching pending invite as accepted
+    await supabase
+      .from("slack_invites")
+      .update({ status: "accepted" })
+      .eq("org_id", org_id)
+      .eq("slack_user_id", slackUserId)
+      .eq("status", "pending");
+
     return new Response(
       JSON.stringify({ slack_user_id: slackUserId, display_name: slackDisplayName }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }

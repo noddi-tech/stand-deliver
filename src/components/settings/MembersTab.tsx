@@ -141,6 +141,19 @@ export function MembersTab() {
     enabled: !!orgId,
   });
 
+  // Filter out pending invites where the user is already a team member (stale invites)
+  const memberSlackIds = new Set(members.map((m) => {
+    // We don't have slack_user_id on our Member interface, so cross-reference isn't possible here.
+    // Instead, filter by checking if the invite's slack_display_name matches a member's full_name.
+    return m.full_name?.toLowerCase();
+  }).filter(Boolean));
+
+  const filteredPendingInvites = pendingInvites.filter((invite) => {
+    const inviteName = invite.slack_display_name?.toLowerCase();
+    if (inviteName && memberSlackIds.has(inviteName)) return false;
+    return true;
+  });
+
   // Filter out already-invited and existing members from dropdown
   const invitedSlackUserIds = new Set(pendingInvites.map((i) => i.slack_user_id));
   const availableSlackUsers = slackUsers?.filter((su) => {

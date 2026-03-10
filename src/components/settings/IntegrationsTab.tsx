@@ -471,6 +471,9 @@ export function IntegrationsTab() {
 
       {/* GitHub Integration */}
       <GitHubSection orgId={orgId} />
+
+      {/* Manual Sync */}
+      {orgId && <SyncNowCard orgId={orgId} />}
     </div>
   );
 }
