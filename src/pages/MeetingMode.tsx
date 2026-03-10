@@ -262,10 +262,13 @@ export default function MeetingMode() {
         <div className="max-w-4xl mx-auto space-y-8">
           <div className="text-center space-y-2">
             <h1 className="text-3xl font-bold">Meeting Mode</h1>
-            <p className="text-slate-400">{teamInfo?.name || "Your Team"} · {format(new Date(), "EEEE, MMM d")}</p>
-            <p className="text-sm text-slate-500">
-              Est. duration: {Math.ceil((members.length * timerDuration) / 60)} min ({members.length} members × {Math.floor(timerDuration / 60)}:{String(timerDuration % 60).padStart(2, "0")})
-            </p>
+             <p className="text-slate-400">{teamInfo?.name || "Your Team"} · {format(new Date(), "EEEE, MMM d")}</p>
+             {nextStandupDate && (
+               <p className="text-sm text-slate-500">Next standup: {format(nextStandupDate, "EEEE, MMM d")}</p>
+             )}
+             <p className="text-sm text-slate-500">
+               Est. duration: {Math.ceil((members.length * timerDuration) / 60)} min ({members.length} members × {Math.floor(timerDuration / 60)}:{String(timerDuration % 60).padStart(2, "0")})
+             </p>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
