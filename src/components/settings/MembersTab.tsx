@@ -309,7 +309,7 @@ export function MembersTab() {
       </Card>
 
       {/* Pending Invites */}
-      {pendingInvites.length > 0 && (
+      {filteredPendingInvites.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Pending Invites</CardTitle>
