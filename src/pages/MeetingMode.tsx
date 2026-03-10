@@ -105,6 +105,24 @@ export default function MeetingMode() {
   });
 
   const submittedMemberIds = new Set(responses.map((r) => r.member_id));
+  const skippedMemberIds = new Set(
+    responses.filter((r) => r.yesterday_text === "Skipped" && !r.mood).map((r) => r.member_id)
+  );
+
+  // Compute next standup date
+  const dayMap: Record<string, number> = { sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6 };
+  const getNextStandupDate = () => {
+    const standupDays = (teamInfo?.standup_days || []).map((d: string) => dayMap[d.toLowerCase()]).filter((n: number) => n !== undefined);
+    if (standupDays.length === 0) return null;
+    const now = new Date();
+    const todayDow = getDay(now);
+    for (let offset = 1; offset <= 7; offset++) {
+      const nextDow = (todayDow + offset) % 7;
+      if (standupDays.includes(nextDow)) return addDays(now, offset);
+    }
+    return null;
+  };
+  const nextStandupDate = getNextStandupDate();
 
   const getProfile = (memberId: string) => {
     const m = members.find((m) => m.id === memberId);
