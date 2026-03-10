@@ -70,3 +70,5 @@
 - Fixed `__none__` GitHub username causing bogus commits from random strangers (176 rows deleted)
 - Fixed standup responses not appearing in activity feed (broken PostgREST nested filter)
 - Broadened ClickUp sync to capture all task updates, not just completed/in-progress
+- Redeployed all sync edge functions (clickup-sync-activity, github-sync-activity, github-fetch-activity)
+- Replaced fragile nested PostgREST filter with two-step session-based query for standup responses
