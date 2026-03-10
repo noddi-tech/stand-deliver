@@ -14,6 +14,7 @@ import { ClickUpSection } from "./ClickUpSection";
 import { GitHubSection } from "./GitHubSection";
 import { toast } from "sonner";
 import { Hash, Link2, Loader2, Unplug, UserCheck, Zap } from "lucide-react";
+import { SyncNowCard } from "./SyncNowCard";
 
 
 interface SlackUser {
