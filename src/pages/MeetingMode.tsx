@@ -275,24 +275,35 @@ export default function MeetingMode() {
             {members.map((m) => {
               const profile = m.profile as any;
               const submitted = submittedMemberIds.has(m.id);
+              const skipped = skippedMemberIds.has(m.id);
               const initials = (profile?.full_name || "?").split(" ").map((w: string) => w[0]).join("").slice(0, 2);
+              
+              const statusLabel = skipped ? "Skipped" : submitted ? "Submitted" : "Pending";
+              const borderClass = skipped ? "border-amber-500/30" : submitted ? "border-primary/30" : "opacity-60";
+              const badgeVariant = skipped ? "secondary" : submitted ? "default" : "secondary";
+              
               return (
-                <Card key={m.id} className={`bg-slate-900 border-slate-800 ${submitted ? "border-primary/30" : "opacity-60"}`}>
+                <Card key={m.id} className={`bg-slate-900 border-slate-800 ${borderClass}`}>
                   <CardContent className="p-4 flex flex-col items-center gap-2">
                     <div className="relative">
                       <Avatar className="h-12 w-12">
                         <AvatarImage src={profile?.avatar_url} />
                         <AvatarFallback className="bg-primary text-primary-foreground">{initials}</AvatarFallback>
                       </Avatar>
-                      {submitted && (
+                      {submitted && !skipped && (
                         <div className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-emerald-500 flex items-center justify-center">
                           <Check className="h-3 w-3 text-white" />
                         </div>
                       )}
+                      {skipped && (
+                        <div className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-amber-500 flex items-center justify-center">
+                          <SkipForward className="h-3 w-3 text-white" />
+                        </div>
+                      )}
                     </div>
                     <span className="text-xs font-medium text-slate-200">{profile?.full_name || "Unknown"}</span>
-                    <Badge variant={submitted ? "default" : "secondary"} className="text-[10px]">
-                      {submitted ? "Submitted" : "Pending"}
+                    <Badge variant={badgeVariant} className={`text-[10px] ${skipped ? "bg-amber-500/20 text-amber-300 border-amber-500/30" : ""}`}>
+                      {statusLabel}
                     </Badge>
                   </CardContent>
                 </Card>
