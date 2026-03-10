@@ -55,6 +55,21 @@ interface NewCommitment {
   clickup_task_id?: string; // ClickUp task link
 }
 
+function SkipTodayButton({ memberId, teamId }: { memberId: string; teamId: string }) {
+  const skipMutation = useSkipStandup();
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={skipMutation.isPending}
+      onClick={() => skipMutation.mutate({ memberId, teamId })}
+    >
+      <SkipForward className="mr-1 h-4 w-4" />
+      Skip Today
+    </Button>
+  );
+}
+
 export default function MyStandup() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
