@@ -121,15 +121,18 @@ export function useTodaySession(teamId: string | undefined, memberId: string | u
 
       const { data: response } = await supabase
         .from("standup_responses")
-        .select("id")
+        .select("id, yesterday_text, mood")
         .eq("session_id", session.id)
         .eq("member_id", memberId!)
         .limit(1)
         .maybeSingle();
 
-      return response
-        ? { status: "submitted" as const, sessionId: session.id }
-        : { status: "pending" as const, sessionId: session.id };
+      if (!response) return { status: "pending" as const, sessionId: session.id };
+      
+      const isSkipped = response.yesterday_text === "Skipped" && response.mood === null;
+      return isSkipped
+        ? { status: "skipped" as const, sessionId: session.id }
+        : { status: "submitted" as const, sessionId: session.id };
     },
   });
 }
