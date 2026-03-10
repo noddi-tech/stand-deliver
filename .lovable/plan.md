@@ -78,3 +78,10 @@
 - Added optional `days_back` parameter (default: 1, max: 90)
 - Manual "Sync GitHub" button now passes `days_back: 30` to backfill historical activity
 - Fixes missing activity for users whose commits weren't captured by single-date GitHub Search API queries
+
+### GitHub Per-Repo Fallback for Unindexed Users
+- GitHub Search API does not index certain accounts (bot/machine users like `ClickUpBotGOAT`)
+- Added per-repo fallback: if Search API returns 0 commits for a user, lists org repos via `/orgs/{org}/repos` and queries each repo's Commits API (`/repos/{owner}/{repo}/commits?author={username}&since=...`)
+- Same fallback for PRs opened/merged using the Pulls API
+- Applied to both `github-sync-activity` and `github-fetch-activity` edge functions
+- Org repos list is cached per sync invocation; fallback only triggers when Search returns 0
