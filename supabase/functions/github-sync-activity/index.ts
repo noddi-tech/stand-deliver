@@ -123,7 +123,7 @@ Deno.serve(async (req) => {
 
           // Fetch PRs opened today
           const prsRes = await fetch(
-            `${GH_API}/search/issues?q=author:${username}+type:pr+created:${today}&per_page=50`,
+            `${GH_API}/search/issues?q=author:${username}+type:pr+created:${dateRange}&per_page=50`,
             { headers }
           );
           if (prsRes.ok) {
