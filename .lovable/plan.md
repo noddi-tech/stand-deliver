@@ -1,74 +1,104 @@
-## Completed
 
-### Slack channel selector (IntegrationsTab)
-- Channel dropdown now saves to `teams.slack_channel_id` on change
-- Initializes with current team's linked channel
-- Shows success toast with channel name
 
-### Slack invite system (MembersTab + Edge Function)
-- New `slack-send-invite` edge function sends a DM with Block Kit invite button
-- MembersTab shows "Invite via Slack" card with user picker when Slack is connected
-- Invited users click the link, sign in with Slack OIDC, and auto-join the org
+## Plan: Enhanced Analytics with AI + Activity Page + Meeting Mode Bug Fix
 
-### Edit Daily Standup
-- Added UPDATE RLS policy on `standup_responses`
-- Edit button loads existing data back into form
-- Re-submit updates existing response and commitments
+### Research: Analytics Dashboard Improvements
 
-### AI Standup Coach (Phase 1)
-- `ai-coach-standup` edge function reviews commitments via Lovable AI Gateway
-- Uses tool calling for structured output (suggestions with category, issue, rewrite)
-- `StandupCoachCard` component shows inline coaching before submit
-- Submit button triggers AI review first; user can apply/dismiss/submit anyway
+The current analytics page shows raw metrics (health score, completion rate, blockers, carry-over) with charts (work distribution, commitment funnel, blocker heatmap, participation, trending themes). It's purely quantitative with no per-member breakdown, no AI interpretation, and no actionable narrative.
 
-### ClickUp Integration (Phase 2)
-- `clickup_installations` + `clickup_user_mappings` tables with RLS
-- `clickup-setup` edge function validates token, stores installation, lists members
-- `clickup-fetch-tasks` edge function pulls assigned tasks from ClickUp API
-- `ClickUpSection` component: 3-step wizard (token → connect → map users)
-- Settings > Integrations: ClickUp connection card with setup instructions
-- MyStandup: "Import from ClickUp" button + task picker dialog in Today's Focus
+**What good team analytics dashboards do:**
+- Surface **individual contribution visibility** (not as a leaderboard, but as context for leads)
+- Provide **AI-generated narrative summaries** that interpret the numbers ("Joachim completed 8/10 items this week — strong velocity. Stiffi has 3 carried items and no standup submissions in 4 days — may need a check-in.")
+- Show **trends over time per person** (completion rate trajectory, mood patterns, activity volume)
+- Highlight **outliers** — both positive (celebrations) and concerning (someone going quiet)
+- Use the existing `external_activity` data (GitHub commits, PRs, ClickUp tasks) to show real work output alongside standup self-reports
 
-### ClickUp Status Sync
-- Added `clickup_task_id` column to `commitments` table
-- `clickup-update-task` edge function syncs status changes to ClickUp API
-- Fuzzy-matches StandFlow statuses to ClickUp's custom per-list statuses
-- MyStandup stores `clickup_task_id` on import, fires sync on status change
+**AI approach:** Create an edge function `ai-team-summary` that takes the team's recent data (commitments, blockers, activity, responses) and generates:
+1. A team-level narrative summary
+2. Per-member highlights (who's crushing it, who might need support)
+3. Actionable recommendations
 
-### Bug Fixes (ClickUp RLS + Standup Duplicate Key)
-- Updated INSERT policy on `clickup_user_mappings` to allow org members to map any user
-- Replaced conditional insert/update on `standup_responses` with idempotent upsert
+This uses the Lovable AI Gateway (LOVABLE_API_KEY is already configured).
 
-### GitHub Integration + Cross-Platform Weekly Digest
-- `github_installations` + `github_user_mappings` tables with RLS
-- `github-setup` edge function validates PAT, stores installation, lists org members
-- `github-fetch-activity` edge function fetches commits, PRs, reviews via GitHub Search API
-- `GitHubSection` component: setup wizard (token + org name → user mapping)
-- Settings > Integrations: GitHub connection card after ClickUp
-- `ai-weekly-digest` enhanced to aggregate GitHub + ClickUp + StandFlow activity
-- `cross_platform_activity` JSONB column on `ai_weekly_digests`
-- WeeklyDigest page shows cross-platform activity card (StandFlow, GitHub, ClickUp)
-- Slack summary includes GitHub stats when available
+---
 
-### Fix Duplicate Slack Summaries + Daily Digest Cron
-- Removed per-submission `slack-post-summary` call from MyStandup.tsx (was firing on every individual submission)
-- Removed duplicate Slack posting from `ai-summarize-session` (now only generates + stores AI summary)
-- Added `ai-summarize-session` + `slack-post-summary` calls to Meeting Mode completion
-- New `daily-summary-cron` edge function aggregates daily activity (completions, new tasks, carried, blockers) and posts end-of-day digest to Slack
-- pg_cron job scheduled at 17:00 UTC weekdays to trigger the daily digest automatically
+### 1. Enhanced Analytics Dashboard
 
-### Auto-Sync External Activity (ClickUp + GitHub)
-- New `external_activity` table with RLS, unique dedup constraint on `(external_id, activity_type, source)`
-- `clickup-sync-activity` edge function polls ClickUp for task status changes (completed, in-progress)
-- `github-sync-activity` edge function polls GitHub for commits, PRs opened, PRs merged
-- pg_cron jobs run both sync functions every 30 minutes, 7 days/week (including weekends)
-- `daily-summary-cron` updated: removed standup-day gate, Monday digest covers Sat+Sun, includes external activity counts (commits, PRs, ClickUp tasks)
-- MyStandup "Recent Activity" section shows unacknowledged external events with Add/Dismiss actions
-- Completed items get acknowledged; in-progress/opened items get added as today's focus commitments
+**Current state:** Team-level aggregate charts only. No per-member view. No AI insights.
 
-### Activity Feed Bug Fixes
-- Fixed `__none__` GitHub username causing bogus commits from random strangers (176 rows deleted)
-- Fixed standup responses not appearing in activity feed (broken PostgREST nested filter)
-- Broadened ClickUp sync to capture all task updates, not just completed/in-progress
-- Redeployed all sync edge functions (clickup-sync-activity, github-sync-activity, github-fetch-activity)
-- Replaced fragile nested PostgREST filter with two-step session-based query for standup responses
+**Changes:**
+
+**a) New edge function `ai-team-summary/index.ts`:**
+- Accepts `team_id` and a `period` (e.g., "7d")
+- Queries commitments, blockers, standup_responses, external_activity for each member
+- Sends structured data to Lovable AI Gateway (gemini-3-flash-preview) with a prompt like:
+  > "You are a team performance analyst. Given the following data for each team member, provide: 1) A 2-3 sentence team summary, 2) Per-member highlights (celebrate wins AND flag concerns like low activity, carried items, missing standups), 3) Two actionable recommendations. Be direct — it's OK to say someone needs to step up."
+- Returns structured JSON via tool calling
+
+**b) Update `Analytics.tsx`:**
+- Add an "AI Summary" card at the top that calls the edge function and displays the narrative
+- Add a "Member Breakdown" section below existing charts showing per-member stats:
+  - Completion rate, carry count, standup participation, mood trend, activity count (commits + PRs + tasks)
+  - Small bar chart or sparkline per member
+  - AI highlight badge per member (e.g., "Strong week" or "Needs check-in")
+
+**c) Update `useAnalyticsMetrics` hook:**
+- Add per-member metrics to the returned data (already has all the raw data, just needs to group by `member_id`)
+
+### 2. New Activity Page (`/activity`)
+
+**Purpose:** Dedicated page for browsing all team activity, filterable by member. Useful for longer sync meetings and 1:1s.
+
+**Changes:**
+
+**a) New page `src/pages/Activity.tsx`:**
+- Full-page activity feed (reuses `useRecentActivity` but with extended date range — 30 days)
+- Filter bar: member dropdown (multi-select), source filter (GitHub/ClickUp/Standup), date range
+- Activity items shown in a timeline layout with grouping by date
+- Click on a member card in Dashboard to navigate here with that member pre-filtered
+- Show activity counts summary at top (X commits, Y PRs, Z tasks, W standups)
+
+**b) Update `useRecentActivity.ts`:**
+- Accept optional `memberId` and `days` parameters for filtering
+- Increase limit when used on the Activity page
+
+**c) Add route and sidebar nav:**
+- Add `/activity` route in `App.tsx`
+- Add "Activity" nav item in `AppSidebar.tsx` (use `Activity` icon from lucide)
+
+**d) Dashboard link:**
+- Make "Recent Activity" header a link to `/activity`
+- Make member cards clickable to go to `/activity?member={id}`
+
+### 3. Meeting Mode Bug Fix
+
+**Bug:** After skipping today's standup, the Meeting Mode pre-screen still shows "Pending" for the skipped user. It also doesn't indicate the next scheduled meeting day.
+
+**Root causes:**
+- Meeting Mode queries `standup_responses` to determine who submitted, but doesn't distinguish "Skipped" from regular submissions — a skip IS a response, so Tom Arne should show as "Skipped" not "Submitted"
+- The pre-screen doesn't use `standup_days` from the team config to show next meeting info
+- No visual distinction for skipped members
+
+**Fixes in `MeetingMode.tsx`:**
+- Query responses including `yesterday_text` and `mood` fields
+- Show three states on member cards: "Submitted" (green), "Skipped" (yellow/gray), "Pending" (dimmed)
+- Add a line below the date showing: "Next standup: Thursday, Mar 12" by computing the next day from `standup_days`
+- If today is NOT a standup day, show a notice: "No standup scheduled today. Next: Thursday, Mar 12"
+
+---
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| New: `supabase/functions/ai-team-summary/index.ts` | AI-powered team analysis edge function |
+| New: `src/pages/Activity.tsx` | Dedicated activity feed page with member filtering |
+| `src/pages/Analytics.tsx` | Add AI summary card + per-member breakdown section |
+| `src/hooks/useAnalytics.ts` | Add per-member metrics grouping |
+| `src/hooks/useRecentActivity.ts` | Add memberId/days params for Activity page |
+| `src/pages/MeetingMode.tsx` | Fix skip status display + show next meeting date |
+| `src/pages/Dashboard.tsx` | Link activity header + member cards to Activity page |
+| `src/App.tsx` | Add `/activity` route |
+| `src/components/AppSidebar.tsx` | Add Activity nav item |
+| `supabase/config.toml` | Add `ai-team-summary` function entry |
+
