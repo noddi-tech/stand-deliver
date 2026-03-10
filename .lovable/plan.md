@@ -85,3 +85,11 @@
 - Same fallback for PRs opened/merged using the Pulls API
 - Applied to both `github-sync-activity` and `github-fetch-activity` edge functions
 - Org repos list is cached per sync invocation; fallback only triggers when Search returns 0
+
+### GitHub Events API Fallback for Merge-Only Users
+- For users like `ClickUpBotGOAT` who merge Lovable PRs (where author=`lovable-dev[bot]`, committer=`GitHub`), neither Search API nor per-repo Commits API finds their activity
+- Added GitHub Events API (`GET /users/{username}/events`) as a third data source
+- Extracts commits from `PushEvent` payloads (recorded when user merges a PR)
+- Deduplicates by SHA against commits already found by Search/per-repo fallback
+- Applied to both `github-sync-activity` and `github-fetch-activity` edge functions
+- Events API is always called (additive), not just as a fallback — ensures no merge activity is missed
