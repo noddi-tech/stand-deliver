@@ -72,3 +72,9 @@
 - Broadened ClickUp sync to capture all task updates, not just completed/in-progress
 - Redeployed all sync edge functions (clickup-sync-activity, github-sync-activity, github-fetch-activity)
 - Replaced fragile nested PostgREST filter with two-step session-based query for standup responses
+
+### GitHub Sync Date Range Fix
+- Changed `github-sync-activity` from single-date to range-based queries (`committer-date:${start}..${end}`)
+- Added optional `days_back` parameter (default: 1, max: 90)
+- Manual "Sync GitHub" button now passes `days_back: 30` to backfill historical activity
+- Fixes missing activity for users whose commits weren't captured by single-date GitHub Search API queries
