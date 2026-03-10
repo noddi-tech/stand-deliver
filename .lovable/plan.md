@@ -1,87 +1,80 @@
-## Completed
 
-### Slack channel selector (IntegrationsTab)
-- Channel dropdown now saves to `teams.slack_channel_id` on change
-- Initializes with current team's linked channel
-- Shows success toast with channel name
 
-### Slack invite system (MembersTab + Edge Function)
-- New `slack-send-invite` edge function sends a DM with Block Kit invite button
-- MembersTab shows "Invite via Slack" card with user picker when Slack is connected
-- Invited users click the link, sign in with Slack OIDC, and auto-join the org
+## Problem: `ClickUpBotGOAT` Is Never Author or Committer
 
-### Edit Daily Standup
-- Added UPDATE RLS policy on `standup_responses`
-- Edit button loads existing data back into form
-- Re-submit updates existing response and commitments
+The per-repo fallback filters commits by matching `author.login`, `committer.login`, `commit.author.name`, and `commit.committer.name` against `ClickUpBotGOAT`. But for Lovable-authored commits:
 
-### AI Standup Coach (Phase 1)
-- `ai-coach-standup` edge function reviews commitments via Lovable AI Gateway
-- Uses tool calling for structured output (suggestions with category, issue, rewrite)
-- `StandupCoachCard` component shows inline coaching before submit
-- Submit button triggers AI review first; user can apply/dismiss/submit anyway
+- **author**: `lovable-dev[bot]`
+- **committer**: `GitHub` (web-flow, for merge commits)
 
-### ClickUp Integration (Phase 2)
-- `clickup_installations` + `clickup_user_mappings` tables with RLS
-- `clickup-setup` edge function validates token, stores installation, lists members
-- `clickup-fetch-tasks` edge function pulls assigned tasks from ClickUp API
-- `ClickUpSection` component: 3-step wizard (token → connect → map users)
-- Settings > Integrations: ClickUp connection card with setup instructions
-- MyStandup: "Import from ClickUp" button + task picker dialog in Today's Focus
+`ClickUpBotGOAT` doesn't appear in any of these four fields. Joachim's role is that he **merges the PR** — he's not recorded as the commit author or committer. The client-side filter will never match.
 
-### ClickUp Status Sync
-- Added `clickup_task_id` column to `commitments` table
-- `clickup-update-task` edge function syncs status changes to ClickUp API
-- Fuzzy-matches StandFlow statuses to ClickUp's custom per-list statuses
-- MyStandup stores `clickup_task_id` on import, fires sync on status change
+The screenshot confirms: only 1 commit in 30 days (likely a manual one), while Joachim has been actively merging Lovable PRs across multiple repos.
 
-### Bug Fixes (ClickUp RLS + Standup Duplicate Key)
-- Updated INSERT policy on `clickup_user_mappings` to allow org members to map any user
-- Replaced conditional insert/update on `standup_responses` with idempotent upsert
+## Fix: Add GitHub Events API as a Third Data Source
 
-### GitHub Integration + Cross-Platform Weekly Digest
-- `github_installations` + `github_user_mappings` tables with RLS
-- `github-setup` edge function validates PAT, stores installation, lists org members
-- `github-fetch-activity` edge function fetches commits, PRs, reviews via GitHub Search API
-- `GitHubSection` component: setup wizard (token + org name → user mapping)
-- Settings > Integrations: GitHub connection card after ClickUp
-- `ai-weekly-digest` enhanced to aggregate GitHub + ClickUp + StandFlow activity
-- `cross_platform_activity` JSONB column on `ai_weekly_digests`
-- WeeklyDigest page shows cross-platform activity card (StandFlow, GitHub, ClickUp)
-- Slack summary includes GitHub stats when available
+The **GitHub Events API** (`GET /users/{username}/events`) reliably returns all actions a user performs, including `PushEvent` (pushes/merges) and `PullRequestEvent` (opening/merging PRs). This doesn't depend on search indexing or author/committer fields.
 
-### Fix Duplicate Slack Summaries + Daily Digest Cron
-- Removed per-submission `slack-post-summary` call from MyStandup.tsx (was firing on every individual submission)
-- Removed duplicate Slack posting from `ai-summarize-session` (now only generates + stores AI summary)
-- Added `ai-summarize-session` + `slack-post-summary` calls to Meeting Mode completion
-- New `daily-summary-cron` edge function aggregates daily activity (completions, new tasks, carried, blockers) and posts end-of-day digest to Slack
-- pg_cron job scheduled at 17:00 UTC weekdays to trigger the daily digest automatically
+### Approach
 
-### Auto-Sync External Activity (ClickUp + GitHub)
-- New `external_activity` table with RLS, unique dedup constraint on `(external_id, activity_type, source)`
-- `clickup-sync-activity` edge function polls ClickUp for task status changes (completed, in-progress)
-- `github-sync-activity` edge function polls GitHub for commits, PRs opened, PRs merged
-- pg_cron jobs run both sync functions every 30 minutes, 7 days/week (including weekends)
-- `daily-summary-cron` updated: removed standup-day gate, Monday digest covers Sat+Sun, includes external activity counts (commits, PRs, ClickUp tasks)
-- MyStandup "Recent Activity" section shows unacknowledged external events with Add/Dismiss actions
-- Completed items get acknowledged; in-progress/opened items get added as today's focus commitments
+After the Search API + per-repo fallback (for users where those work), add a third source:
 
-### Activity Feed Bug Fixes
-- Fixed `__none__` GitHub username causing bogus commits from random strangers (176 rows deleted)
-- Fixed standup responses not appearing in activity feed (broken PostgREST nested filter)
-- Broadened ClickUp sync to capture all task updates, not just completed/in-progress
-- Redeployed all sync edge functions (clickup-sync-activity, github-sync-activity, github-fetch-activity)
-- Replaced fragile nested PostgREST filter with two-step session-based query for standup responses
+1. Fetch `GET /users/{username}/events?per_page=100` (public events, no auth issues)
+2. Filter for `PushEvent` events within the date range
+3. Extract commit SHAs from `payload.commits[]` — these are the commits the user pushed/merged
+4. Deduplicate against already-found commits (by SHA)
+5. Upsert any new ones as `commit` activity
 
-### GitHub Sync Date Range Fix
-- Changed `github-sync-activity` from single-date to range-based queries (`committer-date:${start}..${end}`)
-- Added optional `days_back` parameter (default: 1, max: 90)
-- Manual "Sync GitHub" button now passes `days_back: 30` to backfill historical activity
-- Fixes missing activity for users whose commits weren't captured by single-date GitHub Search API queries
+This captures Lovable merges because when Joachim merges a PR, GitHub records a `PushEvent` under his username with all the commits from that PR.
 
-### GitHub Per-Repo Fallback for Unindexed Users
-- GitHub Search API does not index certain accounts (bot/machine users like `ClickUpBotGOAT`)
-- Added per-repo fallback: if Search API returns 0 commits for a user, lists org repos via `/orgs/{org}/repos` and queries each repo's Commits API (`/repos/{owner}/{repo}/commits?author={username}&since=...`)
-- Same fallback for PRs opened/merged using the Pulls API
-- Applied to both `github-sync-activity` and `github-fetch-activity` edge functions
-- Org repos list is cached per sync invocation; fallback only triggers when Search returns 0
+### Changes
+
+| File | Change |
+|------|--------|
+| `supabase/functions/github-sync-activity/index.ts` | Add `fetchUserEvents()` function; call it after existing commit logic to capture push/merge events; deduplicate by SHA |
+| `supabase/functions/github-fetch-activity/index.ts` | Same events API fallback |
+
+### Key code:
+
+```typescript
+async function fetchUserEvents(token: string, username: string, startDate: string, endDate: string): Promise<any[]> {
+  const commits: any[] = [];
+  const res = await fetchWithTimeout(
+    `${GH_API}/users/${username}/events?per_page=100`,
+    { headers: GH_HEADERS(token) }
+  );
+  if (!res.ok) return [];
+  const events = await res.json();
+  for (const event of events) {
+    if (event.type !== "PushEvent") continue;
+    const eventDate = event.created_at?.split("T")[0];
+    if (eventDate < startDate || eventDate > endDate) continue;
+    const repo = event.repo?.name || "";
+    for (const c of event.payload?.commits || []) {
+      commits.push({
+        sha: c.sha,
+        html_url: `https://github.com/${repo}/commit/${c.sha}`,
+        commit: { message: c.message, author: { date: event.created_at } },
+        repository: { full_name: repo },
+      });
+    }
+  }
+  return commits;
+}
+```
+
+Then after the existing commit-gathering code, merge in events:
+
+```typescript
+// After Search API + per-repo fallback
+const eventCommits = await fetchUserEvents(token, username, startDate, endDate);
+for (const c of eventCommits) {
+  if (!seenShas.has(c.sha)) {
+    seenShas.add(c.sha);
+    allCommits.push(c);
+  }
+}
+```
+
+This is additive — it won't break existing users, only adds missing commits for users like Joachim whose activity comes through merges.
+
