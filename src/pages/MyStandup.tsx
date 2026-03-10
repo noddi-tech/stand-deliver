@@ -23,10 +23,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Lock, Check, X, AlertTriangle, Loader2, Plus, ArrowRight, Clock, Edit2, CheckCircle2, SquareKanban, GitBranch, ExternalLink, Eye, EyeOff } from "lucide-react";
+import { Lock, Check, X, AlertTriangle, Loader2, Plus, ArrowRight, Clock, Edit2, CheckCircle2, SquareKanban, GitBranch, ExternalLink, Eye, EyeOff, SkipForward } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { StandupCoachCard, type CoachSuggestion } from "@/components/ai/StandupCoachCard";
+import { useSkipStandup } from "@/hooks/useSkipStandup";
 import type { Database } from "@/integrations/supabase/types";
 
 type CommitmentStatus = Database["public"]["Enums"]["commitment_status"];
@@ -52,6 +53,21 @@ interface NewCommitment {
   priority: CommitmentPriority;
   existingId?: string; // If editing an existing commitment
   clickup_task_id?: string; // ClickUp task link
+}
+
+function SkipTodayButton({ memberId, teamId }: { memberId: string; teamId: string }) {
+  const skipMutation = useSkipStandup();
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={skipMutation.isPending}
+      onClick={() => skipMutation.mutate({ memberId, teamId })}
+    >
+      <SkipForward className="mr-1 h-4 w-4" />
+      Skip Today
+    </Button>
+  );
 }
 
 export default function MyStandup() {
@@ -728,11 +744,16 @@ export default function MyStandup() {
         <h1 className="text-2xl font-bold text-foreground">
           {isEditing ? "Edit Standup" : "My Standup"}
         </h1>
-        {isEditing && (
-          <Button variant="ghost" size="sm" onClick={cancelEdit}>
-            Cancel
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {isEditing && (
+            <Button variant="ghost" size="sm" onClick={cancelEdit}>
+              Cancel
+            </Button>
+          )}
+          {!isEditing && !submitted && memberId && teamId && (
+            <SkipTodayButton memberId={memberId} teamId={teamId} />
+          )}
+        </div>
       </div>
 
       {/* Recent Activity from ClickUp/GitHub */}

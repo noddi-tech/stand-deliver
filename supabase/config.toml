@@ -68,3 +68,9 @@ verify_jwt = false
 
 [functions.slack-oauth-start]
 verify_jwt = false
+
+[functions.slack-reminder-cron]
+verify_jwt = false
+
+[functions.slack-send-reminder]
+verify_jwt = false

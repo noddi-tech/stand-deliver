@@ -1,66 +1,67 @@
+## Completed
 
+### Slack channel selector (IntegrationsTab)
+- Channel dropdown now saves to `teams.slack_channel_id` on change
+- Initializes with current team's linked channel
+- Shows success toast with channel name
 
-## Plan: Skip Standup, Fix Slack Notifications, Add Activity to Dashboard
+### Slack invite system (MembersTab + Edge Function)
+- New `slack-send-invite` edge function sends a DM with Block Kit invite button
+- MembersTab shows "Invite via Slack" card with user picker when Slack is connected
+- Invited users click the link, sign in with Slack OIDC, and auto-join the org
 
-### 1. Skip Today's Standup (UI)
+### Edit Daily Standup
+- Added UPDATE RLS policy on `standup_responses`
+- Edit button loads existing data back into form
+- Re-submit updates existing response and commitments
 
-Currently there's no way to skip a standup from the UI. The Slack reminder has "Skip Today" but no web equivalent.
+### AI Standup Coach (Phase 1)
+- `ai-coach-standup` edge function reviews commitments via Lovable AI Gateway
+- Uses tool calling for structured output (suggestions with category, issue, rewrite)
+- `StandupCoachCard` component shows inline coaching before submit
+- Submit button triggers AI review first; user can apply/dismiss/submit anyway
 
-**Changes:**
-- **`src/pages/Dashboard.tsx`**: Add a "Skip Today" button next to "Start Today's Standup" / "Complete Your Standup". When clicked, create the session (if needed) and insert a standup response with `yesterday_text: "Skipped"`, `submitted_via: 'web'`, and a null mood, so the member is marked as having responded.
-- **`src/pages/MyStandup.tsx`**: Add a "Skip Today" option (secondary button or link) visible when the user hasn't submitted yet. It creates a minimal response marking the standup as skipped.
-- **`src/hooks/useTeamMetrics.ts`**: Update `useTodaySession` to also return a `"skipped"` status so the Dashboard can show "Skipped today" instead of the submit button.
+### ClickUp Integration (Phase 2)
+- `clickup_installations` + `clickup_user_mappings` tables with RLS
+- `clickup-setup` edge function validates token, stores installation, lists members
+- `clickup-fetch-tasks` edge function pulls assigned tasks from ClickUp API
+- `ClickUpSection` component: 3-step wizard (token → connect → map users)
+- Settings > Integrations: ClickUp connection card with setup instructions
+- MyStandup: "Import from ClickUp" button + task picker dialog in Today's Focus
 
-### 2. Fix Slack Notifications Not Firing
+### ClickUp Status Sync
+- Added `clickup_task_id` column to `commitments` table
+- `clickup-update-task` edge function syncs status changes to ClickUp API
+- Fuzzy-matches StandFlow statuses to ClickUp's custom per-list statuses
+- MyStandup stores `clickup_task_id` on import, fires sync on status change
 
-**Root cause**: There is no `pg_cron` job that triggers `slack-send-reminder`. The function exists but nothing calls it automatically. The daily digest cron exists (`0 17 * * 1-5`) and the sync crons exist, but reminder cron was never created.
+### Bug Fixes (ClickUp RLS + Standup Duplicate Key)
+- Updated INSERT policy on `clickup_user_mappings` to allow org members to map any user
+- Replaced conditional insert/update on `standup_responses` with idempotent upsert
 
-**Changes:**
-- **New migration**: Create a `pg_cron` job that runs at the team's configured standup time. Since teams have different `standup_time` and `standup_timezone` settings, the simplest approach is a single cron that runs every 15 minutes and a new edge function `slack-reminder-cron` that checks which teams should receive reminders now (comparing current time to `standup_time` + `standup_timezone`).
-  
-  ```
-  SELECT cron.schedule('slack-standup-reminders', '*/15 * * * *', ...invoke slack-reminder-cron...)
-  ```
+### GitHub Integration + Cross-Platform Weekly Digest
+- `github_installations` + `github_user_mappings` tables with RLS
+- `github-setup` edge function validates PAT, stores installation, lists org members
+- `github-fetch-activity` edge function fetches commits, PRs, reviews via GitHub Search API
+- `GitHubSection` component: setup wizard (token + org name → user mapping)
+- Settings > Integrations: GitHub connection card after ClickUp
+- `ai-weekly-digest` enhanced to aggregate GitHub + ClickUp + StandFlow activity
+- `cross_platform_activity` JSONB column on `ai_weekly_digests`
+- WeeklyDigest page shows cross-platform activity card (StandFlow, GitHub, ClickUp)
+- Slack summary includes GitHub stats when available
 
-- **New edge function `slack-reminder-cron/index.ts`**: 
-  - Get all teams with Slack connected
-  - For each team, check if current time (in the team's timezone) matches `standup_time` (within 15-min window) and today's day-of-week is in `standup_days`
-  - If yes, call `slack-send-reminder` with that team's ID
-  - Also creates the standup session for today if it doesn't exist yet
+### Fix Duplicate Slack Summaries + Daily Digest Cron
+- Removed per-submission `slack-post-summary` call from MyStandup.tsx (was firing on every individual submission)
+- Removed duplicate Slack posting from `ai-summarize-session` (now only generates + stores AI summary)
+- Added `ai-summarize-session` + `slack-post-summary` calls to Meeting Mode completion
+- New `daily-summary-cron` edge function aggregates daily activity (completions, new tasks, carried, blockers) and posts end-of-day digest to Slack
+- pg_cron job scheduled at 17:00 UTC weekdays to trigger the daily digest automatically
 
-- **`supabase/config.toml`**: Add entries for `slack-reminder-cron` and `slack-send-reminder`
-
-### 3. Dashboard Activity Section
-
-The dashboard currently shows metrics, attention items, and team member cards. Add an **Activity Feed** section showing recent external activity (from ClickUp and GitHub) and standup submissions, grouped per user and per team.
-
-**Changes:**
-- **New hook `src/hooks/useRecentActivity.ts`**:
-  - Query `external_activity` for the team, last 7 days, ordered by `occurred_at` desc
-  - Query `standup_responses` for the team, last 7 days
-  - Return combined, sorted by timestamp
-
-- **`src/pages/Dashboard.tsx`**: Add two new sections below "Needs Attention":
-
-  **a) "Recent Activity" feed** (team-level):
-  - Shows a chronological list of the last ~20 activities: commits, PRs, ClickUp task completions, standup submissions
-  - Each item shows: icon (GitHub/ClickUp/standup), member avatar + name, title, relative timestamp
-  - Filterable by source (All / GitHub / ClickUp / Standups)
-
-  **b) Enhanced Team Members cards**:
-  - Add activity counts to each member card: e.g., "3 commits, 1 PR, 2 tasks" for the current week
-  - This extends the existing `useTeamMembersStatus` hook to also query `external_activity` per member
-
-### Files Changed
-
-| File | Change |
-|------|--------|
-| New: `supabase/functions/slack-reminder-cron/index.ts` | Checks team schedules, triggers reminders |
-| New migration | `pg_cron` job for reminder every 15 min |
-| `supabase/config.toml` | Add `slack-reminder-cron`, `slack-send-reminder` entries |
-| `src/pages/Dashboard.tsx` | Add Skip button, Recent Activity feed, enhanced member cards |
-| `src/pages/MyStandup.tsx` | Add Skip Today button |
-| `src/hooks/useTeamMetrics.ts` | Support skipped status |
-| New: `src/hooks/useRecentActivity.ts` | Fetch external_activity + responses for dashboard |
-| `src/hooks/useTeamMembers.ts` | Add per-member activity counts |
-
+### Auto-Sync External Activity (ClickUp + GitHub)
+- New `external_activity` table with RLS, unique dedup constraint on `(external_id, activity_type, source)`
+- `clickup-sync-activity` edge function polls ClickUp for task status changes (completed, in-progress)
+- `github-sync-activity` edge function polls GitHub for commits, PRs opened, PRs merged
+- pg_cron jobs run both sync functions every 30 minutes, 7 days/week (including weekends)
+- `daily-summary-cron` updated: removed standup-day gate, Monday digest covers Sat+Sun, includes external activity counts (commits, PRs, ClickUp tasks)
+- MyStandup "Recent Activity" section shows unacknowledged external events with Add/Dismiss actions
+- Completed items get acknowledged; in-progress/opened items get added as today's focus commitments
