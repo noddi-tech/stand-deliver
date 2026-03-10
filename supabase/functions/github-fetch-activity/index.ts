@@ -251,6 +251,16 @@ Deno.serve(async (req) => {
       console.log(`Per-repo fallback found ${commitsData.total_count} commits`);
     }
 
+    // FALLBACK 2: Events API to capture merges
+    const eventCommits = await fetchUserEvents(token, github_username, week_start, week_end);
+    for (const c of eventCommits) {
+      if (c.sha && !seenShas.has(c.sha)) {
+        seenShas.add(c.sha);
+        commitsData.items.push(c);
+        commitsData.total_count++;
+      }
+    }
+
     // Fetch PRs opened
     const prsRes = await fetch(
       `${GH_API}/search/issues?q=author:${github_username}+type:pr+created:${week_start}..${week_end}&per_page=100`,

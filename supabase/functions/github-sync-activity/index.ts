@@ -296,6 +296,18 @@ Deno.serve(async (req) => {
             console.log(`Per-repo fallback found ${allCommits.length} commits for ${username}`);
           }
 
+          // FALLBACK 2: Events API to capture merges (user is neither author nor committer)
+          const eventCommits = await fetchUserEvents(token, username, startDate, endDate);
+          for (const c of eventCommits) {
+            if (c.sha && !seenShas.has(c.sha)) {
+              seenShas.add(c.sha);
+              allCommits.push(c);
+            }
+          }
+          if (eventCommits.length > 0) {
+            console.log(`Events API added ${eventCommits.length} new commits for ${username}, total now ${allCommits.length}`);
+          }
+
           for (const item of allCommits) {
             const sha = item.sha;
             const repo = item.repository?.full_name || "";
