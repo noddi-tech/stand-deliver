@@ -10,44 +10,9 @@ interface AuthContextType {
   signOut: () => Promise<void>;
 }
 
-// Dev-mode mock user so the sandbox preview works without Slack OAuth
-const DEV_MOCK_USER = {
-  id: "00000000-0000-0000-0000-000000000000",
-  email: "dev@standflow.local",
-  app_metadata: {},
-  user_metadata: { full_name: "Dev User" },
-  aud: "authenticated",
-  created_at: new Date().toISOString(),
-} as unknown as User;
-
-const DEV_MOCK_SESSION = {
-  access_token: "dev-token",
-  refresh_token: "dev-refresh",
-  expires_in: 999999,
-  token_type: "bearer",
-  user: DEV_MOCK_USER,
-} as unknown as Session;
-
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // Dev bypass — skip all Supabase auth in sandbox
-  if (import.meta.env.DEV) {
-    return (
-      <AuthContext.Provider
-        value={{
-          session: DEV_MOCK_SESSION,
-          user: DEV_MOCK_USER,
-          loading: false,
-          signInWithSlack: async () => {},
-          signOut: async () => {},
-        }}
-      >
-        {children}
-      </AuthContext.Provider>
-    );
-  }
-
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -60,7 +25,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setLoading(false);
           return;
         }
-        // For SIGNED_IN / TOKEN_REFRESHED — trust the event session
         setSession(newSession);
         setLoading(false);
       }
@@ -69,13 +33,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // 2. Hydrate: if URL has OAuth hash, let onAuthStateChange handle it
     const hasOAuthHash = window.location.hash.includes("access_token");
     if (!hasOAuthHash) {
-      // Validate the local session against the server
       supabase.auth.getSession().then(async ({ data: { session: localSession } }) => {
         if (localSession) {
-          // Verify the user actually exists server-side
           const { data: { user }, error } = await supabase.auth.getUser();
           if (error || !user) {
-            // Stale/invalid session — clear it
             await supabase.auth.signOut();
             setSession(null);
           } else {
@@ -100,6 +61,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
   };
 
+  // In dev mode with no session, show the DevUserPicker instead of children
+  const showDevPicker = import.meta.env.DEV && !loading && !session;
+
   return (
     <AuthContext.Provider
       value={{
@@ -110,9 +74,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signOut,
       }}
     >
-      {children}
+      {showDevPicker ? <DevUserPickerLazy /> : children}
     </AuthContext.Provider>
   );
+}
+
+// Lazy import to avoid bundling DevUserPicker in production
+function DevUserPickerLazy() {
+  const [Component, setComponent] = useState<React.ComponentType | null>(null);
+
+  useEffect(() => {
+    import("@/components/DevUserPicker").then((mod) => {
+      setComponent(() => mod.default);
+    });
+  }, []);
+
+  if (!Component) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    );
+  }
+
+  return <Component />;
 }
 
 export function useAuth() {

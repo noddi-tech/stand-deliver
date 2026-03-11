@@ -77,3 +77,6 @@ verify_jwt = false
 
 [functions.ai-team-summary]
 verify_jwt = false
+
+[functions.dev-impersonate]
+verify_jwt = false
