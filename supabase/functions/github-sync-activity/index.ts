@@ -13,6 +13,7 @@ const GH_HEADERS = (token: string) => ({
 });
 
 const BATCH_SIZE = 10;
+const DETAIL_BATCH_SIZE = 5;
 const REQUEST_TIMEOUT_MS = 5000;
 
 async function fetchWithTimeout(url: string, options: RequestInit): Promise<Response> {
@@ -107,7 +108,9 @@ async function fetchCommitsPerRepo(
   return allCommits;
 }
 
-// Fetch PRs where user is author OR merger, per-repo fallback
+// Fetch PRs where user is author OR merger, per-repo fallback.
+// KEY FIX: The list endpoint does NOT return merged_by. We must fetch
+// individual PR details to check merged_by.
 async function fetchPRsPerRepo(
   token: string,
   repos: string[],
@@ -132,13 +135,63 @@ async function fetchPRsPerRepo(
           if (!res.ok) return [];
           const prs = await res.json();
           if (!Array.isArray(prs)) return [];
-          // Match PRs where user is author OR merger
-          return prs
-            .filter((pr: any) =>
-              pr.user?.login?.toLowerCase() === userLower ||
-              pr.merged_by?.login?.toLowerCase() === userLower
-            )
+
+          // For "opened" type, we only need user.login (author) — no detail fetch needed
+          if (type === "opened") {
+            return prs
+              .filter((pr: any) => {
+                if (pr.user?.login?.toLowerCase() !== userLower) return false;
+                const created = pr.created_at?.split("T")[0];
+                return created >= startDate && created <= endDate;
+              })
+              .map((pr: any) => ({ ...pr, _repoFullName: repoFullName }));
+          }
+
+          // For "merged" type, we need to check merged_by via individual PR detail
+          // Step 1: Filter to merged PRs in date range
+          const mergedInRange = prs.filter((pr: any) => {
+            if (!pr.merged_at) return false;
+            const merged = pr.merged_at.split("T")[0];
+            return merged >= startDate && merged <= endDate;
+          });
+
+          // Step 2: PRs where user is the author — no detail fetch needed
+          const authorPRs = mergedInRange
+            .filter((pr: any) => pr.user?.login?.toLowerCase() === userLower)
             .map((pr: any) => ({ ...pr, _repoFullName: repoFullName }));
+
+          // Step 3: Remaining PRs need detail fetch to check merged_by
+          const nonAuthorPRs = mergedInRange.filter(
+            (pr: any) => pr.user?.login?.toLowerCase() !== userLower
+          );
+
+          const mergerPRs: any[] = [];
+          for (let j = 0; j < nonAuthorPRs.length; j += DETAIL_BATCH_SIZE) {
+            const detailBatch = nonAuthorPRs.slice(j, j + DETAIL_BATCH_SIZE);
+            const detailResults = await Promise.allSettled(
+              detailBatch.map(async (pr: any) => {
+                try {
+                  const detailRes = await fetchWithTimeout(
+                    `${GH_API}/repos/${repoFullName}/pulls/${pr.number}`,
+                    { headers: GH_HEADERS(token) }
+                  );
+                  if (!detailRes.ok) return null;
+                  const detail = await detailRes.json();
+                  if (detail.merged_by?.login?.toLowerCase() === userLower) {
+                    return { ...detail, _repoFullName: repoFullName };
+                  }
+                  return null;
+                } catch {
+                  return null;
+                }
+              })
+            );
+            for (const r of detailResults) {
+              if (r.status === "fulfilled" && r.value) mergerPRs.push(r.value);
+            }
+          }
+
+          return [...authorPRs, ...mergerPRs];
         } catch {
           return [];
         }
@@ -147,20 +200,9 @@ async function fetchPRsPerRepo(
     for (const result of results) {
       if (result.status !== "fulfilled") continue;
       for (const pr of result.value) {
-        if (seenIds.has(pr.id)) continue;
-        if (type === "opened") {
-          const created = pr.created_at?.split("T")[0];
-          if (created >= startDate && created <= endDate) {
-            seenIds.add(pr.id);
-            allPRs.push({ ...pr, repository_url: `${GH_API}/repos/${pr._repoFullName}` });
-          }
-        } else {
-          if (!pr.merged_at) continue;
-          const merged = pr.merged_at.split("T")[0];
-          if (merged >= startDate && merged <= endDate) {
-            seenIds.add(pr.id);
-            allPRs.push({ ...pr, repository_url: `${GH_API}/repos/${pr._repoFullName}` });
-          }
+        if (!seenIds.has(pr.id)) {
+          seenIds.add(pr.id);
+          allPRs.push({ ...pr, repository_url: `${GH_API}/repos/${pr._repoFullName}` });
         }
       }
     }
@@ -168,7 +210,8 @@ async function fetchPRsPerRepo(
   return allPRs;
 }
 
-// Fetch commits from PRs merged by the user (for bot-authored PRs like Lovable)
+// Fetch commits from PRs merged by the user (for bot-authored PRs like Lovable).
+// KEY FIX: List endpoint returns merged_by=null. We fetch individual PR details.
 async function fetchMergedPRCommits(
   token: string,
   repos: string[],
@@ -184,6 +227,7 @@ async function fetchMergedPRCommits(
     const results = await Promise.allSettled(
       batch.map(async (repoFullName) => {
         try {
+          // Step 1: List closed/merged PRs in date range
           const res = await fetchWithTimeout(
             `${GH_API}/repos/${repoFullName}/pulls?state=closed&sort=updated&direction=desc&per_page=50`,
             { headers: GH_HEADERS(token) }
@@ -192,16 +236,50 @@ async function fetchMergedPRCommits(
           const prs = await res.json();
           if (!Array.isArray(prs)) return [];
 
-          const mergedByUser = prs.filter((pr: any) => {
+          // Step 2: Filter to merged PRs in date range where user is NOT the author
+          const candidates = prs.filter((pr: any) => {
             if (!pr.merged_at) return false;
             const mergedDate = pr.merged_at.split("T")[0];
             if (mergedDate < startDate || mergedDate > endDate) return false;
-            // Only PRs where user is the merger but NOT the author
+            // Skip PRs where user is already the author (those are caught by normal commit matching)
             const isAuthor = pr.user?.login?.toLowerCase() === userLower;
-            const isMerger = pr.merged_by?.login?.toLowerCase() === userLower;
-            return isMerger && !isAuthor;
+            return !isAuthor;
           });
 
+          if (candidates.length === 0) return [];
+          console.log(`${repoFullName}: ${candidates.length} merged non-author PRs in range, fetching details`);
+
+          // Step 3: Fetch individual PR details to get merged_by (batched)
+          const mergedByUser: any[] = [];
+          for (let j = 0; j < candidates.length; j += DETAIL_BATCH_SIZE) {
+            const detailBatch = candidates.slice(j, j + DETAIL_BATCH_SIZE);
+            const detailResults = await Promise.allSettled(
+              detailBatch.map(async (pr: any) => {
+                try {
+                  const detailRes = await fetchWithTimeout(
+                    `${GH_API}/repos/${repoFullName}/pulls/${pr.number}`,
+                    { headers: GH_HEADERS(token) }
+                  );
+                  if (!detailRes.ok) return null;
+                  const detail = await detailRes.json();
+                  if (detail.merged_by?.login?.toLowerCase() === userLower) {
+                    return detail;
+                  }
+                  return null;
+                } catch {
+                  return null;
+                }
+              })
+            );
+            for (const r of detailResults) {
+              if (r.status === "fulfilled" && r.value) mergedByUser.push(r.value);
+            }
+          }
+
+          if (mergedByUser.length === 0) return [];
+          console.log(`${repoFullName}: ${mergedByUser.length} PRs confirmed merged by ${username}`);
+
+          // Step 4: Fetch commits for each PR merged by the user
           const commits: any[] = [];
           for (const pr of mergedByUser) {
             try {
@@ -259,7 +337,6 @@ Deno.serve(async (req) => {
     } catch { /* no body */ }
 
     const endDate = new Date().toISOString().split("T")[0];
-    // FIX: use daysBack (not daysBack-1) so daysBack=1 goes back 1 full day
     const startDate = new Date(Date.now() - daysBack * 86400000).toISOString().split("T")[0];
     const dateRange = `${startDate}..${endDate}`;
 
@@ -332,7 +409,7 @@ Deno.serve(async (req) => {
             console.log(`Per-repo fallback found ${allCommits.length} commits for ${username}`);
           }
 
-          // FALLBACK: Fetch commits from PRs merged by this user (captures Lovable bot PRs)
+          // ALWAYS: Fetch commits from PRs merged by this user (captures Lovable bot PRs)
           if (orgName) {
             if (!orgRepos) orgRepos = await fetchOrgRepos(token, orgName);
             const mergedPRCommits = await fetchMergedPRCommits(token, orgRepos, username, startDate, endDate);
@@ -408,7 +485,7 @@ Deno.serve(async (req) => {
             }
           }
 
-          // --- PRs MERGED (author OR merger) ---
+          // --- PRs MERGED (author OR merger via detail fetch) ---
           const mergedRes = await fetch(
             `${GH_API}/search/issues?q=author:${username}+type:pr+merged:${dateRange}&per_page=50`,
             { headers }

@@ -89,7 +89,6 @@ const normalPR = {
 // ── Tests ──
 
 Deno.test("Bug 2: Lovable commit is NOT attributed to ClickUpBotGOAT via commit metadata", () => {
-  // This test documents the known limitation: commit metadata doesn't contain the merger
   const result = isCommitByUser(lovableCommit, "ClickUpBotGOAT");
   assertEquals(result, false, "Lovable commits have bot author/committer, not the merger");
 });
@@ -117,11 +116,8 @@ Deno.test("Normal PR IS attributed to author", () => {
 });
 
 Deno.test("Bug fix: date range - daysBack=1 should go back 1 full day", () => {
-  // With the old code: Date.now() - (1-1)*86400000 = Date.now() = today
-  // With the fix: Date.now() - 1*86400000 = yesterday
   const today = new Date().toISOString().split("T")[0];
   const startDate = computeStartDate(1);
-  // startDate should be yesterday, not today
   assertEquals(startDate < today, true, `startDate ${startDate} should be before today ${today}`);
 });
 
@@ -134,4 +130,54 @@ Deno.test("Date range: daysBack=7 goes back 7 days", () => {
 Deno.test("isPRByUser is case-insensitive", () => {
   assertEquals(isPRByUser(lovablePR, "clickupbotgoat"), true);
   assertEquals(isPRByUser(lovablePR, "CLICKUPBOTGOAT"), true);
+});
+
+// ── ROOT CAUSE BUG: GitHub List endpoint returns merged_by=null ──
+
+Deno.test("BUG REPRODUCTION: List endpoint PRs have merged_by=null — isPRByUser fails", () => {
+  // This is what GET /repos/{owner}/{repo}/pulls?state=closed ACTUALLY returns
+  const listEndpointPR = {
+    id: 999,
+    number: 42,
+    title: "feat: add new feature",
+    user: { login: "lovable-dev[bot]" },
+    merged_by: null,  // <-- LIST ENDPOINT NEVER POPULATES THIS
+    merged_at: "2026-03-10T12:00:00Z",
+    created_at: "2026-03-10T11:00:00Z",
+  };
+  
+  // isPRByUser correctly returns false — merged_by is null from list endpoint
+  assertEquals(isPRByUser(listEndpointPR, "ClickUpBotGOAT"), false,
+    "List endpoint PRs have merged_by=null, so isPRByUser cannot match the merger");
+  
+  // The DETAIL endpoint (GET /repos/{owner}/{repo}/pulls/{number}) returns the real merged_by
+  const detailEndpointPR = {
+    ...listEndpointPR,
+    merged_by: { login: "ClickUpBotGOAT" },  // <-- ONLY available from detail endpoint
+  };
+  
+  assertEquals(isPRByUser(detailEndpointPR, "ClickUpBotGOAT"), true,
+    "Detail endpoint has merged_by populated, so isPRByUser matches");
+});
+
+Deno.test("Merged PR filtering: only date-range PRs need detail fetch", () => {
+  // Simulate the filtering step before fetching individual PR details
+  const closedPRs = [
+    { number: 1, merged_at: "2026-03-10T12:00:00Z", merged_by: null },
+    { number: 2, merged_at: null, merged_by: null },  // not merged, skip
+    { number: 3, merged_at: "2026-02-01T12:00:00Z", merged_by: null },  // out of range
+    { number: 4, merged_at: "2026-03-09T12:00:00Z", merged_by: null },
+  ];
+  
+  const startDate = "2026-03-08";
+  const endDate = "2026-03-11";
+  
+  const needDetailFetch = closedPRs.filter(pr => {
+    if (!pr.merged_at) return false;
+    const mergedDate = pr.merged_at.split("T")[0];
+    return mergedDate >= startDate && mergedDate <= endDate;
+  });
+  
+  assertEquals(needDetailFetch.length, 2, "Only PRs #1 and #4 are merged within date range");
+  assertEquals(needDetailFetch.map(pr => pr.number), [1, 4]);
 });
