@@ -1,49 +1,95 @@
+## Completed
 
+### Slack channel selector (IntegrationsTab)
+- Channel dropdown now saves to `teams.slack_channel_id` on change
+- Initializes with current team's linked channel
+- Shows success toast with channel name
 
-## Problem: Events API Returns 0 Because Repos Are Private
+### Slack invite system (MembersTab + Edge Function)
+- New `slack-send-invite` edge function sends a DM with Block Kit invite button
+- MembersTab shows "Invite via Slack" card with user picker when Slack is connected
+- Invited users click the link, sign in with Slack OIDC, and auto-join the org
 
-The logs confirm the Events API is deployed and called, but returns 0 for every user:
-```
-Events API found 0 commits for ClickUpBotGOAT
-Events API found 0 commits for mattisaa
-Events API found 0 commits for stiangrim
-...
-```
+### Edit Daily Standup
+- Added UPDATE RLS policy on `standup_responses`
+- Edit button loads existing data back into form
+- Re-submit updates existing response and commitments
 
-The current code calls `GET /users/{username}/events` — this endpoint only returns **public** events. Since `noddi-tech` repos are private, it sees nothing.
+### AI Standup Coach (Phase 1)
+- `ai-coach-standup` edge function reviews commitments via Lovable AI Gateway
+- Uses tool calling for structured output (suggestions with category, issue, rewrite)
+- `StandupCoachCard` component shows inline coaching before submit
+- Submit button triggers AI review first; user can apply/dismiss/submit anyway
 
-## Fix
+### ClickUp Integration (Phase 2)
+- `clickup_installations` + `clickup_user_mappings` tables with RLS
+- `clickup-setup` edge function validates token, stores installation, lists members
+- `clickup-fetch-tasks` edge function pulls assigned tasks from ClickUp API
+- `ClickUpSection` component: 3-step wizard (token → connect → map users)
+- Settings > Integrations: ClickUp connection card with setup instructions
+- MyStandup: "Import from ClickUp" button + task picker dialog in Today's Focus
 
-Use the **org-scoped events endpoint** instead: `GET /users/{username}/events/orgs/{org}`. This returns private org activity when authenticated with a token that has org access (which the PAT already has).
+### ClickUp Status Sync
+- Added `clickup_task_id` column to `commitments` table
+- `clickup-update-task` edge function syncs status changes to ClickUp API
+- Fuzzy-matches StandFlow statuses to ClickUp's custom per-list statuses
+- MyStandup stores `clickup_task_id` on import, fires sync on status change
 
-### Changes
+### Bug Fixes (ClickUp RLS + Standup Duplicate Key)
+- Updated INSERT policy on `clickup_user_mappings` to allow org members to map any user
+- Replaced conditional insert/update on `standup_responses` with idempotent upsert
 
-**`supabase/functions/github-sync-activity/index.ts`**:
-- Update `fetchUserEvents` to accept `orgName` parameter
-- Change URL from `/users/${username}/events` to `/users/${username}/events/orgs/${orgName}`
-- Pass `orgName` when calling the function (~line 305)
+### GitHub Integration + Cross-Platform Weekly Digest
+- `github_installations` + `github_user_mappings` tables with RLS
+- `github-setup` edge function validates PAT, stores installation, lists org members
+- `github-fetch-activity` edge function fetches commits, PRs, reviews via GitHub Search API
+- `GitHubSection` component: setup wizard (token + org name → user mapping)
+- Settings > Integrations: GitHub connection card after ClickUp
+- `ai-weekly-digest` enhanced to aggregate GitHub + ClickUp + StandFlow activity
+- `cross_platform_activity` JSONB column on `ai_weekly_digests`
+- WeeklyDigest page shows cross-platform activity card (StandFlow, GitHub, ClickUp)
+- Slack summary includes GitHub stats when available
 
-**`supabase/functions/github-fetch-activity/index.ts`**:
-- Same change to `fetchUserEvents`
+### Fix Duplicate Slack Summaries + Daily Digest Cron
+- Removed per-submission `slack-post-summary` call from MyStandup.tsx (was firing on every individual submission)
+- Removed duplicate Slack posting from `ai-summarize-session` (now only generates + stores AI summary)
+- Added `ai-summarize-session` + `slack-post-summary` calls to Meeting Mode completion
+- New `daily-summary-cron` edge function aggregates daily activity (completions, new tasks, carried, blockers) and posts end-of-day digest to Slack
+- pg_cron job scheduled at 17:00 UTC weekdays to trigger the daily digest automatically
 
-### Key code change:
+### Auto-Sync External Activity (ClickUp + GitHub)
+- New `external_activity` table with RLS, unique dedup constraint on `(external_id, activity_type, source)`
+- `clickup-sync-activity` edge function polls ClickUp for task status changes (completed, in-progress)
+- `github-sync-activity` edge function polls GitHub for commits, PRs opened, PRs merged
+- pg_cron jobs run both sync functions every 30 minutes, 7 days/week (including weekends)
+- `daily-summary-cron` updated: removed standup-day gate, Monday digest covers Sat+Sun, includes external activity counts (commits, PRs, ClickUp tasks)
+- MyStandup "Recent Activity" section shows unacknowledged external events with Add/Dismiss actions
+- Completed items get acknowledged; in-progress/opened items get added as today's focus commitments
 
-```typescript
-// Before (only public events):
-`${GH_API}/users/${username}/events?per_page=100`
+### Activity Feed Bug Fixes
+- Fixed `__none__` GitHub username causing bogus commits from random strangers (176 rows deleted)
+- Fixed standup responses not appearing in activity feed (broken PostgREST nested filter)
+- Broadened ClickUp sync to capture all task updates, not just completed/in-progress
+- Redeployed all sync edge functions (clickup-sync-activity, github-sync-activity, github-fetch-activity)
+- Replaced fragile nested PostgREST filter with two-step session-based query for standup responses
 
-// After (includes private org events):
-`${GH_API}/users/${username}/events/orgs/${orgName}?per_page=100`
-```
+### GitHub Sync Date Range Fix
+- Changed `github-sync-activity` from single-date to range-based queries (`committer-date:${start}..${end}`)
+- Added optional `days_back` parameter (default: 1, max: 90)
+- Manual "Sync GitHub" button now passes `days_back: 30` to backfill historical activity
+- Fixes missing activity for users whose commits weren't captured by single-date GitHub Search API queries
 
-The function signature changes from:
-```typescript
-fetchUserEvents(token, username, startDate, endDate)
-```
-to:
-```typescript
-fetchUserEvents(token, username, orgName, startDate, endDate)
-```
+### GitHub Per-Repo Fallback for Unindexed Users
+- GitHub Search API does not index certain accounts (bot/machine users like `ClickUpBotGOAT`)
+- Added per-repo fallback: if Search API returns 0 commits for a user, lists org repos via `/orgs/{org}/repos` and queries each repo's Commits API (`/repos/{owner}/{repo}/commits?author={username}&since=...`)
+- Same fallback for PRs opened/merged using the Pulls API
+- Applied to both `github-sync-activity` and `github-fetch-activity` edge functions
+- Org repos list is cached per sync invocation; fallback only triggers when Search returns 0
 
-This is a 2-line change per file. Everything else stays the same.
-
+### GitHub Events API Fallback for Merge-Only Users
+- For users like `ClickUpBotGOAT` who merge Lovable PRs (where author=`lovable-dev[bot]`, committer=`GitHub`), neither Search API nor per-repo Commits API finds their activity
+- Added GitHub Events API (`GET /users/{username}/events`) as a third data source
+- Extracts commits from `PushEvent` payloads (recorded when user merges a PR)
+- Deduplicates by SHA against commits already found by Search/per-repo fallback
+- Applied to both `github-sync-activity` and `github-fetch-activity` edge functions
+- Events API is always called (additive), not just as a fallback — ensures no merge activity is missed

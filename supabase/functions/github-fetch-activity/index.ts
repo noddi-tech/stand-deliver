@@ -111,13 +111,14 @@ async function fetchCommitsPerRepo(
 async function fetchUserEvents(
   token: string,
   username: string,
+  orgName: string,
   startDate: string,
   endDate: string
 ): Promise<any[]> {
   const commits: any[] = [];
   try {
     const res = await fetchWithTimeout(
-      `${GH_API}/users/${username}/events?per_page=100`,
+      `${GH_API}/users/${username}/events/orgs/${orgName}?per_page=100`,
       { headers: GH_HEADERS(token) }
     );
     if (!res.ok) return [];
@@ -252,7 +253,7 @@ Deno.serve(async (req) => {
     }
 
     // FALLBACK 2: Events API to capture merges
-    const eventCommits = await fetchUserEvents(token, github_username, week_start, week_end);
+    const eventCommits = await fetchUserEvents(token, github_username, orgName, week_start, week_end);
     for (const c of eventCommits) {
       if (c.sha && !seenShas.has(c.sha)) {
         seenShas.add(c.sha);

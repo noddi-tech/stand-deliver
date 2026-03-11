@@ -111,13 +111,14 @@ async function fetchCommitsPerRepo(
 async function fetchUserEvents(
   token: string,
   username: string,
+  orgName: string,
   startDate: string,
   endDate: string
 ): Promise<any[]> {
   const commits: any[] = [];
   try {
     const res = await fetchWithTimeout(
-      `${GH_API}/users/${username}/events?per_page=100`,
+      `${GH_API}/users/${username}/events/orgs/${orgName}?per_page=100`,
       { headers: GH_HEADERS(token) }
     );
     if (!res.ok) {
@@ -297,7 +298,7 @@ Deno.serve(async (req) => {
           }
 
           // FALLBACK 2: Events API to capture merges (user is neither author nor committer)
-          const eventCommits = await fetchUserEvents(token, username, startDate, endDate);
+          const eventCommits = await fetchUserEvents(token, username, orgName, startDate, endDate);
           for (const c of eventCommits) {
             if (c.sha && !seenShas.has(c.sha)) {
               seenShas.add(c.sha);
