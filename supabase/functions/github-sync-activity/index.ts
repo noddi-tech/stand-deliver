@@ -298,7 +298,7 @@ Deno.serve(async (req) => {
           }
 
           // FALLBACK 2: Events API to capture merges (user is neither author nor committer)
-          const eventCommits = await fetchUserEvents(token, username, startDate, endDate);
+          const eventCommits = await fetchUserEvents(token, username, orgName, startDate, endDate);
           for (const c of eventCommits) {
             if (c.sha && !seenShas.has(c.sha)) {
               seenShas.add(c.sha);
