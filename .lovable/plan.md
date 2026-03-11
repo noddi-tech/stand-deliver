@@ -1,72 +1,96 @@
+## Completed
 
-Goal: replace the hidden/dev-only impersonation flow with a visible one-click sandbox login button for Joachim Rathke.
+### Slack channel selector (IntegrationsTab)
+- Channel dropdown now saves to `teams.slack_channel_id` on change
+- Initializes with current team's linked channel
+- Shows success toast with channel name
 
-What’s going wrong
-- The current bypass is gated by `import.meta.env.DEV` in `src/hooks/useAuth.tsx`.
-- Lovable preview/sandbox is not behaving like local Vite dev here, so that condition is false.
-- Result: the app shows the normal `/auth` Slack page, and the impersonation UI never appears.
-- Even if the flow exists, it is too manual for your use case: you want one button, not email + secret entry.
+### Slack invite system (MembersTab + Edge Function)
+- New `slack-send-invite` edge function sends a DM with Block Kit invite button
+- MembersTab shows "Invite via Slack" card with user picker when Slack is connected
+- Invited users click the link, sign in with Slack OIDC, and auto-join the org
 
-Implementation approach
-1. Stop relying on `import.meta.env.DEV`
-- Introduce a single “sandbox detection” rule based on the runtime hostname instead of Vite dev mode.
-- Enable bypass only on preview URLs, and explicitly disable it on the published app domain.
+### Edit Daily Standup
+- Added UPDATE RLS policy on `standup_responses`
+- Edit button loads existing data back into form
+- Re-submit updates existing response and commitments
 
-2. Add a visible button on the Auth page
-- On `src/pages/Auth.tsx`, keep the normal Slack sign-in.
-- When running in sandbox/preview, also render:
-  - “Continue as Joachim Rathke”
-- Clicking it should directly trigger the impersonation flow, with Joachim’s known email prefilled in code.
+### AI Standup Coach (Phase 1)
+- `ai-coach-standup` edge function reviews commitments via Lovable AI Gateway
+- Uses tool calling for structured output (suggestions with category, issue, rewrite)
+- `StandupCoachCard` component shows inline coaching before submit
+- Submit button triggers AI review first; user can apply/dismiss/submit anyway
 
-3. Simplify the client impersonation UI
-- Refactor `src/components/DevUserPicker.tsx` from a manual form into a small helper that can be used in two modes:
-  - one-click preset for Joachim
-  - optional advanced/manual mode only if needed later
-- No secret input should be required for the Joachim sandbox button.
+### ClickUp Integration (Phase 2)
+- `clickup_installations` + `clickup_user_mappings` tables with RLS
+- `clickup-setup` edge function validates token, stores installation, lists members
+- `clickup-fetch-tasks` edge function pulls assigned tasks from ClickUp API
+- `ClickUpSection` component: 3-step wizard (token → connect → map users)
+- Settings > Integrations: ClickUp connection card with setup instructions
+- MyStandup: "Import from ClickUp" button + task picker dialog in Today's Focus
 
-4. Adjust the edge function for sandbox-safe one-click login
-- Update `supabase/functions/dev-impersonate/index.ts` so it supports:
-  - sandbox preview origin + fixed allowed email (Joachim) without manual secret entry
-  - existing secret-based path for broader/manual impersonation if you still want that as fallback
-- Also tighten CORS/origin checks so this shortcut cannot be used from the published domain.
+### ClickUp Status Sync
+- Added `clickup_task_id` column to `commitments` table
+- `clickup-update-task` edge function syncs status changes to ClickUp API
+- Fuzzy-matches StandFlow statuses to ClickUp's custom per-list statuses
+- MyStandup stores `clickup_task_id` on import, fires sync on status change
 
-5. Leave real auth/session behavior intact
-- Keep `src/hooks/useAuth.tsx` responsible for normal Supabase session hydration and auth state changes.
-- Remove the logic that swaps the whole app into `DevUserPicker` mode based on `import.meta.env.DEV`.
-- After successful impersonation, the app should behave like a normal signed-in session with real org/team/RLS access.
+### Bug Fixes (ClickUp RLS + Standup Duplicate Key)
+- Updated INSERT policy on `clickup_user_mappings` to allow org members to map any user
+- Replaced conditional insert/update on `standup_responses` with idempotent upsert
 
-Files to update
-- `src/hooks/useAuth.tsx`
-  - remove preview-bypass rendering logic based on `import.meta.env.DEV`
-  - keep only normal auth provider behavior
-- `src/pages/Auth.tsx`
-  - add sandbox-only “Continue as Joachim Rathke” button
-  - wire it to the impersonation action
-- `src/components/DevUserPicker.tsx`
-  - simplify into reusable impersonation action UI/helper
-  - preset Joachim flow; optional advanced fallback
-- `supabase/functions/dev-impersonate/index.ts`
-  - allow sandbox-origin one-click impersonation for Joachim
-  - deny published domain
-  - keep/manual secret path optional
-- `supabase/config.toml`
-  - likely no structural change needed if `dev-impersonate` is already registered
+### GitHub Integration + Cross-Platform Weekly Digest
+- `github_installations` + `github_user_mappings` tables with RLS
+- `github-setup` edge function validates PAT, stores installation, lists org members
+- `github-fetch-activity` edge function fetches commits, PRs, reviews via GitHub Search API
+- `GitHubSection` component: setup wizard (token + org name → user mapping)
+- Settings > Integrations: GitHub connection card after ClickUp
+- `ai-weekly-digest` enhanced to aggregate GitHub + ClickUp + StandFlow activity
+- `cross_platform_activity` JSONB column on `ai_weekly_digests`
+- WeeklyDigest page shows cross-platform activity card (StandFlow, GitHub, ClickUp)
+- Slack summary includes GitHub stats when available
 
-Technical details
-- Known target user already exists:
-  - Joachim Rathke
-  - `joachim@noddi.no`
-- Best gate for sandbox:
-  - allow preview host pattern
-  - deny `standup-flow-app.lovable.app`
-- Best UX:
-  - show button directly on `/auth`, because that is where you land now
-- Security tradeoff:
-  - one-click impersonation without entering a secret is only reasonable if it is restricted to sandbox preview origins and a fixed safe target account
-  - it must not be available on the published app
+### Fix Duplicate Slack Summaries + Daily Digest Cron
+- Removed per-submission `slack-post-summary` call from MyStandup.tsx (was firing on every individual submission)
+- Removed duplicate Slack posting from `ai-summarize-session` (now only generates + stores AI summary)
+- Added `ai-summarize-session` + `slack-post-summary` calls to Meeting Mode completion
+- New `daily-summary-cron` edge function aggregates daily activity (completions, new tasks, carried, blockers) and posts end-of-day digest to Slack
+- pg_cron job scheduled at 17:00 UTC weekdays to trigger the daily digest automatically
 
-Expected result
-- In preview/sandbox, `/auth` shows a clear “Continue as Joachim Rathke” button.
-- Clicking it signs you into a real Supabase session as Joachim.
-- Because it is a real session, org/team membership and RLS-backed data work correctly.
-- On the published app, only normal Slack login remains available.
+### Auto-Sync External Activity (ClickUp + GitHub)
+- New `external_activity` table with RLS, unique dedup constraint on `(external_id, activity_type, source)`
+- `clickup-sync-activity` edge function polls ClickUp for task status changes (completed, in-progress)
+- `github-sync-activity` edge function polls GitHub for commits, PRs opened, PRs merged
+- pg_cron jobs run both sync functions every 30 minutes, 7 days/week (including weekends)
+- `daily-summary-cron` updated: removed standup-day gate, Monday digest covers Sat+Sun, includes external activity counts (commits, PRs, ClickUp tasks)
+- MyStandup "Recent Activity" section shows unacknowledged external events with Add/Dismiss actions
+- Completed items get acknowledged; in-progress/opened items get added as today's focus commitments
+
+### Activity Feed Bug Fixes
+- Fixed `__none__` GitHub username causing bogus commits from random strangers (176 rows deleted)
+- Fixed standup responses not appearing in activity feed (broken PostgREST nested filter)
+- Broadened ClickUp sync to capture all task updates, not just completed/in-progress
+- Redeployed all sync edge functions (clickup-sync-activity, github-sync-activity, github-fetch-activity)
+- Replaced fragile nested PostgREST filter with two-step session-based query for standup responses
+
+### GitHub Sync Date Range Fix
+- Changed `github-sync-activity` from single-date to range-based queries (`committer-date:${start}..${end}`)
+- Added optional `days_back` parameter (default: 1, max: 90)
+- Manual "Sync GitHub" button now passes `days_back: 30` to backfill historical activity
+- Fixes missing activity for users whose commits weren't captured by single-date GitHub Search API queries
+
+### GitHub Per-Repo Fallback for Unindexed Users
+- GitHub Search API does not index certain accounts (bot/machine users like `ClickUpBotGOAT`)
+- Added per-repo fallback: if Search API returns 0 commits for a user, lists org repos via `/orgs/{org}/repos` and queries each repo's Commits API (`/repos/{owner}/{repo}/commits?author={username}&since=...`)
+- Same fallback for PRs opened/merged using the Pulls API
+- Applied to both `github-sync-activity` and `github-fetch-activity` edge functions
+- Org repos list is cached per sync invocation; fallback only triggers when Search returns 0
+
+### Fix GitHub Activity Attribution for Merge-Only Users
+- Removed broken Events API (`/users/{username}/events/orgs/{org}`) — only works for self-auth, not shared PAT
+- Added `merged_by` matching to `fetchPRsPerRepo` — PRs merged (not just authored) by a user are now attributed
+- Added `fetchMergedPRCommits` — fetches commits from PRs where user is merger but not author (Lovable bot PRs)
+- Always runs per-repo merged PR check (not just as fallback) to ensure bot-authored PRs are captured
+- Fixed date range bug: `daysBack=1` now correctly goes back 1 full day (was `daysBack-1` = 0 days)
+- 9 Deno unit tests validating attribution logic, date range, and case-insensitivity
+- Applied to both `github-sync-activity` and `github-fetch-activity` edge functions

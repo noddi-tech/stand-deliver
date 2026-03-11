@@ -3,11 +3,47 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, LogOut } from "lucide-react";
+import { Loader2, LogOut, User } from "lucide-react";
+import { isSandbox } from "@/lib/isSandbox";
+import { supabase } from "@/integrations/supabase/client";
 
 export default function Auth() {
   const { user, loading, signInWithSlack, signOut } = useAuth();
   const [signingOut, setSigningOut] = useState(false);
+  const [sandboxLoading, setSandboxLoading] = useState(false);
+  const [sandboxError, setSandboxError] = useState<string | null>(null);
+
+  const showSandboxLogin = isSandbox();
+
+  async function handleSandboxLogin() {
+    setSandboxLoading(true);
+    setSandboxError(null);
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/dev-impersonate`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-sandbox-origin": window.location.origin,
+            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          },
+          body: JSON.stringify({ email: "joachim@noddi.no", sandbox: true }),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Impersonation failed");
+
+      const { error: otpError } = await supabase.auth.verifyOtp({
+        token_hash: data.token_hash,
+        type: "magiclink",
+      });
+      if (otpError) throw new Error(otpError.message);
+    } catch (err: any) {
+      setSandboxError(err.message);
+      setSandboxLoading(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -60,7 +96,7 @@ export default function Auth() {
               Continue with your Slack workspace
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
             <Button
               onClick={signInWithSlack}
               className="w-full gap-3 transition-all duration-150"
@@ -75,6 +111,37 @@ export default function Auth() {
               </svg>
               Sign in with Slack
             </Button>
+
+            {showSandboxLogin && (
+              <>
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t border-border" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-card px-2 text-muted-foreground">Sandbox</span>
+                  </div>
+                </div>
+
+                <Button
+                  variant="outline"
+                  onClick={handleSandboxLogin}
+                  disabled={sandboxLoading}
+                  className="w-full gap-2 border-amber-500/50 text-foreground hover:bg-amber-500/10"
+                >
+                  {sandboxLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <User className="h-4 w-4" />
+                  )}
+                  Continue as Joachim Rathke
+                </Button>
+
+                {sandboxError && (
+                  <p className="text-xs text-destructive text-center">{sandboxError}</p>
+                )}
+              </>
+            )}
           </CardContent>
         </Card>
       </div>

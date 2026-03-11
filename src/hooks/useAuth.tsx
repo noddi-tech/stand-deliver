@@ -17,7 +17,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 1. Subscribe to auth changes FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, newSession) => {
         if (event === "SIGNED_OUT" || !newSession) {
@@ -30,7 +29,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     );
 
-    // 2. Hydrate: if URL has OAuth hash, let onAuthStateChange handle it
     const hasOAuthHash = window.location.hash.includes("access_token");
     if (!hasOAuthHash) {
       supabase.auth.getSession().then(async ({ data: { session: localSession } }) => {
@@ -61,9 +59,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut();
   };
 
-  // In dev mode with no session, show the DevUserPicker instead of children
-  const showDevPicker = import.meta.env.DEV && !loading && !session;
-
   return (
     <AuthContext.Provider
       value={{
@@ -74,30 +69,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signOut,
       }}
     >
-      {showDevPicker ? <DevUserPickerLazy /> : children}
+      {children}
     </AuthContext.Provider>
   );
-}
-
-// Lazy import to avoid bundling DevUserPicker in production
-function DevUserPickerLazy() {
-  const [Component, setComponent] = useState<React.ComponentType | null>(null);
-
-  useEffect(() => {
-    import("@/components/DevUserPicker").then((mod) => {
-      setComponent(() => mod.default);
-    });
-  }, []);
-
-  if (!Component) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-      </div>
-    );
-  }
-
-  return <Component />;
 }
 
 export function useAuth() {
