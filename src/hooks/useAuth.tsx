@@ -10,9 +10,44 @@ interface AuthContextType {
   signOut: () => Promise<void>;
 }
 
+// Dev-mode mock user so the sandbox preview works without Slack OAuth
+const DEV_MOCK_USER = {
+  id: "00000000-0000-0000-0000-000000000000",
+  email: "dev@standflow.local",
+  app_metadata: {},
+  user_metadata: { full_name: "Dev User" },
+  aud: "authenticated",
+  created_at: new Date().toISOString(),
+} as unknown as User;
+
+const DEV_MOCK_SESSION = {
+  access_token: "dev-token",
+  refresh_token: "dev-refresh",
+  expires_in: 999999,
+  token_type: "bearer",
+  user: DEV_MOCK_USER,
+} as unknown as Session;
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  // Dev bypass — skip all Supabase auth in sandbox
+  if (import.meta.env.DEV) {
+    return (
+      <AuthContext.Provider
+        value={{
+          session: DEV_MOCK_SESSION,
+          user: DEV_MOCK_USER,
+          loading: false,
+          signInWithSlack: async () => {},
+          signOut: async () => {},
+        }}
+      >
+        {children}
+      </AuthContext.Provider>
+    );
+  }
+
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 

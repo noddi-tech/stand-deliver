@@ -12,6 +12,12 @@ interface OnboardingStatus {
 
 export function useOnboardingStatus() {
   const { user } = useAuth();
+
+  // Dev bypass — skip onboarding checks
+  if (import.meta.env.DEV) {
+    return { hasOrg: true, hasTeam: true, orgId: "dev-org", teamId: "dev-team", loading: false };
+  }
+
   const [status, setStatus] = useState<OnboardingStatus>({
     hasOrg: false,
     hasTeam: false,

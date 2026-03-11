@@ -9,6 +9,9 @@ export default function Auth() {
   const { user, loading, signInWithSlack, signOut } = useAuth();
   const [signingOut, setSigningOut] = useState(false);
 
+  // Dev bypass — go straight to dashboard
+  if (import.meta.env.DEV) return <Navigate to="/dashboard" replace />;
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
