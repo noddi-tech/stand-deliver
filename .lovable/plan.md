@@ -1,70 +1,96 @@
+## Completed
 
+### Slack channel selector (IntegrationsTab)
+- Channel dropdown now saves to `teams.slack_channel_id` on change
+- Initializes with current team's linked channel
+- Shows success toast with channel name
 
-## Full Diagnosis
+### Slack invite system (MembersTab + Edge Function)
+- New `slack-send-invite` edge function sends a DM with Block Kit invite button
+- MembersTab shows "Invite via Slack" card with user picker when Slack is connected
+- Invited users click the link, sign in with Slack OIDC, and auto-join the org
 
-There are **three distinct bugs** causing missing activity for ClickUpBotGOAT (Joachim):
+### Edit Daily Standup
+- Added UPDATE RLS policy on `standup_responses`
+- Edit button loads existing data back into form
+- Re-submit updates existing response and commitments
 
-### Bug 1: Events API 403/404 — Fundamentally Broken for Multi-User
-The logs confirm:
-- `Events API returned 403 for ClickUpBotGOAT`
-- `Events API returned 404 for mattisaa, stiangrim, andersliland, ...`
+### AI Standup Coach (Phase 1)
+- `ai-coach-standup` edge function reviews commitments via Lovable AI Gateway
+- Uses tool calling for structured output (suggestions with category, issue, rewrite)
+- `StandupCoachCard` component shows inline coaching before submit
+- Submit button triggers AI review first; user can apply/dismiss/submit anyway
 
-The endpoint `GET /users/{username}/events/orgs/{org}` only works when the **authenticated user requests their own events**. A single PAT from one user cannot read another user's org events. The 403 means the PAT lacks "Events" org permission; the 404 means it's trying to read a different user's events entirely. This approach is dead — it will never work with a shared PAT.
+### ClickUp Integration (Phase 2)
+- `clickup_installations` + `clickup_user_mappings` tables with RLS
+- `clickup-setup` edge function validates token, stores installation, lists members
+- `clickup-fetch-tasks` edge function pulls assigned tasks from ClickUp API
+- `ClickUpSection` component: 3-step wizard (token → connect → map users)
+- Settings > Integrations: ClickUp connection card with setup instructions
+- MyStandup: "Import from ClickUp" button + task picker dialog in Today's Focus
 
-### Bug 2: Per-Repo Commits Fallback Matches Nobody
-`fetchCommitsPerRepo` correctly removes `?author=` and filters client-side, but for Lovable merge commits:
-- `author.login` = `lovable-dev[bot]`
-- `committer.login` = `web-flow` (GitHub's merge bot)
-- `commit.author.name` = `lovable-dev[bot]`
-- `commit.committer.name` = `GitHub`
+### ClickUp Status Sync
+- Added `clickup_task_id` column to `commitments` table
+- `clickup-update-task` edge function syncs status changes to ClickUp API
+- Fuzzy-matches StandFlow statuses to ClickUp's custom per-list statuses
+- MyStandup stores `clickup_task_id` on import, fires sync on status change
 
-`ClickUpBotGOAT` appears in **none** of these fields. The user who clicks "Merge" on a PR is only recorded in the PR's `merged_by` field, not in commit metadata.
+### Bug Fixes (ClickUp RLS + Standup Duplicate Key)
+- Updated INSERT policy on `clickup_user_mappings` to allow org members to map any user
+- Replaced conditional insert/update on `standup_responses` with idempotent upsert
 
-### Bug 3: PR Attribution Only Checks Author, Not Merger
-Both the Search API query (`author:${username}+type:pr+merged:...`) and the per-repo fallback (`pr.user?.login`) only look at who **opened** the PR. For Lovable PRs, the opener is `lovable-dev[bot]`. Joachim is the **merger** — recorded in `pr.merged_by.login` — which is never checked.
+### GitHub Integration + Cross-Platform Weekly Digest
+- `github_installations` + `github_user_mappings` tables with RLS
+- `github-setup` edge function validates PAT, stores installation, lists org members
+- `github-fetch-activity` edge function fetches commits, PRs, reviews via GitHub Search API
+- `GitHubSection` component: setup wizard (token + org name → user mapping)
+- Settings > Integrations: GitHub connection card after ClickUp
+- `ai-weekly-digest` enhanced to aggregate GitHub + ClickUp + StandFlow activity
+- `cross_platform_activity` JSONB column on `ai_weekly_digests`
+- WeeklyDigest page shows cross-platform activity card (StandFlow, GitHub, ClickUp)
+- Slack summary includes GitHub stats when available
 
-### Why Activity Decreased
-The previous iteration may have also introduced a regression — the `dateRange` calculation in `github-sync-activity` line 228-229 uses `daysBack - 1` which for `daysBack=1` results in `startDate === endDate === today`. Combined with the Events API returning errors for every user, the net effect is fewer results than before.
+### Fix Duplicate Slack Summaries + Daily Digest Cron
+- Removed per-submission `slack-post-summary` call from MyStandup.tsx (was firing on every individual submission)
+- Removed duplicate Slack posting from `ai-summarize-session` (now only generates + stores AI summary)
+- Added `ai-summarize-session` + `slack-post-summary` calls to Meeting Mode completion
+- New `daily-summary-cron` edge function aggregates daily activity (completions, new tasks, carried, blockers) and posts end-of-day digest to Slack
+- pg_cron job scheduled at 17:00 UTC weekdays to trigger the daily digest automatically
 
----
+### Auto-Sync External Activity (ClickUp + GitHub)
+- New `external_activity` table with RLS, unique dedup constraint on `(external_id, activity_type, source)`
+- `clickup-sync-activity` edge function polls ClickUp for task status changes (completed, in-progress)
+- `github-sync-activity` edge function polls GitHub for commits, PRs opened, PRs merged
+- pg_cron jobs run both sync functions every 30 minutes, 7 days/week (including weekends)
+- `daily-summary-cron` updated: removed standup-day gate, Monday digest covers Sat+Sun, includes external activity counts (commits, PRs, ClickUp tasks)
+- MyStandup "Recent Activity" section shows unacknowledged external events with Add/Dismiss actions
+- Completed items get acknowledged; in-progress/opened items get added as today's focus commitments
 
-## Fix Plan
+### Activity Feed Bug Fixes
+- Fixed `__none__` GitHub username causing bogus commits from random strangers (176 rows deleted)
+- Fixed standup responses not appearing in activity feed (broken PostgREST nested filter)
+- Broadened ClickUp sync to capture all task updates, not just completed/in-progress
+- Redeployed all sync edge functions (clickup-sync-activity, github-sync-activity, github-fetch-activity)
+- Replaced fragile nested PostgREST filter with two-step session-based query for standup responses
 
-### Approach: Test-First with Isolated Logic
+### GitHub Sync Date Range Fix
+- Changed `github-sync-activity` from single-date to range-based queries (`committer-date:${start}..${end}`)
+- Added optional `days_back` parameter (default: 1, max: 90)
+- Manual "Sync GitHub" button now passes `days_back: 30` to backfill historical activity
+- Fixes missing activity for users whose commits weren't captured by single-date GitHub Search API queries
 
-Extract the filtering/matching logic into pure functions that can be unit-tested, then fix them.
+### GitHub Per-Repo Fallback for Unindexed Users
+- GitHub Search API does not index certain accounts (bot/machine users like `ClickUpBotGOAT`)
+- Added per-repo fallback: if Search API returns 0 commits for a user, lists org repos via `/orgs/{org}/repos` and queries each repo's Commits API (`/repos/{owner}/{repo}/commits?author={username}&since=...`)
+- Same fallback for PRs opened/merged using the Pulls API
+- Applied to both `github-sync-activity` and `github-fetch-activity` edge functions
+- Org repos list is cached per sync invocation; fallback only triggers when Search returns 0
 
-### Step 1: Write Deno Tests
-
-Create `supabase/functions/github-sync-activity/index.test.ts` that:
-- Mocks GitHub API responses matching the Lovable scenario (author=`lovable-dev[bot]`, committer=`web-flow`, merger=`ClickUpBotGOAT`)
-- Tests that `ClickUpBotGOAT` is correctly attributed commits and PRs
-- Tests that the Events API failure doesn't break the sync
-- Tests the date range calculation
-
-### Step 2: Fix PR Attribution (Primary Fix)
-
-In both `github-sync-activity` and `github-fetch-activity`:
-1. **`fetchPRsPerRepo`**: Also match PRs where `pr.merged_by?.login` matches the username (not just `pr.user?.login`). This captures PRs that Joachim merged but didn't author.
-2. **Search API PR queries**: Add a second query `is:pr is:merged merged:${dateRange}` scoped to org repos, checking `merged_by` in the response.
-
-### Step 3: Attribute Merged PR Commits to Merger
-
-For each PR merged by the user, fetch the PR's commits and upsert them as the user's commit activity. This way, when Joachim merges a Lovable PR with 5 commits, those 5 commits appear under his name.
-
-### Step 4: Remove Broken Events API
-
-Remove `fetchUserEvents` entirely — it can never work with a single PAT for multiple users. Replace it with the `merged_by` approach which uses standard repo-level APIs that the PAT can access.
-
-### Step 5: Fix Date Range Edge Case
-
-Line 228: `new Date(Date.now() - (daysBack - 1) * 86400000)` — for `daysBack=1`, this computes `Date.now()` which is today. Should use `daysBack * 86400000` to go back the full number of days.
-
-### Files Changed
-
-| File | Change |
-|------|--------|
-| `supabase/functions/github-sync-activity/index.test.ts` | New — Deno tests reproducing the bug with mock data |
-| `supabase/functions/github-sync-activity/index.ts` | Fix PR attribution (`merged_by`), add merged-PR commit attribution, remove broken Events API, fix date range |
-| `supabase/functions/github-fetch-activity/index.ts` | Same fixes for the analytics-facing function |
-
+### Fix GitHub Activity Attribution for Merge-Only Users
+- Removed broken Events API (`/users/{username}/events/orgs/{org}`) — only works for self-auth, not shared PAT
+- Added `merged_by` matching to `fetchPRsPerRepo` — PRs merged (not just authored) by a user are now attributed
+- Added `fetchMergedPRCommits` — fetches commits from PRs where user is merger but not author (Lovable bot PRs)
+- Always runs per-repo merged PR check (not just as fallback) to ensure bot-authored PRs are captured
+- Fixed date range bug: `daysBack=1` now correctly goes back 1 full day (was `daysBack-1` = 0 days)
+- 9 Deno unit tests validating attribution logic, date range, and case-insensitivity
+- Applied to both `github-sync-activity` and `github-fetch-activity` edge functions

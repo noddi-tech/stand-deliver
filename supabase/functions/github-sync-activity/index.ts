@@ -107,48 +107,7 @@ async function fetchCommitsPerRepo(
   return allCommits;
 }
 
-// Fetch user events (PushEvent) to capture merges where user is neither author nor committer
-async function fetchUserEvents(
-  token: string,
-  username: string,
-  orgName: string,
-  startDate: string,
-  endDate: string
-): Promise<any[]> {
-  const commits: any[] = [];
-  try {
-    const res = await fetchWithTimeout(
-      `${GH_API}/users/${username}/events/orgs/${orgName}?per_page=100`,
-      { headers: GH_HEADERS(token) }
-    );
-    if (!res.ok) {
-      console.log(`Events API returned ${res.status} for ${username}`);
-      return [];
-    }
-    const events = await res.json();
-    if (!Array.isArray(events)) return [];
-    for (const event of events) {
-      if (event.type !== "PushEvent") continue;
-      const eventDate = event.created_at?.split("T")[0];
-      if (!eventDate || eventDate < startDate || eventDate > endDate) continue;
-      const repo = event.repo?.name || "";
-      for (const c of event.payload?.commits || []) {
-        commits.push({
-          sha: c.sha,
-          html_url: `https://github.com/${repo}/commit/${c.sha}`,
-          commit: { message: c.message, author: { date: event.created_at }, committer: { date: event.created_at } },
-          repository: { full_name: repo },
-        });
-      }
-    }
-    console.log(`Events API found ${commits.length} commits for ${username}`);
-  } catch (e) {
-    console.error(`Events API error for ${username}:`, e);
-  }
-  return commits;
-}
-
-// Per-repo fallback: fetch PRs
+// Fetch PRs where user is author OR merger, per-repo fallback
 async function fetchPRsPerRepo(
   token: string,
   repos: string[],
@@ -173,8 +132,12 @@ async function fetchPRsPerRepo(
           if (!res.ok) return [];
           const prs = await res.json();
           if (!Array.isArray(prs)) return [];
+          // Match PRs where user is author OR merger
           return prs
-            .filter((pr: any) => pr.user?.login?.toLowerCase() === userLower)
+            .filter((pr: any) =>
+              pr.user?.login?.toLowerCase() === userLower ||
+              pr.merged_by?.login?.toLowerCase() === userLower
+            )
             .map((pr: any) => ({ ...pr, _repoFullName: repoFullName }));
         } catch {
           return [];
@@ -205,6 +168,77 @@ async function fetchPRsPerRepo(
   return allPRs;
 }
 
+// Fetch commits from PRs merged by the user (for bot-authored PRs like Lovable)
+async function fetchMergedPRCommits(
+  token: string,
+  repos: string[],
+  username: string,
+  startDate: string,
+  endDate: string
+): Promise<any[]> {
+  const allCommits: any[] = [];
+  const userLower = username.toLowerCase();
+
+  for (let i = 0; i < repos.length; i += BATCH_SIZE) {
+    const batch = repos.slice(i, i + BATCH_SIZE);
+    const results = await Promise.allSettled(
+      batch.map(async (repoFullName) => {
+        try {
+          const res = await fetchWithTimeout(
+            `${GH_API}/repos/${repoFullName}/pulls?state=closed&sort=updated&direction=desc&per_page=50`,
+            { headers: GH_HEADERS(token) }
+          );
+          if (!res.ok) return [];
+          const prs = await res.json();
+          if (!Array.isArray(prs)) return [];
+
+          const mergedByUser = prs.filter((pr: any) => {
+            if (!pr.merged_at) return false;
+            const mergedDate = pr.merged_at.split("T")[0];
+            if (mergedDate < startDate || mergedDate > endDate) return false;
+            // Only PRs where user is the merger but NOT the author
+            const isAuthor = pr.user?.login?.toLowerCase() === userLower;
+            const isMerger = pr.merged_by?.login?.toLowerCase() === userLower;
+            return isMerger && !isAuthor;
+          });
+
+          const commits: any[] = [];
+          for (const pr of mergedByUser) {
+            try {
+              const commitsRes = await fetchWithTimeout(
+                `${GH_API}/repos/${repoFullName}/pulls/${pr.number}/commits?per_page=100`,
+                { headers: GH_HEADERS(token) }
+              );
+              if (!commitsRes.ok) continue;
+              const prCommits = await commitsRes.json();
+              if (!Array.isArray(prCommits)) continue;
+              for (const c of prCommits) {
+                commits.push({
+                  sha: c.sha,
+                  html_url: c.html_url || `https://github.com/${repoFullName}/commit/${c.sha}`,
+                  commit: c.commit,
+                  repository: { full_name: repoFullName },
+                  _mergedBy: username,
+                });
+              }
+            } catch { /* skip */ }
+          }
+          return commits;
+        } catch {
+          return [];
+        }
+      })
+    );
+    for (const result of results) {
+      if (result.status === "fulfilled") {
+        allCommits.push(...result.value);
+      }
+    }
+  }
+  console.log(`fetchMergedPRCommits: found ${allCommits.length} commits from PRs merged by ${username}`);
+  return allCommits;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -225,8 +259,9 @@ Deno.serve(async (req) => {
     } catch { /* no body */ }
 
     const endDate = new Date().toISOString().split("T")[0];
-    const startDate = new Date(Date.now() - (daysBack - 1) * 86400000).toISOString().split("T")[0];
-    const dateRange = daysBack === 1 ? endDate : `${startDate}..${endDate}`;
+    // FIX: use daysBack (not daysBack-1) so daysBack=1 goes back 1 full day
+    const startDate = new Date(Date.now() - daysBack * 86400000).toISOString().split("T")[0];
+    const dateRange = `${startDate}..${endDate}`;
 
     const { data: installations } = await supabaseAdmin
       .from("github_installations")
@@ -297,16 +332,16 @@ Deno.serve(async (req) => {
             console.log(`Per-repo fallback found ${allCommits.length} commits for ${username}`);
           }
 
-          // FALLBACK 2: Events API to capture merges (user is neither author nor committer)
-          const eventCommits = await fetchUserEvents(token, username, orgName, startDate, endDate);
-          for (const c of eventCommits) {
-            if (c.sha && !seenShas.has(c.sha)) {
-              seenShas.add(c.sha);
-              allCommits.push(c);
+          // FALLBACK: Fetch commits from PRs merged by this user (captures Lovable bot PRs)
+          if (orgName) {
+            if (!orgRepos) orgRepos = await fetchOrgRepos(token, orgName);
+            const mergedPRCommits = await fetchMergedPRCommits(token, orgRepos, username, startDate, endDate);
+            for (const c of mergedPRCommits) {
+              if (c.sha && !seenShas.has(c.sha)) {
+                seenShas.add(c.sha);
+                allCommits.push(c);
+              }
             }
-          }
-          if (eventCommits.length > 0) {
-            console.log(`Events API added ${eventCommits.length} new commits for ${username}, total now ${allCommits.length}`);
           }
 
           for (const item of allCommits) {
@@ -373,7 +408,7 @@ Deno.serve(async (req) => {
             }
           }
 
-          // --- PRs MERGED ---
+          // --- PRs MERGED (author OR merger) ---
           const mergedRes = await fetch(
             `${GH_API}/search/issues?q=author:${username}+type:pr+merged:${dateRange}&per_page=50`,
             { headers }
@@ -384,9 +419,16 @@ Deno.serve(async (req) => {
             mergedItems = data.items || [];
           }
 
-          if (mergedItems.length === 0 && orgName) {
+          // Always check per-repo for merged PRs to catch merged_by attribution
+          if (orgName) {
             if (!orgRepos) orgRepos = await fetchOrgRepos(token, orgName);
-            mergedItems = await fetchPRsPerRepo(token, orgRepos, username, startDate, endDate, "merged");
+            const perRepoMerged = await fetchPRsPerRepo(token, orgRepos, username, startDate, endDate, "merged");
+            const existingIds = new Set(mergedItems.map((item: any) => item.id));
+            for (const pr of perRepoMerged) {
+              if (!existingIds.has(pr.id)) {
+                mergedItems.push(pr);
+              }
+            }
           }
 
           for (const item of mergedItems) {
@@ -402,7 +444,7 @@ Deno.serve(async (req) => {
                     external_id: `merged-${item.id}`,
                     external_url: item.html_url,
                     metadata: {
-                      repo: item.repository_url?.split("/").slice(-2).join("/"),
+                      repo: item.repository_url?.split("/").slice(-2).join("/") || item._repoFullName,
                       number: item.number,
                     },
                     occurred_at: item.merged_at || item.closed_at || item.updated_at,
@@ -413,7 +455,7 @@ Deno.serve(async (req) => {
             }
           }
 
-          results.push({ org: orgName, user: username, commits: allCommits.length });
+          results.push({ org: orgName, user: username, commits: allCommits.length, prs_merged: mergedItems.length });
         } catch (e) {
           console.error(`GitHub sync error for ${username}:`, e);
         }
