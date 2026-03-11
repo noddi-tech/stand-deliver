@@ -86,10 +86,11 @@
 - Applied to both `github-sync-activity` and `github-fetch-activity` edge functions
 - Org repos list is cached per sync invocation; fallback only triggers when Search returns 0
 
-### GitHub Events API Fallback for Merge-Only Users
-- For users like `ClickUpBotGOAT` who merge Lovable PRs (where author=`lovable-dev[bot]`, committer=`GitHub`), neither Search API nor per-repo Commits API finds their activity
-- Added GitHub Events API (`GET /users/{username}/events`) as a third data source
-- Extracts commits from `PushEvent` payloads (recorded when user merges a PR)
-- Deduplicates by SHA against commits already found by Search/per-repo fallback
+### Fix GitHub Activity Attribution for Merge-Only Users
+- Removed broken Events API (`/users/{username}/events/orgs/{org}`) — only works for self-auth, not shared PAT
+- Added `merged_by` matching to `fetchPRsPerRepo` — PRs merged (not just authored) by a user are now attributed
+- Added `fetchMergedPRCommits` — fetches commits from PRs where user is merger but not author (Lovable bot PRs)
+- Always runs per-repo merged PR check (not just as fallback) to ensure bot-authored PRs are captured
+- Fixed date range bug: `daysBack=1` now correctly goes back 1 full day (was `daysBack-1` = 0 days)
+- 9 Deno unit tests validating attribution logic, date range, and case-insensitivity
 - Applied to both `github-sync-activity` and `github-fetch-activity` edge functions
-- Events API is always called (additive), not just as a fallback — ensures no merge activity is missed
