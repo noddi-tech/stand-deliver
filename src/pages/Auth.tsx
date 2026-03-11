@@ -9,9 +9,6 @@ export default function Auth() {
   const { user, loading, signInWithSlack, signOut } = useAuth();
   const [signingOut, setSigningOut] = useState(false);
 
-  // Dev bypass — go straight to dashboard
-  if (import.meta.env.DEV) return <Navigate to="/dashboard" replace />;
-
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -20,7 +17,6 @@ export default function Auth() {
     );
   }
 
-  // If user has a valid session, auto-redirect but offer switch workspace
   if (user && !signingOut) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-4">

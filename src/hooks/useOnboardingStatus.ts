@@ -13,11 +13,6 @@ interface OnboardingStatus {
 export function useOnboardingStatus() {
   const { user } = useAuth();
 
-  // Dev bypass — skip onboarding checks
-  if (import.meta.env.DEV) {
-    return { hasOrg: true, hasTeam: true, orgId: "dev-org", teamId: "dev-team", loading: false };
-  }
-
   const [status, setStatus] = useState<OnboardingStatus>({
     hasOrg: false,
     hasTeam: false,
@@ -33,7 +28,6 @@ export function useOnboardingStatus() {
     }
 
     async function check() {
-      // Check org membership
       const { data: orgMember } = await supabase
         .from("organization_members")
         .select("org_id")
@@ -46,7 +40,6 @@ export function useOnboardingStatus() {
         return;
       }
 
-      // Check team membership
       const { data: teamMember } = await supabase
         .from("team_members")
         .select("team_id")
