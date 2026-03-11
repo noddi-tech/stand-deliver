@@ -31,6 +31,23 @@ const DEV_MOCK_SESSION = {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  // Dev bypass — skip all Supabase auth in sandbox
+  if (import.meta.env.DEV) {
+    return (
+      <AuthContext.Provider
+        value={{
+          session: DEV_MOCK_SESSION,
+          user: DEV_MOCK_USER,
+          loading: false,
+          signInWithSlack: async () => {},
+          signOut: async () => {},
+        }}
+      >
+        {children}
+      </AuthContext.Provider>
+    );
+  }
+
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 

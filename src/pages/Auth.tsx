@@ -6,11 +6,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Loader2, LogOut } from "lucide-react";
 
 export default function Auth() {
-  // Dev bypass — go straight to dashboard
-  if (import.meta.env.DEV) return <Navigate to="/dashboard" replace />;
-
   const { user, loading, signInWithSlack, signOut } = useAuth();
   const [signingOut, setSigningOut] = useState(false);
+
+  // Dev bypass — go straight to dashboard
+  if (import.meta.env.DEV) return <Navigate to="/dashboard" replace />;
 
   if (loading) {
     return (
