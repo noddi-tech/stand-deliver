@@ -102,3 +102,9 @@
 - SyncNowCard loops calls automatically while `has_more` is true, with progress bar
 - Org repos list cached per sync invocation across user chunks
 - Eliminates 504 gateway timeouts that manifested as CORS errors in the browser
+
+### Co-Author Detection + Activity Server-Side Filtering
+- `fetchCommitsPerRepo` now checks `Co-authored-by:` trailers in commit messages (captures Lovable bot commits where user is co-author)
+- Per-repo commit scan now always runs (not just as fallback when Search API returns 0), since Search API `author:`/`committer:` qualifiers never match co-authors
+- Activity page filtering moved server-side: `memberFilter` and `sourceFilter` applied to Supabase queries before `limit(200)`, fixing the windowing bug where individual members' activity was crowded out
+- Standup fetch skipped when source filter is `github` or `clickup` for faster queries
