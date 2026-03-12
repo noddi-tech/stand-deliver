@@ -384,6 +384,7 @@ export function GitHubSection({ orgId }: GitHubSectionProps) {
                                           userId: member.user_id,
                                           githubUsername: value,
                                           displayName: gm?.login || value,
+                                          githubUserId: gm?.id ?? null,
                                         });
                                       }
                                     }}
