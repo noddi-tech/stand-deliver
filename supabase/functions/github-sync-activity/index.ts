@@ -25,13 +25,19 @@ async function resolveGitHubUserId(token: string, username: string): Promise<num
   if (key in userIdCache) return userIdCache[key];
   try {
     const res = await fetchWithTimeout(`${GH_API}/users/${username}`, { headers: GH_HEADERS(token) });
-    if (!res.ok) { await res.text(); userIdCache[key] = null; return null; }
+    if (!res.ok) {
+      const body = await res.text();
+      console.error(`resolveGitHubUserId FAILED for ${username}: ${res.status} ${body.slice(0, 200)}`);
+      userIdCache[key] = null;
+      return null;
+    }
     const data = await res.json();
     const id = typeof data.id === "number" ? data.id : null;
     userIdCache[key] = id;
     console.log(`Resolved GitHub user ${username} → id ${id}`);
     return id;
-  } catch {
+  } catch (err) {
+    console.error(`resolveGitHubUserId exception for ${username}:`, err);
     userIdCache[key] = null;
     return null;
   }
