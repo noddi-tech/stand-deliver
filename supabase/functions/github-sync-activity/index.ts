@@ -17,6 +17,36 @@ const DETAIL_BATCH_SIZE = 5;
 const REQUEST_TIMEOUT_MS = 5000;
 const TIME_BUDGET_MS = 120_000; // stop before 150s gateway timeout
 
+// Cache for GitHub user ID resolution (username → numeric id)
+const userIdCache: Record<string, number | null> = {};
+
+async function resolveGitHubUserId(token: string, username: string): Promise<number | null> {
+  const key = username.toLowerCase();
+  if (key in userIdCache) return userIdCache[key];
+  try {
+    const res = await fetchWithTimeout(`${GH_API}/users/${username}`, { headers: GH_HEADERS(token) });
+    if (!res.ok) { await res.text(); userIdCache[key] = null; return null; }
+    const data = await res.json();
+    const id = typeof data.id === "number" ? data.id : null;
+    userIdCache[key] = id;
+    console.log(`Resolved GitHub user ${username} → id ${id}`);
+    return id;
+  } catch {
+    userIdCache[key] = null;
+    return null;
+  }
+}
+
+/** Check if a commit message has a Co-authored-by trailer matching by username OR numeric user id */
+function isCoAuthorMatch(message: string, usernameLower: string, githubUserId: number | null): boolean {
+  if (!message.includes("co-authored-by:")) return false;
+  // Match by username text (works when username hasn't changed)
+  if (message.includes(usernameLower)) return true;
+  // Match by numeric user id in noreply email pattern: <{id}+...@users.noreply.github.com>
+  if (githubUserId !== null && message.includes(`<${githubUserId}+`)) return true;
+  return false;
+}
+
 async function fetchWithTimeout(url: string, options: RequestInit): Promise<Response> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
