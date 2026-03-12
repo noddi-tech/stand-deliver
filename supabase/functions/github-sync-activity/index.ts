@@ -15,9 +15,8 @@ const GH_HEADERS = (token: string) => ({
 const BATCH_SIZE = 10;
 const DETAIL_BATCH_SIZE = 5;
 const REQUEST_TIMEOUT_MS = 5000;
-const TIME_BUDGET_MS = 120_000; // stop before 150s gateway timeout
+const TIME_BUDGET_MS = 120_000;
 
-// Cache for GitHub user ID resolution (username → numeric id)
 const userIdCache: Record<string, number | null> = {};
 
 async function resolveGitHubUserId(token: string, username: string): Promise<number | null> {
@@ -26,29 +25,22 @@ async function resolveGitHubUserId(token: string, username: string): Promise<num
   try {
     const res = await fetchWithTimeout(`${GH_API}/users/${username}`, { headers: GH_HEADERS(token) });
     if (!res.ok) {
-      const body = await res.text();
-      console.error(`resolveGitHubUserId FAILED for ${username}: ${res.status} ${body.slice(0, 200)}`);
       userIdCache[key] = null;
       return null;
     }
     const data = await res.json();
     const id = typeof data.id === "number" ? data.id : null;
     userIdCache[key] = id;
-    console.log(`Resolved GitHub user ${username} → id ${id}`);
     return id;
-  } catch (err) {
-    console.error(`resolveGitHubUserId exception for ${username}:`, err);
+  } catch {
     userIdCache[key] = null;
     return null;
   }
 }
 
-/** Check if a commit message has a Co-authored-by trailer matching by username OR numeric user id */
 function isCoAuthorMatch(message: string, usernameLower: string, githubUserId: number | null): boolean {
   if (!message.includes("co-authored-by:")) return false;
-  // Match by username text (works when username hasn't changed)
   if (message.includes(usernameLower)) return true;
-  // Match by numeric user id in noreply email pattern: <{id}+...@users.noreply.github.com>
   if (githubUserId !== null && message.includes(`<${githubUserId}+`)) return true;
   return false;
 }
@@ -57,8 +49,7 @@ async function fetchWithTimeout(url: string, options: RequestInit): Promise<Resp
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    const res = await fetch(url, { ...options, signal: controller.signal });
-    return res;
+    return await fetch(url, { ...options, signal: controller.signal });
   } finally {
     clearTimeout(timeout);
   }
@@ -78,17 +69,12 @@ async function fetchOrgRepos(token: string, orgName: string): Promise<string[]> 
     if (data.length < 100) break;
     page++;
   }
-  console.log(`fetchOrgRepos: found ${repos.length} repos for org ${orgName}`);
   return repos;
 }
 
 async function fetchCommitsPerRepo(
-  token: string,
-  repos: string[],
-  username: string,
-  since: string,
-  until: string,
-  githubUserId: number | null = null
+  token: string, repos: string[], username: string,
+  since: string, until: string, githubUserId: number | null = null
 ): Promise<any[]> {
   const allCommits: any[] = [];
   const seenShas = new Set<string>();
@@ -114,31 +100,22 @@ async function fetchCommitsPerRepo(
               const commitCommitterName = c.commit?.committer?.name?.toLowerCase();
               const message = (c.commit?.message || "").toLowerCase();
               return (
-                authorLogin === userLower ||
-                committerLogin === userLower ||
-                commitAuthorName === userLower ||
-                commitCommitterName === userLower ||
+                authorLogin === userLower || committerLogin === userLower ||
+                commitAuthorName === userLower || commitCommitterName === userLower ||
                 isCoAuthorMatch(message, userLower, githubUserId)
               );
             })
             .map((c: any) => ({
-              sha: c.sha,
-              html_url: c.html_url,
-              commit: c.commit,
+              sha: c.sha, html_url: c.html_url, commit: c.commit,
               repository: { full_name: repoFullName },
             }));
-        } catch {
-          return [];
-        }
+        } catch { return []; }
       })
     );
     for (const result of results) {
       if (result.status === "fulfilled") {
         for (const c of result.value) {
-          if (c.sha && !seenShas.has(c.sha)) {
-            seenShas.add(c.sha);
-            allCommits.push(c);
-          }
+          if (c.sha && !seenShas.has(c.sha)) { seenShas.add(c.sha); allCommits.push(c); }
         }
       }
     }
@@ -147,12 +124,8 @@ async function fetchCommitsPerRepo(
 }
 
 async function fetchPRsPerRepo(
-  token: string,
-  repos: string[],
-  username: string,
-  startDate: string,
-  endDate: string,
-  type: "opened" | "merged"
+  token: string, repos: string[], username: string,
+  startDate: string, endDate: string, type: "opened" | "merged"
 ): Promise<any[]> {
   const allPRs: any[] = [];
   const seenIds = new Set<number>();
@@ -211,20 +184,15 @@ async function fetchPRsPerRepo(
                     return { ...detail, _repoFullName: repoFullName };
                   }
                   return null;
-                } catch {
-                  return null;
-                }
+                } catch { return null; }
               })
             );
             for (const r of detailResults) {
               if (r.status === "fulfilled" && r.value) mergerPRs.push(r.value);
             }
           }
-
           return [...authorPRs, ...mergerPRs];
-        } catch {
-          return [];
-        }
+        } catch { return []; }
       })
     );
     for (const result of results) {
@@ -241,11 +209,8 @@ async function fetchPRsPerRepo(
 }
 
 async function fetchMergedPRCommits(
-  token: string,
-  repos: string[],
-  username: string,
-  startDate: string,
-  endDate: string
+  token: string, repos: string[], username: string,
+  startDate: string, endDate: string
 ): Promise<any[]> {
   const allCommits: any[] = [];
   const userLower = username.toLowerCase();
@@ -267,12 +232,9 @@ async function fetchMergedPRCommits(
             if (!pr.merged_at) return false;
             const mergedDate = pr.merged_at.split("T")[0];
             if (mergedDate < startDate || mergedDate > endDate) return false;
-            const isAuthor = pr.user?.login?.toLowerCase() === userLower;
-            return !isAuthor;
+            return pr.user?.login?.toLowerCase() !== userLower;
           });
-
           if (candidates.length === 0) return [];
-          console.log(`${repoFullName}: ${candidates.length} merged non-author PRs in range, fetching details`);
 
           const mergedByUser: any[] = [];
           for (let j = 0; j < candidates.length; j += DETAIL_BATCH_SIZE) {
@@ -286,22 +248,16 @@ async function fetchMergedPRCommits(
                   );
                   if (!detailRes.ok) return null;
                   const detail = await detailRes.json();
-                  if (detail.merged_by?.login?.toLowerCase() === userLower) {
-                    return detail;
-                  }
+                  if (detail.merged_by?.login?.toLowerCase() === userLower) return detail;
                   return null;
-                } catch {
-                  return null;
-                }
+                } catch { return null; }
               })
             );
             for (const r of detailResults) {
               if (r.status === "fulfilled" && r.value) mergedByUser.push(r.value);
             }
           }
-
           if (mergedByUser.length === 0) return [];
-          console.log(`${repoFullName}: ${mergedByUser.length} PRs confirmed merged by ${username}`);
 
           const commits: any[] = [];
           for (const pr of mergedByUser) {
@@ -325,19 +281,185 @@ async function fetchMergedPRCommits(
             } catch { /* skip */ }
           }
           return commits;
-        } catch {
-          return [];
-        }
+        } catch { return []; }
       })
     );
     for (const result of results) {
-      if (result.status === "fulfilled") {
-        allCommits.push(...result.value);
+      if (result.status === "fulfilled") allCommits.push(...result.value);
+    }
+  }
+  return allCommits;
+}
+
+// ─── ENRICHMENT: Fetch commit detail stats ───
+async function fetchCommitStats(
+  token: string, commits: { sha: string; repo: string }[]
+): Promise<Record<string, { additions: number; deletions: number; files_changed: number }>> {
+  const stats: Record<string, { additions: number; deletions: number; files_changed: number }> = {};
+  for (let i = 0; i < commits.length; i += DETAIL_BATCH_SIZE) {
+    const batch = commits.slice(i, i + DETAIL_BATCH_SIZE);
+    const results = await Promise.allSettled(
+      batch.map(async ({ sha, repo }) => {
+        try {
+          const res = await fetchWithTimeout(
+            `${GH_API}/repos/${repo}/commits/${sha}`,
+            { headers: GH_HEADERS(token) }
+          );
+          if (!res.ok) return null;
+          const data = await res.json();
+          return {
+            sha,
+            additions: data.stats?.additions ?? 0,
+            deletions: data.stats?.deletions ?? 0,
+            files_changed: data.files?.length ?? 0,
+          };
+        } catch { return null; }
+      })
+    );
+    for (const r of results) {
+      if (r.status === "fulfilled" && r.value) {
+        stats[r.value.sha] = { additions: r.value.additions, deletions: r.value.deletions, files_changed: r.value.files_changed };
       }
     }
   }
-  console.log(`fetchMergedPRCommits: found ${allCommits.length} commits from PRs merged by ${username}`);
-  return allCommits;
+  return stats;
+}
+
+// ─── ENRICHMENT: Fetch PR detail stats + review data ───
+async function fetchPRDetails(
+  token: string, prs: { repo: string; number: number; id: string | number }[]
+): Promise<Record<string, {
+  additions: number; deletions: number; files_changed: number;
+  created_at: string; merged_at: string | null;
+  review_count: number; first_review_at: string | null;
+  reviews: { user: string; submitted_at: string; state: string }[];
+}>> {
+  const details: Record<string, any> = {};
+  for (let i = 0; i < prs.length; i += DETAIL_BATCH_SIZE) {
+    const batch = prs.slice(i, i + DETAIL_BATCH_SIZE);
+    const results = await Promise.allSettled(
+      batch.map(async (pr) => {
+        try {
+          const [detailRes, reviewsRes] = await Promise.all([
+            fetchWithTimeout(`${GH_API}/repos/${pr.repo}/pulls/${pr.number}`, { headers: GH_HEADERS(token) }),
+            fetchWithTimeout(`${GH_API}/repos/${pr.repo}/pulls/${pr.number}/reviews`, { headers: GH_HEADERS(token) }),
+          ]);
+          const detail = detailRes.ok ? await detailRes.json() : {};
+          const reviewsData = reviewsRes.ok ? await reviewsRes.json() : [];
+          const reviews = Array.isArray(reviewsData) ? reviewsData : [];
+          const actualReviews = reviews.filter((r: any) => r.state !== "PENDING");
+          const firstReview = actualReviews.length > 0
+            ? actualReviews.reduce((earliest: any, r: any) =>
+                new Date(r.submitted_at) < new Date(earliest.submitted_at) ? r : earliest
+              )
+            : null;
+
+          return {
+            id: String(pr.id),
+            additions: detail.additions ?? 0,
+            deletions: detail.deletions ?? 0,
+            files_changed: detail.changed_files ?? 0,
+            created_at: detail.created_at || null,
+            merged_at: detail.merged_at || null,
+            review_count: actualReviews.length,
+            first_review_at: firstReview?.submitted_at || null,
+            reviews: actualReviews.map((r: any) => ({
+              user: r.user?.login || "unknown",
+              submitted_at: r.submitted_at,
+              state: r.state,
+            })),
+          };
+        } catch { return null; }
+      })
+    );
+    for (const r of results) {
+      if (r.status === "fulfilled" && r.value) details[r.value.id] = r.value;
+    }
+  }
+  return details;
+}
+
+// ─── ENRICHMENT: AI-classify commit messages in batch ───
+async function classifyCommits(
+  titles: string[]
+): Promise<Record<number, string>> {
+  const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+  if (!LOVABLE_API_KEY || titles.length === 0) return {};
+
+  // Limit to 50 titles per batch to avoid token limits
+  const batch = titles.slice(0, 50);
+  try {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-3-flash-preview",
+        messages: [
+          {
+            role: "system",
+            content: `Classify each commit message into exactly one category: feature, bugfix, refactor, chore, or infra. Use the classify_commits tool to return your results.`,
+          },
+          {
+            role: "user",
+            content: batch.map((t, i) => `${i}: ${t}`).join("\n"),
+          },
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "classify_commits",
+              description: "Return category for each commit by index",
+              parameters: {
+                type: "object",
+                properties: {
+                  classifications: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        index: { type: "number" },
+                        category: { type: "string", enum: ["feature", "bugfix", "refactor", "chore", "infra"] },
+                      },
+                      required: ["index", "category"],
+                      additionalProperties: false,
+                    },
+                  },
+                },
+                required: ["classifications"],
+                additionalProperties: false,
+              },
+            },
+          },
+        ],
+        tool_choice: { type: "function", function: { name: "classify_commits" } },
+      }),
+    });
+
+    if (!response.ok) {
+      console.error(`AI classify error: ${response.status}`);
+      return {};
+    }
+
+    const data = await response.json();
+    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+    if (!toolCall) return {};
+
+    const result = JSON.parse(toolCall.function.arguments);
+    const map: Record<number, string> = {};
+    for (const c of result.classifications || []) {
+      if (typeof c.index === "number" && typeof c.category === "string") {
+        map[c.index] = c.category;
+      }
+    }
+    return map;
+  } catch (e) {
+    console.error("AI classify exception:", e);
+    return {};
+  }
 }
 
 Deno.serve(async (req) => {
@@ -384,7 +506,6 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Build flat user list across installations for pagination
     const allUserEntries: { install: typeof installations[0]; mapping: any; memberRecords: any[] }[] = [];
 
     for (const install of installations) {
@@ -420,6 +541,9 @@ Deno.serve(async (req) => {
     let timeBudgetExceeded = false;
     const orgReposCache: Record<string, string[]> = {};
 
+    // Collect all commit titles across users for batch AI classification
+    const allCommitTitlesForAI: { userIdx: number; commitIdx: number; title: string }[] = [];
+
     for (const entry of chunk) {
       if (Date.now() - requestStart > TIME_BUDGET_MS) {
         console.log(`Time budget exceeded after ${processedCount} users, stopping early`);
@@ -433,7 +557,6 @@ Deno.serve(async (req) => {
       const orgName = install.github_org_name;
       const username = mapping.github_username;
 
-      // Use stored GitHub user ID; lazy-resolve and persist if missing
       let githubUserId: number | null = mapping.github_user_id ?? null;
       if (githubUserId === null) {
         githubUserId = await resolveGitHubUserId(token, username);
@@ -443,10 +566,9 @@ Deno.serve(async (req) => {
             .update({ github_user_id: githubUserId })
             .eq("user_id", mapping.user_id)
             .eq("org_id", install.org_id);
-          console.log(`Persisted github_user_id=${githubUserId} for ${username}`);
         }
       }
-      console.log(`Syncing ${username} with github_user_id=${githubUserId}`);
+      console.log(`Syncing ${username} (github_user_id=${githubUserId})`);
 
       try {
         // --- COMMITS ---
@@ -461,13 +583,10 @@ Deno.serve(async (req) => {
         const seenShas = new Set<string>();
         let allCommits: any[] = [];
         for (const item of [...(authorData.items || []), ...(committerData.items || [])]) {
-          if (item.sha && !seenShas.has(item.sha)) {
-            seenShas.add(item.sha);
-            allCommits.push(item);
-          }
+          if (item.sha && !seenShas.has(item.sha)) { seenShas.add(item.sha); allCommits.push(item); }
         }
 
-        // ALWAYS run per-repo scan (catches co-authored commits that Search API misses)
+        // Per-repo scan (catches co-authored commits)
         let orgRepos: string[] | null = orgReposCache[install.org_id] || null;
         if (orgName) {
           if (!orgRepos) {
@@ -476,50 +595,63 @@ Deno.serve(async (req) => {
           }
           const perRepoCommits = await fetchCommitsPerRepo(token, orgRepos, username, startDate, endDate, githubUserId);
           for (const c of perRepoCommits) {
-            if (c.sha && !seenShas.has(c.sha)) {
-              seenShas.add(c.sha);
-              allCommits.push(c);
-            }
+            if (c.sha && !seenShas.has(c.sha)) { seenShas.add(c.sha); allCommits.push(c); }
           }
-          console.log(`Per-repo scan found ${perRepoCommits.length} additional commits for ${username} (total: ${allCommits.length})`);
         }
 
-        // ALWAYS: Fetch commits from PRs merged by this user (captures Lovable bot PRs)
+        // Merged PR commits (Lovable bot PRs)
         if (orgName) {
-          if (!orgRepos) {
-            orgRepos = await fetchOrgRepos(token, orgName);
-            orgReposCache[install.org_id] = orgRepos;
-          }
+          if (!orgRepos) { orgRepos = await fetchOrgRepos(token, orgName); orgReposCache[install.org_id] = orgRepos; }
           const mergedPRCommits = await fetchMergedPRCommits(token, orgRepos, username, startDate, endDate);
           for (const c of mergedPRCommits) {
-            if (c.sha && !seenShas.has(c.sha)) {
-              seenShas.add(c.sha);
-              allCommits.push(c);
-            }
+            if (c.sha && !seenShas.has(c.sha)) { seenShas.add(c.sha); allCommits.push(c); }
           }
         }
 
+        // ─── ENRICH: Fetch commit stats (additions/deletions/files) ───
+        const commitsToEnrich = allCommits
+          .map((item) => ({
+            sha: item.sha,
+            repo: item.repository?.full_name || "",
+          }))
+          .filter((c) => c.repo);
+
+        let commitStats: Record<string, { additions: number; deletions: number; files_changed: number }> = {};
+        if (commitsToEnrich.length > 0 && Date.now() - requestStart < TIME_BUDGET_MS - 15_000) {
+          commitStats = await fetchCommitStats(token, commitsToEnrich);
+          console.log(`Enriched ${Object.keys(commitStats).length}/${commitsToEnrich.length} commit stats for ${username}`);
+        }
+
+        // Collect titles for AI classification
+        const userCommitIdx = results.length;
+        for (let ci = 0; ci < allCommits.length; ci++) {
+          const message = allCommits[ci].commit?.message?.split("\n")[0] || "Commit";
+          allCommitTitlesForAI.push({ userIdx: userCommitIdx, commitIdx: ci, title: message });
+        }
+
+        // Upsert commits with enriched metadata
         for (const item of allCommits) {
           const sha = item.sha;
           const repo = item.repository?.full_name || "";
           const message = item.commit?.message?.split("\n")[0] || "Commit";
+          const stats = commitStats[sha];
           for (const member of memberRecords) {
             try {
               await supabaseAdmin.from("external_activity").upsert(
                 {
-                  team_id: member.team_id,
-                  member_id: member.id,
-                  source: "github",
-                  activity_type: "commit",
-                  title: message,
-                  external_id: sha,
+                  team_id: member.team_id, member_id: member.id,
+                  source: "github", activity_type: "commit",
+                  title: message, external_id: sha,
                   external_url: item.html_url || `https://github.com/${repo}/commit/${sha}`,
-                  metadata: { repo, sha: sha.slice(0, 7) },
+                  metadata: {
+                    repo, sha: sha.slice(0, 7),
+                    ...(stats ? { additions: stats.additions, deletions: stats.deletions, files_changed: stats.files_changed } : {}),
+                  },
                   occurred_at: item.commit?.committer?.date || item.commit?.author?.date || new Date().toISOString(),
                 },
                 { onConflict: "external_id,activity_type,source" }
               );
-            } catch (e) { /* dedup */ }
+            } catch { /* dedup */ }
           }
         }
 
@@ -529,41 +661,11 @@ Deno.serve(async (req) => {
           { headers }
         );
         let prsItems: any[] = [];
-        if (prsRes.ok) {
-          const data = await prsRes.json();
-          prsItems = data.items || [];
-        }
+        if (prsRes.ok) { const data = await prsRes.json(); prsItems = data.items || []; }
 
         if (prsItems.length === 0 && orgName) {
-          if (!orgRepos) {
-            orgRepos = await fetchOrgRepos(token, orgName);
-            orgReposCache[install.org_id] = orgRepos;
-          }
+          if (!orgRepos) { orgRepos = await fetchOrgRepos(token, orgName); orgReposCache[install.org_id] = orgRepos; }
           prsItems = await fetchPRsPerRepo(token, orgRepos, username, startDate, endDate, "opened");
-        }
-
-        for (const item of prsItems) {
-          for (const member of memberRecords) {
-            try {
-              await supabaseAdmin.from("external_activity").upsert(
-                {
-                  team_id: member.team_id,
-                  member_id: member.id,
-                  source: "github",
-                  activity_type: "pr_opened",
-                  title: item.title,
-                  external_id: String(item.id),
-                  external_url: item.html_url,
-                  metadata: {
-                    repo: item.repository_url?.split("/").slice(-2).join("/"),
-                    number: item.number,
-                  },
-                  occurred_at: item.created_at,
-                },
-                { onConflict: "external_id,activity_type,source" }
-              );
-            } catch (e) { /* dedup */ }
-          }
         }
 
         // --- PRs MERGED ---
@@ -572,46 +674,128 @@ Deno.serve(async (req) => {
           { headers }
         );
         let mergedItems: any[] = [];
-        if (mergedRes.ok) {
-          const data = await mergedRes.json();
-          mergedItems = data.items || [];
-        }
+        if (mergedRes.ok) { const data = await mergedRes.json(); mergedItems = data.items || []; }
 
         if (orgName) {
-          if (!orgRepos) {
-            orgRepos = await fetchOrgRepos(token, orgName);
-            orgReposCache[install.org_id] = orgRepos;
-          }
+          if (!orgRepos) { orgRepos = await fetchOrgRepos(token, orgName); orgReposCache[install.org_id] = orgRepos; }
           const perRepoMerged = await fetchPRsPerRepo(token, orgRepos, username, startDate, endDate, "merged");
           const existingIds = new Set(mergedItems.map((item: any) => item.id));
-          for (const pr of perRepoMerged) {
-            if (!existingIds.has(pr.id)) {
-              mergedItems.push(pr);
-            }
+          for (const pr of perRepoMerged) { if (!existingIds.has(pr.id)) mergedItems.push(pr); }
+        }
+
+        // ─── ENRICH: Fetch PR detail stats + reviews ───
+        const allPRItems = [...prsItems, ...mergedItems];
+        const uniquePRs = new Map<string, { repo: string; number: number; id: string | number }>();
+        for (const item of allPRItems) {
+          const prId = String(item.id);
+          if (!uniquePRs.has(prId)) {
+            uniquePRs.set(prId, {
+              repo: item.repository_url?.split("/").slice(-2).join("/") || item._repoFullName || "",
+              number: item.number,
+              id: item.id,
+            });
           }
         }
 
-        for (const item of mergedItems) {
+        let prDetails: Record<string, any> = {};
+        if (uniquePRs.size > 0 && Date.now() - requestStart < TIME_BUDGET_MS - 15_000) {
+          prDetails = await fetchPRDetails(token, Array.from(uniquePRs.values()));
+          console.log(`Enriched ${Object.keys(prDetails).length}/${uniquePRs.size} PR details for ${username}`);
+        }
+
+        // Upsert PRs opened with enriched metadata
+        for (const item of prsItems) {
+          const prId = String(item.id);
+          const detail = prDetails[prId];
+          const repo = item.repository_url?.split("/").slice(-2).join("/") || item._repoFullName || "";
           for (const member of memberRecords) {
             try {
               await supabaseAdmin.from("external_activity").upsert(
                 {
-                  team_id: member.team_id,
-                  member_id: member.id,
-                  source: "github",
-                  activity_type: "pr_merged",
-                  title: item.title,
-                  external_id: `merged-${item.id}`,
+                  team_id: member.team_id, member_id: member.id,
+                  source: "github", activity_type: "pr_opened",
+                  title: item.title, external_id: prId,
                   external_url: item.html_url,
                   metadata: {
-                    repo: item.repository_url?.split("/").slice(-2).join("/") || item._repoFullName,
-                    number: item.number,
+                    repo, number: item.number,
+                    ...(detail ? {
+                      additions: detail.additions, deletions: detail.deletions,
+                      files_changed: detail.files_changed,
+                      created_at: detail.created_at,
+                      review_count: detail.review_count,
+                      first_review_at: detail.first_review_at,
+                    } : {}),
+                  },
+                  occurred_at: item.created_at,
+                },
+                { onConflict: "external_id,activity_type,source" }
+              );
+            } catch { /* dedup */ }
+          }
+        }
+
+        // Upsert PRs merged with enriched metadata
+        for (const item of mergedItems) {
+          const prId = String(item.id);
+          const detail = prDetails[prId];
+          const repo = item.repository_url?.split("/").slice(-2).join("/") || item._repoFullName || "";
+          for (const member of memberRecords) {
+            try {
+              await supabaseAdmin.from("external_activity").upsert(
+                {
+                  team_id: member.team_id, member_id: member.id,
+                  source: "github", activity_type: "pr_merged",
+                  title: item.title, external_id: `merged-${item.id}`,
+                  external_url: item.html_url,
+                  metadata: {
+                    repo, number: item.number,
+                    ...(detail ? {
+                      additions: detail.additions, deletions: detail.deletions,
+                      files_changed: detail.files_changed,
+                      created_at: detail.created_at,
+                      merged_at: detail.merged_at,
+                      review_count: detail.review_count,
+                      first_review_at: detail.first_review_at,
+                    } : {}),
                   },
                   occurred_at: item.merged_at || item.closed_at || item.updated_at,
                 },
                 { onConflict: "external_id,activity_type,source" }
               );
-            } catch (e) { /* dedup */ }
+            } catch { /* dedup */ }
+          }
+
+          // ─── ENRICH: Store PR reviews as separate activity items ───
+          if (detail?.reviews) {
+            for (const review of detail.reviews) {
+              if (review.user.toLowerCase() === username.toLowerCase()) continue; // skip self-reviews
+              // Find team members for the reviewer
+              const reviewerMapping = allUserEntries.find(
+                (e) => e.mapping.github_username.toLowerCase() === review.user.toLowerCase()
+              );
+              if (!reviewerMapping) continue;
+              for (const reviewerMember of reviewerMapping.memberRecords) {
+                try {
+                  await supabaseAdmin.from("external_activity").upsert(
+                    {
+                      team_id: reviewerMember.team_id, member_id: reviewerMember.id,
+                      source: "github", activity_type: "pr_review",
+                      title: `Reviewed: ${item.title}`,
+                      external_id: `review-${item.id}-${review.user}-${review.submitted_at}`,
+                      external_url: item.html_url,
+                      metadata: {
+                        repo, number: item.number,
+                        review_state: review.state,
+                        pr_author: username,
+                        reviewed_at: review.submitted_at,
+                      },
+                      occurred_at: review.submitted_at,
+                    },
+                    { onConflict: "external_id,activity_type,source" }
+                  );
+                } catch { /* dedup */ }
+              }
+            }
           }
         }
 
@@ -620,6 +804,50 @@ Deno.serve(async (req) => {
       } catch (e) {
         console.error(`GitHub sync error for ${username}:`, e);
         processedCount++;
+      }
+    }
+
+    // ─── AI CLASSIFY: Batch classify all commit titles ───
+    if (allCommitTitlesForAI.length > 0 && Date.now() - requestStart < TIME_BUDGET_MS - 10_000) {
+      const titles = allCommitTitlesForAI.map((t) => t.title);
+      const classifications = await classifyCommits(titles);
+      if (Object.keys(classifications).length > 0) {
+        console.log(`AI classified ${Object.keys(classifications).length}/${titles.length} commits`);
+        // Update metadata with work_type for classified commits
+        // We need to re-query and update — build a map of title → work_type
+        const titleToType: Record<string, string> = {};
+        for (const [idxStr, cat] of Object.entries(classifications)) {
+          const idx = Number(idxStr);
+          if (idx < titles.length) titleToType[titles[idx]] = cat;
+        }
+
+        // Batch update external_activity metadata for commits with work_type
+        for (const entry of chunk) {
+          for (const member of entry.memberRecords) {
+            // Fetch recent commits for this member to update
+            const { data: recentCommits } = await supabaseAdmin
+              .from("external_activity")
+              .select("id, title, metadata")
+              .eq("member_id", member.id)
+              .eq("source", "github")
+              .eq("activity_type", "commit")
+              .order("occurred_at", { ascending: false })
+              .limit(50);
+
+            if (!recentCommits) continue;
+            for (const commit of recentCommits) {
+              const existingMeta = (commit.metadata as any) || {};
+              if (existingMeta.work_type) continue; // already classified
+              const workType = titleToType[commit.title];
+              if (workType) {
+                await supabaseAdmin
+                  .from("external_activity")
+                  .update({ metadata: { ...existingMeta, work_type: workType } })
+                  .eq("id", commit.id);
+              }
+            }
+          }
+        }
       }
     }
 
