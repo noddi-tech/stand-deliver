@@ -149,13 +149,14 @@ export function GitHubSection({ orgId }: GitHubSectionProps) {
   };
 
   const saveMapping = useMutation({
-    mutationFn: async ({ userId, githubUsername, displayName }: { userId: string; githubUsername: string; displayName: string }) => {
+    mutationFn: async ({ userId, githubUsername, displayName, githubUserId }: { userId: string; githubUsername: string; displayName: string; githubUserId?: number | null }) => {
       const { error } = await supabase.from("github_user_mappings").upsert(
         {
           org_id: orgId!,
           user_id: userId,
           github_username: githubUsername,
           github_display_name: displayName,
+          github_user_id: githubUserId ?? null,
         },
         { onConflict: "user_id,org_id" }
       );
