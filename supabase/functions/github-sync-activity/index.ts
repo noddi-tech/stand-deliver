@@ -75,11 +75,14 @@ async function fetchCommitsPerRepo(
               const committerLogin = c.committer?.login?.toLowerCase();
               const commitAuthorName = c.commit?.author?.name?.toLowerCase();
               const commitCommitterName = c.commit?.committer?.name?.toLowerCase();
+              const message = (c.commit?.message || "").toLowerCase();
+              const isCoAuthor = message.includes("co-authored-by:") && message.includes(userLower);
               return (
                 authorLogin === userLower ||
                 committerLogin === userLower ||
                 commitAuthorName === userLower ||
-                commitCommitterName === userLower
+                commitCommitterName === userLower ||
+                isCoAuthor
               );
             })
             .map((c: any) => ({
