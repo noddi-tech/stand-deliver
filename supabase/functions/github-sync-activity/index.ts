@@ -456,7 +456,7 @@ Deno.serve(async (req) => {
             orgRepos = await fetchOrgRepos(token, orgName);
             orgReposCache[install.org_id] = orgRepos;
           }
-          const perRepoCommits = await fetchCommitsPerRepo(token, orgRepos, username, startDate, endDate);
+          const perRepoCommits = await fetchCommitsPerRepo(token, orgRepos, username, startDate, endDate, githubUserId);
           for (const c of perRepoCommits) {
             if (c.sha && !seenShas.has(c.sha)) {
               seenShas.add(c.sha);
