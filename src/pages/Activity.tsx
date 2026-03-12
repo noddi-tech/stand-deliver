@@ -29,66 +29,73 @@ const ACTIVITY_LABELS: Record<string, string> = {
   standup_submitted: "Standup",
 };
 
-function useActivityFeed(teamId: string | undefined, days: number) {
+function useActivityFeed(teamId: string | undefined, days: number, sourceFilter: string, memberFilter: string) {
   return useQuery({
-    queryKey: ["activity-feed", teamId, days],
+    queryKey: ["activity-feed", teamId, days, sourceFilter, memberFilter],
     enabled: !!teamId,
     staleTime: 30000,
     queryFn: async () => {
       const since = subDays(new Date(), days).toISOString();
       const sinceDate = since.split("T")[0];
+      const items: ActivityItem[] = [];
+      const moodEmoji: Record<string, string> = { great: "🚀", good: "👍", okay: "😐", struggling: "😓", rough: "😰" };
 
-      const [extRes, sessionsRes] = await Promise.all([
-        supabase
+      // Fetch external activity (skip if source is "standup")
+      if (sourceFilter !== "standup") {
+        let extQuery = supabase
           .from("external_activity")
           .select("id, source, activity_type, title, member_id, occurred_at, external_url, member:team_members!inner(id, user_id, profile:profiles!inner(full_name, avatar_url))")
           .eq("team_id", teamId!)
           .gte("occurred_at", since)
           .order("occurred_at", { ascending: false })
-          .limit(200),
-        supabase
+          .limit(200);
+        if (sourceFilter !== "all") extQuery = extQuery.eq("source", sourceFilter);
+        if (memberFilter !== "all") extQuery = extQuery.eq("member_id", memberFilter);
+        const extRes = await extQuery;
+
+        for (const e of extRes.data || []) {
+          const m = e.member as any;
+          items.push({
+            id: e.id, type: "external", source: e.source, activityType: e.activity_type,
+            title: e.title, memberName: m?.profile?.full_name || null,
+            memberAvatar: m?.profile?.avatar_url || null, memberId: e.member_id,
+            timestamp: e.occurred_at, externalUrl: e.external_url,
+          });
+        }
+      }
+
+      // Fetch standup responses (skip if source is github/clickup)
+      if (sourceFilter === "all" || sourceFilter === "standup") {
+        const { data: sessions } = await supabase
           .from("standup_sessions")
           .select("id")
           .eq("team_id", teamId!)
-          .gte("session_date", sinceDate),
-      ]);
+          .gte("session_date", sinceDate);
 
-      const sessionIds = (sessionsRes.data || []).map(s => s.id);
-      let respData: any[] = [];
-      if (sessionIds.length > 0) {
-        const { data } = await supabase
-          .from("standup_responses")
-          .select("id, member_id, submitted_at, mood, yesterday_text, member:team_members!inner(id, user_id, profile:profiles!inner(full_name, avatar_url))")
-          .in("session_id", sessionIds)
-          .order("submitted_at", { ascending: false })
-          .limit(100);
-        respData = data || [];
-      }
+        const sessionIds = (sessions || []).map(s => s.id);
+        if (sessionIds.length > 0) {
+          let respQuery = supabase
+            .from("standup_responses")
+            .select("id, member_id, submitted_at, mood, yesterday_text, member:team_members!inner(id, user_id, profile:profiles!inner(full_name, avatar_url))")
+            .in("session_id", sessionIds)
+            .order("submitted_at", { ascending: false })
+            .limit(100);
+          if (memberFilter !== "all") respQuery = respQuery.eq("member_id", memberFilter);
+          const { data: respData } = await respQuery;
 
-      const items: ActivityItem[] = [];
-      const moodEmoji: Record<string, string> = { great: "🚀", good: "👍", okay: "😐", struggling: "😓", rough: "😰" };
-
-      for (const e of extRes.data || []) {
-        const m = e.member as any;
-        items.push({
-          id: e.id, type: "external", source: e.source, activityType: e.activity_type,
-          title: e.title, memberName: m?.profile?.full_name || null,
-          memberAvatar: m?.profile?.avatar_url || null, memberId: e.member_id,
-          timestamp: e.occurred_at, externalUrl: e.external_url,
-        });
-      }
-
-      for (const r of respData) {
-        const m = r.member as any;
-        const isSkip = r.yesterday_text === "Skipped" && !r.mood;
-        items.push({
-          id: r.id, type: "standup", source: "standup",
-          activityType: isSkip ? "standup_skipped" : "standup_submitted",
-          title: isSkip ? "Skipped standup" : `Submitted standup ${r.mood ? moodEmoji[r.mood] || "" : ""}`,
-          memberName: m?.profile?.full_name || null,
-          memberAvatar: m?.profile?.avatar_url || null,
-          memberId: r.member_id, timestamp: r.submitted_at,
-        });
+          for (const r of respData || []) {
+            const m = r.member as any;
+            const isSkip = r.yesterday_text === "Skipped" && !r.mood;
+            items.push({
+              id: r.id, type: "standup", source: "standup",
+              activityType: isSkip ? "standup_skipped" : "standup_submitted",
+              title: isSkip ? "Skipped standup" : `Submitted standup ${r.mood ? moodEmoji[r.mood] || "" : ""}`,
+              memberName: m?.profile?.full_name || null,
+              memberAvatar: m?.profile?.avatar_url || null,
+              memberId: r.member_id, timestamp: r.submitted_at,
+            });
+          }
+        }
       }
 
       items.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());

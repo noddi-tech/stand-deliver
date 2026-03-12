@@ -416,16 +416,21 @@ Deno.serve(async (req) => {
           }
         }
 
-        // FALLBACK: per-repo with client-side author+committer matching
+        // ALWAYS run per-repo scan (catches co-authored commits that Search API misses)
         let orgRepos: string[] | null = orgReposCache[install.org_id] || null;
-        if (allCommits.length === 0 && orgName) {
-          console.log(`Search API returned 0 commits for ${username}, falling back to per-repo`);
+        if (orgName) {
           if (!orgRepos) {
             orgRepos = await fetchOrgRepos(token, orgName);
             orgReposCache[install.org_id] = orgRepos;
           }
-          allCommits = await fetchCommitsPerRepo(token, orgRepos, username, startDate, endDate);
-          console.log(`Per-repo fallback found ${allCommits.length} commits for ${username}`);
+          const perRepoCommits = await fetchCommitsPerRepo(token, orgRepos, username, startDate, endDate);
+          for (const c of perRepoCommits) {
+            if (c.sha && !seenShas.has(c.sha)) {
+              seenShas.add(c.sha);
+              allCommits.push(c);
+            }
+          }
+          console.log(`Per-repo scan found ${perRepoCommits.length} additional commits for ${username} (total: ${allCommits.length})`);
         }
 
         // ALWAYS: Fetch commits from PRs merged by this user (captures Lovable bot PRs)
