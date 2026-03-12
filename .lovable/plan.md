@@ -1,5 +1,13 @@
 ## Completed
 
+### Phase 1 — Enrich GitHub Sync (Data Foundation)
+- `github-sync-activity` now fetches commit stats (additions/deletions/files_changed) via `/repos/{owner}/{repo}/commits/{sha}`
+- PR detail stats fetched (additions/deletions/changed_files) + review data (review_count, first_review_at, reviewer list)
+- PR reviews stored as separate `pr_review` activity items attributed to the reviewer (not the PR author)
+- AI commit classification via Lovable AI Gateway: batch classifies commit messages as feature/bugfix/refactor/chore/infra, stored as `metadata.work_type`
+- All enrichment respects the 120s time budget — skips enrichment if <15s remaining
+- No schema changes needed — all data stored in existing `external_activity.metadata` JSONB
+
 ### Slack channel selector (IntegrationsTab)
 - Channel dropdown now saves to `teams.slack_channel_id` on change
 - Initializes with current team's linked channel
