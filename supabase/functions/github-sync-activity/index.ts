@@ -433,8 +433,20 @@ Deno.serve(async (req) => {
       const orgName = install.github_org_name;
       const username = mapping.github_username;
 
-      // Resolve stable GitHub user ID for rename-proof co-author matching
-      const githubUserId = await resolveGitHubUserId(token, username);
+      // Use stored GitHub user ID; lazy-resolve and persist if missing
+      let githubUserId: number | null = mapping.github_user_id ?? null;
+      if (githubUserId === null) {
+        githubUserId = await resolveGitHubUserId(token, username);
+        if (githubUserId !== null) {
+          await supabaseAdmin
+            .from("github_user_mappings")
+            .update({ github_user_id: githubUserId })
+            .eq("user_id", mapping.user_id)
+            .eq("org_id", install.org_id);
+          console.log(`Persisted github_user_id=${githubUserId} for ${username}`);
+        }
+      }
+      console.log(`Syncing ${username} with github_user_id=${githubUserId}`);
 
       try {
         // --- COMMITS ---
