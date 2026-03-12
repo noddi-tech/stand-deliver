@@ -1,0 +1,1 @@
+ALTER TABLE public.github_user_mappings ADD COLUMN github_user_id bigint;

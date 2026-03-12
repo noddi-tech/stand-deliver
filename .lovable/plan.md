@@ -1,41 +1,118 @@
+## Completed
 
+### Slack channel selector (IntegrationsTab)
+- Channel dropdown now saves to `teams.slack_channel_id` on change
+- Initializes with current team's linked channel
+- Shows success toast with channel name
 
-## Problem
+### Slack invite system (MembersTab + Edge Function)
+- New `slack-send-invite` edge function sends a DM with Block Kit invite button
+- MembersTab shows "Invite via Slack" card with user picker when Slack is connected
+- Invited users click the link, sign in with Slack OIDC, and auto-join the org
 
-The rename-proof co-author detection is deployed but **failing silently**. Logs confirm:
-- `resolveGitHubUserId` resolved IDs for 4 users (andersliland, mattisaa, syver-sk, stiangrim) but was **never logged for Jokkos1337** — the API call to `/users/Jokkos1337` likely got rate-limited after hundreds of calls for prior users
-- With `githubUserId = null`, the co-author check falls back to `message.includes("jokkos1337")` which still misses trailers containing "ClickUpBotGOAT"
-- Result: "Per-repo scan found 0 additional commits for Jokkos1337 (total: 1)"
+### Edit Daily Standup
+- Added UPDATE RLS policy on `standup_responses`
+- Edit button loads existing data back into form
+- Re-submit updates existing response and commitments
 
-## Fix: Persist GitHub user ID in the database
+### AI Standup Coach (Phase 1)
+- `ai-coach-standup` edge function reviews commitments via Lovable AI Gateway
+- Uses tool calling for structured output (suggestions with category, issue, rewrite)
+- `StandupCoachCard` component shows inline coaching before submit
+- Submit button triggers AI review first; user can apply/dismiss/submit anyway
 
-Instead of resolving the GitHub user ID via API on every sync (which is fragile under rate limits), store it in `github_user_mappings` and resolve it once.
+### ClickUp Integration (Phase 2)
+- `clickup_installations` + `clickup_user_mappings` tables with RLS
+- `clickup-setup` edge function validates token, stores installation, lists members
+- `clickup-fetch-tasks` edge function pulls assigned tasks from ClickUp API
+- `ClickUpSection` component: 3-step wizard (token → connect → map users)
+- Settings > Integrations: ClickUp connection card with setup instructions
+- MyStandup: "Import from ClickUp" button + task picker dialog in Today's Focus
 
-### 1. Add `github_user_id` column to `github_user_mappings`
+### ClickUp Status Sync
+- Added `clickup_task_id` column to `commitments` table
+- `clickup-update-task` edge function syncs status changes to ClickUp API
+- Fuzzy-matches StandFlow statuses to ClickUp's custom per-list statuses
+- MyStandup stores `clickup_task_id` on import, fires sync on status change
 
-```sql
-ALTER TABLE github_user_mappings ADD COLUMN github_user_id bigint;
-```
+### Bug Fixes (ClickUp RLS + Standup Duplicate Key)
+- Updated INSERT policy on `clickup_user_mappings` to allow org members to map any user
+- Replaced conditional insert/update on `standup_responses` with idempotent upsert
 
-### 2. Update `github-sync-activity` to use stored ID with lazy resolution
+### GitHub Integration + Cross-Platform Weekly Digest
+- `github_installations` + `github_user_mappings` tables with RLS
+- `github-setup` edge function validates PAT, stores installation, lists org members
+- `github-fetch-activity` edge function fetches commits, PRs, reviews via GitHub Search API
+- `GitHubSection` component: setup wizard (token + org name → user mapping)
+- Settings > Integrations: GitHub connection card after ClickUp
+- `ai-weekly-digest` enhanced to aggregate GitHub + ClickUp + StandFlow activity
+- `cross_platform_activity` JSONB column on `ai_weekly_digests`
+- WeeklyDigest page shows cross-platform activity card (StandFlow, GitHub, ClickUp)
+- Slack summary includes GitHub stats when available
 
-- Read `github_user_id` from the mapping query (line ~387): add it to the select
-- If `github_user_id` is null, call `resolveGitHubUserId` and **persist it** back to the row
-- Add failure logging to `resolveGitHubUserId` so rate-limit errors are visible
-- Pass the stored/resolved ID to `fetchCommitsPerRepo`
+### Fix Duplicate Slack Summaries + Daily Digest Cron
+- Removed per-submission `slack-post-summary` call from MyStandup.tsx (was firing on every individual submission)
+- Removed duplicate Slack posting from `ai-summarize-session` (now only generates + stores AI summary)
+- Added `ai-summarize-session` + `slack-post-summary` calls to Meeting Mode completion
+- New `daily-summary-cron` edge function aggregates daily activity (completions, new tasks, carried, blockers) and posts end-of-day digest to Slack
+- pg_cron job scheduled at 17:00 UTC weekdays to trigger the daily digest automatically
 
-### 3. Update `github-setup` to resolve and store ID at setup time
+### Auto-Sync External Activity (ClickUp + GitHub)
+- New `external_activity` table with RLS, unique dedup constraint on `(external_id, activity_type, source)`
+- `clickup-sync-activity` edge function polls ClickUp for task status changes (completed, in-progress)
+- `github-sync-activity` edge function polls GitHub for commits, PRs opened, PRs merged
+- pg_cron jobs run both sync functions every 30 minutes, 7 days/week (including weekends)
+- `daily-summary-cron` updated: removed standup-day gate, Monday digest covers Sat+Sun, includes external activity counts (commits, PRs, ClickUp tasks)
+- MyStandup "Recent Activity" section shows unacknowledged external events with Add/Dismiss actions
+- Completed items get acknowledged; in-progress/opened items get added as today's focus commitments
 
-- When a user maps their GitHub username during onboarding/settings, call `GET /users/{username}` and store the numeric ID immediately
-- This eliminates the need for runtime resolution entirely after first setup
+### Activity Feed Bug Fixes
+- Fixed `__none__` GitHub username causing bogus commits from random strangers (176 rows deleted)
+- Fixed standup responses not appearing in activity feed (broken PostgREST nested filter)
+- Broadened ClickUp sync to capture all task updates, not just completed/in-progress
+- Redeployed all sync edge functions (clickup-sync-activity, github-sync-activity, github-fetch-activity)
+- Replaced fragile nested PostgREST filter with two-step session-based query for standup responses
 
-### 4. Backfill existing mappings
+### GitHub Sync Date Range Fix
+- Changed `github-sync-activity` from single-date to range-based queries (`committer-date:${start}..${end}`)
+- Added optional `days_back` parameter (default: 1, max: 90)
+- Manual "Sync GitHub" button now passes `days_back: 30` to backfill historical activity
+- Fixes missing activity for users whose commits weren't captured by single-date GitHub Search API queries
 
-- Add a one-time backfill in the sync function: if `github_user_id` is null, resolve and persist it
-- After first successful sync, all subsequent syncs use the stored value
+### GitHub Per-Repo Fallback for Unindexed Users
+- GitHub Search API does not index certain accounts (bot/machine users like `ClickUpBotGOAT`)
+- Added per-repo fallback: if Search API returns 0 commits for a user, lists org repos via `/orgs/{org}/repos` and queries each repo's Commits API (`/repos/{owner}/{repo}/commits?author={username}&since=...`)
+- Same fallback for PRs opened/merged using the Pulls API
+- Applied to both `github-sync-activity` and `github-fetch-activity` edge functions
+- Org repos list is cached per sync invocation; fallback only triggers when Search returns 0
 
-### Files changed
-- New migration: add `github_user_id bigint` column to `github_user_mappings`
-- `supabase/functions/github-sync-activity/index.ts` — read stored ID, lazy-resolve + persist, add failure logging
-- `supabase/functions/github-setup/index.ts` — resolve and store ID during setup
+### Fix GitHub Activity Attribution for Merge-Only Users
+- Removed broken Events API (`/users/{username}/events/orgs/{org}`) — only works for self-auth, not shared PAT
+- Added `merged_by` matching to `fetchPRsPerRepo` — PRs merged (not just authored) by a user are now attributed
+- Added `fetchMergedPRCommits` — fetches commits from PRs where user is merger but not author (Lovable bot PRs)
+- Always runs per-repo merged PR check (not just as fallback) to ensure bot-authored PRs are captured
+- Fixed date range bug: `daysBack=1` now correctly goes back 1 full day (was `daysBack-1` = 0 days)
+- 9 Deno unit tests validating attribution logic, date range, and case-insensitivity
+- Applied to both `github-sync-activity` and `github-fetch-activity` edge functions
 
+### GitHub Sync Chunked Pagination (Timeout Fix)
+- `github-sync-activity` now accepts `org_id`, `offset`, `limit_users` for paginated user processing
+- Internal 120s time budget guard stops processing before 150s gateway timeout
+- Returns `has_more`, `next_offset`, `total_users`, `processed_users` for client-driven pagination
+- SyncNowCard loops calls automatically while `has_more` is true, with progress bar
+- Org repos list cached per sync invocation across user chunks
+- Eliminates 504 gateway timeouts that manifested as CORS errors in the browser
+
+### Co-Author Detection + Activity Server-Side Filtering
+- `fetchCommitsPerRepo` now checks `Co-authored-by:` trailers in commit messages (captures Lovable bot commits where user is co-author)
+- Per-repo commit scan now always runs (not just as fallback when Search API returns 0), since Search API `author:`/`committer:` qualifiers never match co-authors
+- Activity page filtering moved server-side: `memberFilter` and `sourceFilter` applied to Supabase queries before `limit(200)`, fixing the windowing bug where individual members' activity was crowded out
+- Standup fetch skipped when source filter is `github` or `clickup` for faster queries
+
+### Rename-Proof Co-Author Detection
+- Added `resolveGitHubUserId(token, username)` helper — resolves current username to stable numeric GitHub user ID via `GET /users/{username}`, cached per sync run
+- Added `isCoAuthorMatch(message, username, userId)` — checks `Co-authored-by:` trailers by both username string AND numeric noreply email pattern `<{userId}+...@users.noreply.github.com>`
+- Updated `fetchCommitsPerRepo` to accept optional `githubUserId` parameter and use `isCoAuthorMatch` instead of plain `message.includes()`
+- Main handler resolves GitHub user ID once per user before commit scan, passes it through
+- Fixes attribution for renamed accounts (e.g., ClickUpBotGOAT → Jokkos1337) where Lovable bot writes old username in commit trailers but numeric ID (164879107) stays constant
+- 16 Deno tests passing including 5 new rename-proof co-author scenarios

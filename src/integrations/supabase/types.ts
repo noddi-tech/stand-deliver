@@ -527,6 +527,7 @@ export type Database = {
         Row: {
           created_at: string
           github_display_name: string | null
+          github_user_id: number | null
           github_username: string
           id: string
           org_id: string
@@ -535,6 +536,7 @@ export type Database = {
         Insert: {
           created_at?: string
           github_display_name?: string | null
+          github_user_id?: number | null
           github_username: string
           id?: string
           org_id: string
@@ -543,6 +545,7 @@ export type Database = {
         Update: {
           created_at?: string
           github_display_name?: string | null
+          github_user_id?: number | null
           github_username?: string
           id?: string
           org_id?: string

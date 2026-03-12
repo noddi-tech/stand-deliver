@@ -25,13 +25,19 @@ async function resolveGitHubUserId(token: string, username: string): Promise<num
   if (key in userIdCache) return userIdCache[key];
   try {
     const res = await fetchWithTimeout(`${GH_API}/users/${username}`, { headers: GH_HEADERS(token) });
-    if (!res.ok) { await res.text(); userIdCache[key] = null; return null; }
+    if (!res.ok) {
+      const body = await res.text();
+      console.error(`resolveGitHubUserId FAILED for ${username}: ${res.status} ${body.slice(0, 200)}`);
+      userIdCache[key] = null;
+      return null;
+    }
     const data = await res.json();
     const id = typeof data.id === "number" ? data.id : null;
     userIdCache[key] = id;
     console.log(`Resolved GitHub user ${username} → id ${id}`);
     return id;
-  } catch {
+  } catch (err) {
+    console.error(`resolveGitHubUserId exception for ${username}:`, err);
     userIdCache[key] = null;
     return null;
   }
@@ -384,7 +390,7 @@ Deno.serve(async (req) => {
     for (const install of installations) {
       const { data: mappings } = await supabaseAdmin
         .from("github_user_mappings")
-        .select("user_id, github_username, github_display_name")
+        .select("user_id, github_username, github_display_name, github_user_id")
         .eq("org_id", install.org_id)
         .order("user_id");
 
@@ -427,8 +433,20 @@ Deno.serve(async (req) => {
       const orgName = install.github_org_name;
       const username = mapping.github_username;
 
-      // Resolve stable GitHub user ID for rename-proof co-author matching
-      const githubUserId = await resolveGitHubUserId(token, username);
+      // Use stored GitHub user ID; lazy-resolve and persist if missing
+      let githubUserId: number | null = mapping.github_user_id ?? null;
+      if (githubUserId === null) {
+        githubUserId = await resolveGitHubUserId(token, username);
+        if (githubUserId !== null) {
+          await supabaseAdmin
+            .from("github_user_mappings")
+            .update({ github_user_id: githubUserId })
+            .eq("user_id", mapping.user_id)
+            .eq("org_id", install.org_id);
+          console.log(`Persisted github_user_id=${githubUserId} for ${username}`);
+        }
+      }
+      console.log(`Syncing ${username} with github_user_id=${githubUserId}`);
 
       try {
         // --- COMMITS ---

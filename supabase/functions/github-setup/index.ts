@@ -127,3 +127,20 @@ async function fetchOrgMembers(token: string, orgName: string | null): Promise<{
     return { members: [], error: "Failed to fetch org members" };
   }
 }
+
+async function resolveGitHubUserId(token: string, username: string): Promise<number | null> {
+  try {
+    const res = await fetch(`https://api.github.com/users/${username}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "User-Agent": "StandFlow",
+      },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return typeof data.id === "number" ? data.id : null;
+  } catch {
+    return null;
+  }
+}
