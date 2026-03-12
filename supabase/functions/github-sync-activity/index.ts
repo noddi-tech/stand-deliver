@@ -15,6 +15,7 @@ const GH_HEADERS = (token: string) => ({
 const BATCH_SIZE = 10;
 const DETAIL_BATCH_SIZE = 5;
 const REQUEST_TIMEOUT_MS = 5000;
+const TIME_BUDGET_MS = 120_000; // stop before 150s gateway timeout
 
 async function fetchWithTimeout(url: string, options: RequestInit): Promise<Response> {
   const controller = new AbortController();
@@ -27,7 +28,6 @@ async function fetchWithTimeout(url: string, options: RequestInit): Promise<Resp
   }
 }
 
-// Fetch all org repos (paginated)
 async function fetchOrgRepos(token: string, orgName: string): Promise<string[]> {
   const repos: string[] = [];
   let page = 1;
@@ -46,7 +46,6 @@ async function fetchOrgRepos(token: string, orgName: string): Promise<string[]> 
   return repos;
 }
 
-// Per-repo fallback: fetch commits without ?author= filter, match client-side
 async function fetchCommitsPerRepo(
   token: string,
   repos: string[],
@@ -108,9 +107,6 @@ async function fetchCommitsPerRepo(
   return allCommits;
 }
 
-// Fetch PRs where user is author OR merger, per-repo fallback.
-// KEY FIX: The list endpoint does NOT return merged_by. We must fetch
-// individual PR details to check merged_by.
 async function fetchPRsPerRepo(
   token: string,
   repos: string[],
@@ -136,7 +132,6 @@ async function fetchPRsPerRepo(
           const prs = await res.json();
           if (!Array.isArray(prs)) return [];
 
-          // For "opened" type, we only need user.login (author) — no detail fetch needed
           if (type === "opened") {
             return prs
               .filter((pr: any) => {
@@ -147,20 +142,16 @@ async function fetchPRsPerRepo(
               .map((pr: any) => ({ ...pr, _repoFullName: repoFullName }));
           }
 
-          // For "merged" type, we need to check merged_by via individual PR detail
-          // Step 1: Filter to merged PRs in date range
           const mergedInRange = prs.filter((pr: any) => {
             if (!pr.merged_at) return false;
             const merged = pr.merged_at.split("T")[0];
             return merged >= startDate && merged <= endDate;
           });
 
-          // Step 2: PRs where user is the author — no detail fetch needed
           const authorPRs = mergedInRange
             .filter((pr: any) => pr.user?.login?.toLowerCase() === userLower)
             .map((pr: any) => ({ ...pr, _repoFullName: repoFullName }));
 
-          // Step 3: Remaining PRs need detail fetch to check merged_by
           const nonAuthorPRs = mergedInRange.filter(
             (pr: any) => pr.user?.login?.toLowerCase() !== userLower
           );
@@ -210,8 +201,6 @@ async function fetchPRsPerRepo(
   return allPRs;
 }
 
-// Fetch commits from PRs merged by the user (for bot-authored PRs like Lovable).
-// KEY FIX: List endpoint returns merged_by=null. We fetch individual PR details.
 async function fetchMergedPRCommits(
   token: string,
   repos: string[],
@@ -227,7 +216,6 @@ async function fetchMergedPRCommits(
     const results = await Promise.allSettled(
       batch.map(async (repoFullName) => {
         try {
-          // Step 1: List closed/merged PRs in date range
           const res = await fetchWithTimeout(
             `${GH_API}/repos/${repoFullName}/pulls?state=closed&sort=updated&direction=desc&per_page=50`,
             { headers: GH_HEADERS(token) }
@@ -236,12 +224,10 @@ async function fetchMergedPRCommits(
           const prs = await res.json();
           if (!Array.isArray(prs)) return [];
 
-          // Step 2: Filter to merged PRs in date range where user is NOT the author
           const candidates = prs.filter((pr: any) => {
             if (!pr.merged_at) return false;
             const mergedDate = pr.merged_at.split("T")[0];
             if (mergedDate < startDate || mergedDate > endDate) return false;
-            // Skip PRs where user is already the author (those are caught by normal commit matching)
             const isAuthor = pr.user?.login?.toLowerCase() === userLower;
             return !isAuthor;
           });
@@ -249,7 +235,6 @@ async function fetchMergedPRCommits(
           if (candidates.length === 0) return [];
           console.log(`${repoFullName}: ${candidates.length} merged non-author PRs in range, fetching details`);
 
-          // Step 3: Fetch individual PR details to get merged_by (batched)
           const mergedByUser: any[] = [];
           for (let j = 0; j < candidates.length; j += DETAIL_BATCH_SIZE) {
             const detailBatch = candidates.slice(j, j + DETAIL_BATCH_SIZE);
@@ -279,7 +264,6 @@ async function fetchMergedPRCommits(
           if (mergedByUser.length === 0) return [];
           console.log(`${repoFullName}: ${mergedByUser.length} PRs confirmed merged by ${username}`);
 
-          // Step 4: Fetch commits for each PR merged by the user
           const commits: any[] = [];
           for (const pr of mergedByUser) {
             try {
@@ -322,6 +306,8 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const requestStart = Date.now();
+
   try {
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -329,38 +315,45 @@ Deno.serve(async (req) => {
     );
 
     let daysBack = 1;
+    let orgIdFilter: string | null = null;
+    let offset = 0;
+    let limitUsers = 2;
     try {
       const body = await req.json();
       if (body?.days_back && Number.isFinite(body.days_back)) {
         daysBack = Math.max(1, Math.min(body.days_back, 90));
       }
+      if (body?.org_id) orgIdFilter = body.org_id;
+      if (body?.offset && Number.isFinite(body.offset)) offset = Math.max(0, body.offset);
+      if (body?.limit_users && Number.isFinite(body.limit_users)) limitUsers = Math.max(1, Math.min(body.limit_users, 10));
     } catch { /* no body */ }
 
     const endDate = new Date().toISOString().split("T")[0];
     const startDate = new Date(Date.now() - daysBack * 86400000).toISOString().split("T")[0];
     const dateRange = `${startDate}..${endDate}`;
 
-    const { data: installations } = await supabaseAdmin
+    let installQuery = supabaseAdmin
       .from("github_installations")
       .select("org_id, api_token_encrypted, github_org_name");
+    if (orgIdFilter) installQuery = installQuery.eq("org_id", orgIdFilter);
+
+    const { data: installations } = await installQuery;
 
     if (!installations || installations.length === 0) {
-      return new Response(JSON.stringify({ message: "No GitHub installations" }), {
+      return new Response(JSON.stringify({ message: "No GitHub installations", has_more: false, total_users: 0, processed_users: 0 }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const results: any[] = [];
+    // Build flat user list across installations for pagination
+    const allUserEntries: { install: typeof installations[0]; mapping: any; memberRecords: any[] }[] = [];
 
     for (const install of installations) {
-      const token = install.api_token_encrypted;
-      const headers = GH_HEADERS(token);
-      const orgName = install.github_org_name;
-
       const { data: mappings } = await supabaseAdmin
         .from("github_user_mappings")
         .select("user_id, github_username, github_display_name")
-        .eq("org_id", install.org_id);
+        .eq("org_id", install.org_id)
+        .order("user_id");
 
       if (!mappings || mappings.length === 0) continue;
 
@@ -373,173 +366,215 @@ Deno.serve(async (req) => {
 
       if (!teamMembers || teamMembers.length === 0) continue;
 
-      let orgRepos: string[] | null = null;
-
       for (const mapping of mappings) {
         const memberRecords = teamMembers.filter((tm) => tm.user_id === mapping.user_id);
         if (memberRecords.length === 0) continue;
-
-        const username = mapping.github_username;
-        if (username === '__none__') continue;
-
-        try {
-          // --- COMMITS ---
-          const commitHeaders = { ...headers, Accept: "application/vnd.github.cloak-preview+json" };
-          const [authorRes, committerRes] = await Promise.all([
-            fetch(`${GH_API}/search/commits?q=author:${username}+committer-date:${dateRange}&per_page=50`, { headers: commitHeaders }),
-            fetch(`${GH_API}/search/commits?q=committer:${username}+committer-date:${dateRange}&per_page=50`, { headers: commitHeaders }),
-          ]);
-          const authorData = authorRes.ok ? await authorRes.json() : { items: [] };
-          const committerData = committerRes.ok ? await committerRes.json() : { items: [] };
-
-          const seenShas = new Set<string>();
-          let allCommits: any[] = [];
-          for (const item of [...(authorData.items || []), ...(committerData.items || [])]) {
-            if (item.sha && !seenShas.has(item.sha)) {
-              seenShas.add(item.sha);
-              allCommits.push(item);
-            }
-          }
-
-          // FALLBACK: per-repo with client-side author+committer matching
-          if (allCommits.length === 0 && orgName) {
-            console.log(`Search API returned 0 commits for ${username}, falling back to per-repo`);
-            if (!orgRepos) orgRepos = await fetchOrgRepos(token, orgName);
-            allCommits = await fetchCommitsPerRepo(token, orgRepos, username, startDate, endDate);
-            console.log(`Per-repo fallback found ${allCommits.length} commits for ${username}`);
-          }
-
-          // ALWAYS: Fetch commits from PRs merged by this user (captures Lovable bot PRs)
-          if (orgName) {
-            if (!orgRepos) orgRepos = await fetchOrgRepos(token, orgName);
-            const mergedPRCommits = await fetchMergedPRCommits(token, orgRepos, username, startDate, endDate);
-            for (const c of mergedPRCommits) {
-              if (c.sha && !seenShas.has(c.sha)) {
-                seenShas.add(c.sha);
-                allCommits.push(c);
-              }
-            }
-          }
-
-          for (const item of allCommits) {
-            const sha = item.sha;
-            const repo = item.repository?.full_name || "";
-            const message = item.commit?.message?.split("\n")[0] || "Commit";
-            for (const member of memberRecords) {
-              try {
-                await supabaseAdmin.from("external_activity").upsert(
-                  {
-                    team_id: member.team_id,
-                    member_id: member.id,
-                    source: "github",
-                    activity_type: "commit",
-                    title: message,
-                    external_id: sha,
-                    external_url: item.html_url || `https://github.com/${repo}/commit/${sha}`,
-                    metadata: { repo, sha: sha.slice(0, 7) },
-                    occurred_at: item.commit?.committer?.date || item.commit?.author?.date || new Date().toISOString(),
-                  },
-                  { onConflict: "external_id,activity_type,source" }
-                );
-              } catch (e) { /* dedup */ }
-            }
-          }
-
-          // --- PRs OPENED ---
-          const prsRes = await fetch(
-            `${GH_API}/search/issues?q=author:${username}+type:pr+created:${dateRange}&per_page=50`,
-            { headers }
-          );
-          let prsItems: any[] = [];
-          if (prsRes.ok) {
-            const data = await prsRes.json();
-            prsItems = data.items || [];
-          }
-
-          if (prsItems.length === 0 && orgName) {
-            if (!orgRepos) orgRepos = await fetchOrgRepos(token, orgName);
-            prsItems = await fetchPRsPerRepo(token, orgRepos, username, startDate, endDate, "opened");
-          }
-
-          for (const item of prsItems) {
-            for (const member of memberRecords) {
-              try {
-                await supabaseAdmin.from("external_activity").upsert(
-                  {
-                    team_id: member.team_id,
-                    member_id: member.id,
-                    source: "github",
-                    activity_type: "pr_opened",
-                    title: item.title,
-                    external_id: String(item.id),
-                    external_url: item.html_url,
-                    metadata: {
-                      repo: item.repository_url?.split("/").slice(-2).join("/"),
-                      number: item.number,
-                    },
-                    occurred_at: item.created_at,
-                  },
-                  { onConflict: "external_id,activity_type,source" }
-                );
-              } catch (e) { /* dedup */ }
-            }
-          }
-
-          // --- PRs MERGED (author OR merger via detail fetch) ---
-          const mergedRes = await fetch(
-            `${GH_API}/search/issues?q=author:${username}+type:pr+merged:${dateRange}&per_page=50`,
-            { headers }
-          );
-          let mergedItems: any[] = [];
-          if (mergedRes.ok) {
-            const data = await mergedRes.json();
-            mergedItems = data.items || [];
-          }
-
-          // Always check per-repo for merged PRs to catch merged_by attribution
-          if (orgName) {
-            if (!orgRepos) orgRepos = await fetchOrgRepos(token, orgName);
-            const perRepoMerged = await fetchPRsPerRepo(token, orgRepos, username, startDate, endDate, "merged");
-            const existingIds = new Set(mergedItems.map((item: any) => item.id));
-            for (const pr of perRepoMerged) {
-              if (!existingIds.has(pr.id)) {
-                mergedItems.push(pr);
-              }
-            }
-          }
-
-          for (const item of mergedItems) {
-            for (const member of memberRecords) {
-              try {
-                await supabaseAdmin.from("external_activity").upsert(
-                  {
-                    team_id: member.team_id,
-                    member_id: member.id,
-                    source: "github",
-                    activity_type: "pr_merged",
-                    title: item.title,
-                    external_id: `merged-${item.id}`,
-                    external_url: item.html_url,
-                    metadata: {
-                      repo: item.repository_url?.split("/").slice(-2).join("/") || item._repoFullName,
-                      number: item.number,
-                    },
-                    occurred_at: item.merged_at || item.closed_at || item.updated_at,
-                  },
-                  { onConflict: "external_id,activity_type,source" }
-                );
-              } catch (e) { /* dedup */ }
-            }
-          }
-
-          results.push({ org: orgName, user: username, commits: allCommits.length, prs_merged: mergedItems.length });
-        } catch (e) {
-          console.error(`GitHub sync error for ${username}:`, e);
-        }
+        if (mapping.github_username === '__none__') continue;
+        allUserEntries.push({ install, mapping, memberRecords });
       }
     }
 
-    return new Response(JSON.stringify({ results }), {
+    const totalUsers = allUserEntries.length;
+    const chunk = allUserEntries.slice(offset, offset + limitUsers);
+    const results: any[] = [];
+    let processedCount = 0;
+    let timeBudgetExceeded = false;
+    const orgReposCache: Record<string, string[]> = {};
+
+    for (const entry of chunk) {
+      if (Date.now() - requestStart > TIME_BUDGET_MS) {
+        console.log(`Time budget exceeded after ${processedCount} users, stopping early`);
+        timeBudgetExceeded = true;
+        break;
+      }
+
+      const { install, mapping, memberRecords } = entry;
+      const token = install.api_token_encrypted;
+      const headers = GH_HEADERS(token);
+      const orgName = install.github_org_name;
+      const username = mapping.github_username;
+
+      try {
+        // --- COMMITS ---
+        const commitHeaders = { ...headers, Accept: "application/vnd.github.cloak-preview+json" };
+        const [authorRes, committerRes] = await Promise.all([
+          fetch(`${GH_API}/search/commits?q=author:${username}+committer-date:${dateRange}&per_page=50`, { headers: commitHeaders }),
+          fetch(`${GH_API}/search/commits?q=committer:${username}+committer-date:${dateRange}&per_page=50`, { headers: commitHeaders }),
+        ]);
+        const authorData = authorRes.ok ? await authorRes.json() : { items: [] };
+        const committerData = committerRes.ok ? await committerRes.json() : { items: [] };
+
+        const seenShas = new Set<string>();
+        let allCommits: any[] = [];
+        for (const item of [...(authorData.items || []), ...(committerData.items || [])]) {
+          if (item.sha && !seenShas.has(item.sha)) {
+            seenShas.add(item.sha);
+            allCommits.push(item);
+          }
+        }
+
+        // FALLBACK: per-repo with client-side author+committer matching
+        let orgRepos: string[] | null = orgReposCache[install.org_id] || null;
+        if (allCommits.length === 0 && orgName) {
+          console.log(`Search API returned 0 commits for ${username}, falling back to per-repo`);
+          if (!orgRepos) {
+            orgRepos = await fetchOrgRepos(token, orgName);
+            orgReposCache[install.org_id] = orgRepos;
+          }
+          allCommits = await fetchCommitsPerRepo(token, orgRepos, username, startDate, endDate);
+          console.log(`Per-repo fallback found ${allCommits.length} commits for ${username}`);
+        }
+
+        // ALWAYS: Fetch commits from PRs merged by this user (captures Lovable bot PRs)
+        if (orgName) {
+          if (!orgRepos) {
+            orgRepos = await fetchOrgRepos(token, orgName);
+            orgReposCache[install.org_id] = orgRepos;
+          }
+          const mergedPRCommits = await fetchMergedPRCommits(token, orgRepos, username, startDate, endDate);
+          for (const c of mergedPRCommits) {
+            if (c.sha && !seenShas.has(c.sha)) {
+              seenShas.add(c.sha);
+              allCommits.push(c);
+            }
+          }
+        }
+
+        for (const item of allCommits) {
+          const sha = item.sha;
+          const repo = item.repository?.full_name || "";
+          const message = item.commit?.message?.split("\n")[0] || "Commit";
+          for (const member of memberRecords) {
+            try {
+              await supabaseAdmin.from("external_activity").upsert(
+                {
+                  team_id: member.team_id,
+                  member_id: member.id,
+                  source: "github",
+                  activity_type: "commit",
+                  title: message,
+                  external_id: sha,
+                  external_url: item.html_url || `https://github.com/${repo}/commit/${sha}`,
+                  metadata: { repo, sha: sha.slice(0, 7) },
+                  occurred_at: item.commit?.committer?.date || item.commit?.author?.date || new Date().toISOString(),
+                },
+                { onConflict: "external_id,activity_type,source" }
+              );
+            } catch (e) { /* dedup */ }
+          }
+        }
+
+        // --- PRs OPENED ---
+        const prsRes = await fetch(
+          `${GH_API}/search/issues?q=author:${username}+type:pr+created:${dateRange}&per_page=50`,
+          { headers }
+        );
+        let prsItems: any[] = [];
+        if (prsRes.ok) {
+          const data = await prsRes.json();
+          prsItems = data.items || [];
+        }
+
+        if (prsItems.length === 0 && orgName) {
+          if (!orgRepos) {
+            orgRepos = await fetchOrgRepos(token, orgName);
+            orgReposCache[install.org_id] = orgRepos;
+          }
+          prsItems = await fetchPRsPerRepo(token, orgRepos, username, startDate, endDate, "opened");
+        }
+
+        for (const item of prsItems) {
+          for (const member of memberRecords) {
+            try {
+              await supabaseAdmin.from("external_activity").upsert(
+                {
+                  team_id: member.team_id,
+                  member_id: member.id,
+                  source: "github",
+                  activity_type: "pr_opened",
+                  title: item.title,
+                  external_id: String(item.id),
+                  external_url: item.html_url,
+                  metadata: {
+                    repo: item.repository_url?.split("/").slice(-2).join("/"),
+                    number: item.number,
+                  },
+                  occurred_at: item.created_at,
+                },
+                { onConflict: "external_id,activity_type,source" }
+              );
+            } catch (e) { /* dedup */ }
+          }
+        }
+
+        // --- PRs MERGED ---
+        const mergedRes = await fetch(
+          `${GH_API}/search/issues?q=author:${username}+type:pr+merged:${dateRange}&per_page=50`,
+          { headers }
+        );
+        let mergedItems: any[] = [];
+        if (mergedRes.ok) {
+          const data = await mergedRes.json();
+          mergedItems = data.items || [];
+        }
+
+        if (orgName) {
+          if (!orgRepos) {
+            orgRepos = await fetchOrgRepos(token, orgName);
+            orgReposCache[install.org_id] = orgRepos;
+          }
+          const perRepoMerged = await fetchPRsPerRepo(token, orgRepos, username, startDate, endDate, "merged");
+          const existingIds = new Set(mergedItems.map((item: any) => item.id));
+          for (const pr of perRepoMerged) {
+            if (!existingIds.has(pr.id)) {
+              mergedItems.push(pr);
+            }
+          }
+        }
+
+        for (const item of mergedItems) {
+          for (const member of memberRecords) {
+            try {
+              await supabaseAdmin.from("external_activity").upsert(
+                {
+                  team_id: member.team_id,
+                  member_id: member.id,
+                  source: "github",
+                  activity_type: "pr_merged",
+                  title: item.title,
+                  external_id: `merged-${item.id}`,
+                  external_url: item.html_url,
+                  metadata: {
+                    repo: item.repository_url?.split("/").slice(-2).join("/") || item._repoFullName,
+                    number: item.number,
+                  },
+                  occurred_at: item.merged_at || item.closed_at || item.updated_at,
+                },
+                { onConflict: "external_id,activity_type,source" }
+              );
+            } catch (e) { /* dedup */ }
+          }
+        }
+
+        results.push({ org: orgName, user: username, commits: allCommits.length, prs_merged: mergedItems.length });
+        processedCount++;
+      } catch (e) {
+        console.error(`GitHub sync error for ${username}:`, e);
+        processedCount++;
+      }
+    }
+
+    const nextOffset = offset + processedCount;
+    const hasMore = timeBudgetExceeded || nextOffset < totalUsers;
+
+    return new Response(JSON.stringify({
+      results,
+      processed_users: processedCount,
+      total_users: totalUsers,
+      offset,
+      next_offset: nextOffset,
+      has_more: hasMore,
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
