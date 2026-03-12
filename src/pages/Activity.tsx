@@ -127,16 +127,9 @@ export default function Activity() {
     },
   });
 
-  const { data: activity, isLoading } = useActivityFeed(teamId, days);
+  const { data: activity, isLoading } = useActivityFeed(teamId, days, sourceFilter, memberFilter);
 
-  const filtered = useMemo(() => {
-    if (!activity) return [];
-    return activity.filter(a => {
-      if (sourceFilter !== "all" && a.source !== sourceFilter) return false;
-      if (memberFilter !== "all" && a.memberId !== memberFilter) return false;
-      return true;
-    });
-  }, [activity, sourceFilter, memberFilter]);
+  const filtered = useMemo(() => activity || [], [activity]);
 
   // Group by date
   const grouped = useMemo(() => {
