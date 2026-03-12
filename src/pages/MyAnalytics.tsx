@@ -1,16 +1,26 @@
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Lightbulb } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Lightbulb, GitPullRequest, Eye, Code2, Target } from "lucide-react";
 import { useUserTeam, useMyAnalytics } from "@/hooks/useAnalytics";
+import { usePersonalEnrichedMetrics } from "@/hooks/useEnrichedAnalytics";
 
 export default function MyAnalytics() {
   const { data: teamData, isLoading: teamLoading } = useUserTeam();
   const memberId = teamData?.id;
+  const teamId = teamData?.team_id;
   const { data, isLoading } = useMyAnalytics(memberId);
+  const { data: enriched, isLoading: enrichedLoading } = usePersonalEnrichedMetrics(memberId, teamId);
   const loading = teamLoading || isLoading;
 
   const tooltipStyle = { backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, color: "hsl(var(--foreground))" };
+
+  const sentimentColors: Record<string, string> = {
+    positive: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
+    neutral: "bg-primary/10 text-primary border-primary/20",
+    warning: "bg-amber-500/10 text-amber-600 border-amber-500/20",
+  };
 
   return (
     <div className="min-h-screen bg-background p-6 md:p-8 max-w-5xl mx-auto space-y-6">
@@ -18,6 +28,30 @@ export default function MyAnalytics() {
         <h1 className="text-2xl font-bold text-foreground">My Analytics</h1>
         <p className="text-sm text-muted-foreground">Your personal performance over the last 30 days</p>
       </div>
+
+      {/* Enriched Insight Cards */}
+      {enriched && enriched.insights.length > 0 && (
+        <div>
+          <h2 className="text-lg font-semibold text-foreground mb-3 flex items-center gap-2">
+            <Lightbulb className="h-5 w-5 text-muted-foreground" /> Data-Driven Insights
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {enriched.insights.map((ins, i) => (
+              <Card key={i} className="border">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <h3 className="text-sm font-semibold text-foreground">{ins.title}</h3>
+                    <Badge variant="outline" className={`text-[10px] ${sentimentColors[ins.sentiment]}`}>
+                      {ins.sentiment}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{ins.description}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Completion Trend */}
       <Card>
@@ -36,6 +70,129 @@ export default function MyAnalytics() {
           )}
         </CardContent>
       </Card>
+
+      {/* PR Cycle Time + Reviews Given vs Received */}
+      {enriched && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <GitPullRequest className="h-4 w-4 text-muted-foreground" /> PR Cycle Time
+              </CardTitle>
+              {enriched.currentWeekAvgCycleTime !== null && enriched.fourWeekAvgCycleTime !== null && (
+                <p className="text-xs text-muted-foreground">
+                  This week: {enriched.currentWeekAvgCycleTime}h · 4-week avg: {enriched.fourWeekAvgCycleTime}h
+                </p>
+              )}
+            </CardHeader>
+            <CardContent>
+              {enrichedLoading ? <Skeleton className="h-48 w-full" /> : (
+                <ResponsiveContainer width="100%" height={200}>
+                  <LineChart data={enriched.prCycleTimeTrend}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="week" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
+                    <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} unit="h" />
+                    <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [`${v}h`, "Avg Cycle Time"]} />
+                    <Line type="monotone" dataKey="avgHours" stroke="hsl(var(--chart-blue))" strokeWidth={2} dot={{ r: 4, fill: "hsl(var(--chart-blue))" }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Eye className="h-4 w-4 text-muted-foreground" /> Reviews Given vs Received
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">
+                Total: {enriched.reviewsGivenTotal} given · {enriched.reviewsReceivedTotal} received
+              </p>
+            </CardHeader>
+            <CardContent>
+              {enrichedLoading ? <Skeleton className="h-48 w-full" /> : (
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={enriched.reviewsGivenVsReceived}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="week" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
+                    <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
+                    <Tooltip contentStyle={tooltipStyle} />
+                    <Bar dataKey="given" name="Given" fill="hsl(var(--chart-blue))" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="received" name="Received" fill="hsl(var(--chart-emerald))" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Code Impact + Focus */}
+      {enriched && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Code2 className="h-4 w-4 text-muted-foreground" /> Code Impact
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {enrichedLoading ? <Skeleton className="h-48 w-full" /> : (
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={enriched.codeImpactTrend}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="week" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
+                    <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
+                    <Tooltip contentStyle={tooltipStyle} formatter={(v: number, name: string) => {
+                      if (name === "impact") return [v, "Impact Score"];
+                      return [v, name];
+                    }} />
+                    <Bar dataKey="impact" name="Impact Score" fill="hsl(var(--chart-emerald))" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Target className="h-4 w-4 text-muted-foreground" /> Focus Score
+              </CardTitle>
+              <p className="text-xs text-muted-foreground">Repos touched per week — fewer = more focused</p>
+            </CardHeader>
+            <CardContent>
+              {enrichedLoading ? <Skeleton className="h-48 w-full" /> : (
+                <ResponsiveContainer width="100%" height={200}>
+                  <BarChart data={enriched.focusTrend}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="week" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
+                    <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} allowDecimals={false} />
+                    <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [v, "Repos"]} />
+                    <Bar dataKey="repos" fill="hsl(var(--chart-amber))" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Work Type Breakdown */}
+      {enriched && enriched.workTypeBreakdown.length > 0 && (
+        <Card>
+          <CardHeader><CardTitle className="text-base">Work Type Breakdown (AI-classified)</CardTitle></CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {enriched.workTypeBreakdown.map((wt) => (
+                <Badge key={wt.type} variant="secondary" className="text-xs capitalize">
+                  {wt.type} <span className="ml-1 opacity-60">({wt.count})</span>
+                </Badge>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Mood Trend */}
@@ -78,7 +235,7 @@ export default function MyAnalytics() {
         </Card>
       </div>
 
-      {/* Insight Cards */}
+      {/* Legacy Insight Cards */}
       <div>
         <h2 className="text-lg font-semibold text-foreground mb-3 flex items-center gap-2">
           <Lightbulb className="h-5 w-5 text-muted-foreground" /> Your Patterns
