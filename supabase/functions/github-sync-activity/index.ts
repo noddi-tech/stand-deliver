@@ -81,7 +81,8 @@ async function fetchCommitsPerRepo(
   repos: string[],
   username: string,
   since: string,
-  until: string
+  until: string,
+  githubUserId: number | null = null
 ): Promise<any[]> {
   const allCommits: any[] = [];
   const seenShas = new Set<string>();
@@ -106,13 +107,12 @@ async function fetchCommitsPerRepo(
               const commitAuthorName = c.commit?.author?.name?.toLowerCase();
               const commitCommitterName = c.commit?.committer?.name?.toLowerCase();
               const message = (c.commit?.message || "").toLowerCase();
-              const isCoAuthor = message.includes("co-authored-by:") && message.includes(userLower);
               return (
                 authorLogin === userLower ||
                 committerLogin === userLower ||
                 commitAuthorName === userLower ||
                 commitCommitterName === userLower ||
-                isCoAuthor
+                isCoAuthorMatch(message, userLower, githubUserId)
               );
             })
             .map((c: any) => ({
