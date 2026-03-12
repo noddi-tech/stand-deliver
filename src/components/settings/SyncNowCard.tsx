@@ -5,10 +5,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Loader2, RefreshCw } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { Progress } from "@/components/ui/progress";
 
 export function SyncNowCard({ orgId }: { orgId: string }) {
   const [syncingGithub, setSyncingGithub] = useState(false);
   const [syncingClickup, setSyncingClickup] = useState(false);
+  const [githubProgress, setGithubProgress] = useState<{ done: number; total: number } | null>(null);
 
   const { data: githubInstall } = useQuery({
     queryKey: ["github-install-check", orgId],
@@ -40,22 +42,62 @@ export function SyncNowCard({ orgId }: { orgId: string }) {
 
   if (!githubInstall && !clickupInstall) return null;
 
-  const handleSync = async (source: "github" | "clickup") => {
-    const setter = source === "github" ? setSyncingGithub : setSyncingClickup;
-    const fnName = source === "github" ? "github-sync-activity" : "clickup-sync-activity";
-    setter(true);
+  const handleGithubSync = async () => {
+    setSyncingGithub(true);
+    setGithubProgress(null);
+    let offset = 0;
+    let totalUsers = 0;
+    let allResults: any[] = [];
+
     try {
-      const body = source === "github" ? { days_back: 30 } : {};
-      const { data, error } = await supabase.functions.invoke(fnName, { body });
+      while (true) {
+        const { data, error } = await supabase.functions.invoke("github-sync-activity", {
+          body: { days_back: 30, org_id: orgId, offset, limit_users: 2 },
+        });
+        if (error) throw error;
+        if (data?.error) throw new Error(data.error);
+
+        totalUsers = data.total_users || 0;
+        const processed = data.processed_users || 0;
+        offset = data.next_offset || offset + processed;
+        allResults = [...allResults, ...(data.results || [])];
+
+        setGithubProgress({ done: Math.min(offset, totalUsers), total: totalUsers });
+
+        if (!data.has_more) break;
+      }
+      toast.success(`GitHub synced! ${allResults.length} user(s) processed ✅`);
+    } catch (e: any) {
+      if (allResults.length > 0) {
+        toast.error(`Sync failed after ${allResults.length} user(s): ${e.message}. Retry to continue.`);
+      } else {
+        toast.error(`Sync failed: ${e.message}`);
+      }
+    } finally {
+      setSyncingGithub(false);
+      setTimeout(() => setGithubProgress(null), 3000);
+    }
+  };
+
+  const handleClickupSync = async () => {
+    setSyncingClickup(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("clickup-sync-activity", { body: {} });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
-      toast.success(`${source === "github" ? "GitHub" : "ClickUp"} activity synced! ✅`);
+      toast.success("ClickUp activity synced! ✅");
     } catch (e: any) {
       toast.error(`Sync failed: ${e.message}`);
     } finally {
-      setter(false);
+      setSyncingClickup(false);
     }
   };
+
+  const progressPercent = githubProgress
+    ? githubProgress.total > 0
+      ? Math.round((githubProgress.done / githubProgress.total) * 100)
+      : 0
+    : null;
 
   return (
     <Card>
@@ -65,7 +107,7 @@ export function SyncNowCard({ orgId }: { orgId: string }) {
           Manually trigger a sync to pull the latest activity from connected integrations.
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-3">
         <div className="flex gap-3">
           {githubInstall && (
             <Button
@@ -73,7 +115,7 @@ export function SyncNowCard({ orgId }: { orgId: string }) {
               size="sm"
               className="gap-2"
               disabled={syncingGithub}
-              onClick={() => handleSync("github")}
+              onClick={handleGithubSync}
             >
               {syncingGithub ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -89,7 +131,7 @@ export function SyncNowCard({ orgId }: { orgId: string }) {
               size="sm"
               className="gap-2"
               disabled={syncingClickup}
-              onClick={() => handleSync("clickup")}
+              onClick={handleClickupSync}
             >
               {syncingClickup ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -100,6 +142,14 @@ export function SyncNowCard({ orgId }: { orgId: string }) {
             </Button>
           )}
         </div>
+        {syncingGithub && progressPercent !== null && (
+          <div className="space-y-1">
+            <Progress value={progressPercent} className="h-2" />
+            <p className="text-xs text-muted-foreground">
+              Synced {githubProgress!.done}/{githubProgress!.total} users…
+            </p>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
