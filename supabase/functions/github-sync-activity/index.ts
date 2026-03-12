@@ -390,7 +390,7 @@ Deno.serve(async (req) => {
     for (const install of installations) {
       const { data: mappings } = await supabaseAdmin
         .from("github_user_mappings")
-        .select("user_id, github_username, github_display_name")
+        .select("user_id, github_username, github_display_name, github_user_id")
         .eq("org_id", install.org_id)
         .order("user_id");
 
