@@ -8,6 +8,14 @@
 - All enrichment respects the 120s time budget — skips enrichment if <15s remaining
 - No schema changes needed — all data stored in existing `external_activity.metadata` JSONB
 
+### Phase 2 — Enhanced Analytics Dashboard
+- New `useEnrichedAnalytics.ts` hook computes Code Impact Score, PR Cycle Time, Review Velocity, Focus Score from enriched metadata
+- Team Analytics page: engineering metrics row (Avg PR Cycle Time, Avg Review Turnaround, Reviews Given)
+- Team Analytics: PR Cycle Time trend chart, Code Impact bar chart, AI-classified Work Distribution
+- Member Breakdown cards now show Impact Score, reviews given, and cycle time
+- MyAnalytics: PR Cycle Time trend, Reviews Given vs Received, Code Impact, Focus Score, AI Work Types
+- Data-driven personal insights generated from enriched metrics
+
 ### Slack channel selector (IntegrationsTab)
 - Channel dropdown now saves to `teams.slack_channel_id` on change
 - Initializes with current team's linked channel
