@@ -427,6 +427,9 @@ Deno.serve(async (req) => {
       const orgName = install.github_org_name;
       const username = mapping.github_username;
 
+      // Resolve stable GitHub user ID for rename-proof co-author matching
+      const githubUserId = await resolveGitHubUserId(token, username);
+
       try {
         // --- COMMITS ---
         const commitHeaders = { ...headers, Accept: "application/vnd.github.cloak-preview+json" };
