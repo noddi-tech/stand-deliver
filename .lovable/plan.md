@@ -94,3 +94,11 @@
 - Fixed date range bug: `daysBack=1` now correctly goes back 1 full day (was `daysBack-1` = 0 days)
 - 9 Deno unit tests validating attribution logic, date range, and case-insensitivity
 - Applied to both `github-sync-activity` and `github-fetch-activity` edge functions
+
+### GitHub Sync Chunked Pagination (Timeout Fix)
+- `github-sync-activity` now accepts `org_id`, `offset`, `limit_users` for paginated user processing
+- Internal 120s time budget guard stops processing before 150s gateway timeout
+- Returns `has_more`, `next_offset`, `total_users`, `processed_users` for client-driven pagination
+- SyncNowCard loops calls automatically while `has_more` is true, with progress bar
+- Org repos list cached per sync invocation across user chunks
+- Eliminates 504 gateway timeouts that manifested as CORS errors in the browser
