@@ -108,3 +108,11 @@
 - Per-repo commit scan now always runs (not just as fallback when Search API returns 0), since Search API `author:`/`committer:` qualifiers never match co-authors
 - Activity page filtering moved server-side: `memberFilter` and `sourceFilter` applied to Supabase queries before `limit(200)`, fixing the windowing bug where individual members' activity was crowded out
 - Standup fetch skipped when source filter is `github` or `clickup` for faster queries
+
+### Rename-Proof Co-Author Detection
+- Added `resolveGitHubUserId(token, username)` helper — resolves current username to stable numeric GitHub user ID via `GET /users/{username}`, cached per sync run
+- Added `isCoAuthorMatch(message, username, userId)` — checks `Co-authored-by:` trailers by both username string AND numeric noreply email pattern `<{userId}+...@users.noreply.github.com>`
+- Updated `fetchCommitsPerRepo` to accept optional `githubUserId` parameter and use `isCoAuthorMatch` instead of plain `message.includes()`
+- Main handler resolves GitHub user ID once per user before commit scan, passes it through
+- Fixes attribution for renamed accounts (e.g., ClickUpBotGOAT → Jokkos1337) where Lovable bot writes old username in commit trailers but numeric ID (164879107) stays constant
+- 16 Deno tests passing including 5 new rename-proof co-author scenarios
