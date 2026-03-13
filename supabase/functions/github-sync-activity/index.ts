@@ -129,7 +129,8 @@ async function fetchCommitsPerRepo(
 
 async function fetchPRsPerRepo(
   token: string, repos: string[], username: string,
-  startDate: string, endDate: string, type: "opened" | "merged"
+  startDate: string, endDate: string, type: "opened" | "merged",
+  githubUserId: number | null = null
 ): Promise<any[]> {
   const allPRs: any[] = [];
   const seenIds = new Set<number>();
