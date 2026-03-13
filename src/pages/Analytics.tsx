@@ -15,7 +15,7 @@ import { useTeamSummary } from "@/hooks/useTeamSummary";
 import { useEnrichedTeamMetrics } from "@/hooks/useEnrichedAnalytics";
 import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
 import { MemberBreakdown } from "@/components/team/MemberBreakdown";
-import { BadgeLegend } from "@/components/badges/BadgeLegend";
+
 
 const WORK_TYPE_LABELS: Record<string, string> = {
   feature: "Feature",
