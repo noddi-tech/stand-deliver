@@ -595,6 +595,19 @@ export default function MyStandup() {
         }
       }
 
+      // Auto-acknowledge unacknowledged external activity for this member
+      if (memberId && teamId) {
+        supabase
+          .from("external_activity")
+          .update({ is_acknowledged: true })
+          .eq("team_id", teamId)
+          .eq("member_id", memberId)
+          .eq("is_acknowledged", false)
+          .then(({ error: ackErr }) => {
+            if (ackErr) console.error("Failed to acknowledge activity:", ackErr);
+          });
+      }
+
       toast.success(existingResponseId ? "Standup updated! ✏️" : "Standup submitted! 🎉");
       queryClient.invalidateQueries({ queryKey: ["previous-commitments"] });
       queryClient.invalidateQueries({ queryKey: ["existing-response-today"] });
