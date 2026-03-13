@@ -797,7 +797,7 @@ Deno.serve(async (req) => {
                   },
                   occurred_at: item.merged_at || item.closed_at || item.updated_at,
                 },
-                { onConflict: "external_id,activity_type,source" }
+                { onConflict: "team_id,member_id,external_id,activity_type,source" }
               );
             } catch { /* dedup */ }
           }
