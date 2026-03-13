@@ -28,7 +28,8 @@ export function useBadgeDefinitions() {
       if (error) throw error;
       return (data || []) as BadgeDefinition[];
     },
-    staleTime: 60 * 60 * 1000, // 1 hour - definitions rarely change
+    staleTime: 5 * 60 * 1000, // 5 min - allows picking up newly seeded definitions
+    refetchOnMount: "always",
   });
 }
 
