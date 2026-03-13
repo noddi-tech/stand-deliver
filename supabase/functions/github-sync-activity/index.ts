@@ -698,7 +698,7 @@ Deno.serve(async (req) => {
 
         if (prsItems.length === 0 && orgName) {
           if (!orgRepos) { orgRepos = await fetchOrgRepos(token, orgName); orgReposCache[install.org_id] = orgRepos; }
-          prsItems = await fetchPRsPerRepo(token, orgRepos, username, startDate, endDate, "opened");
+          prsItems = await fetchPRsPerRepo(token, orgRepos, username, startDate, endDate, "opened", githubUserId);
         }
 
         // --- PRs MERGED ---
