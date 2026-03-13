@@ -199,7 +199,7 @@ export default function TeamInsights() {
               <ul className="space-y-2">
                 {concerns.map((c, i) => (
                   <li key={i} className="text-sm text-foreground flex items-start gap-2">
-                    <span className="text-amber-500">❓</span> {c}
+                    <span className="text-destructive">❓</span> {c}
                   </li>
                 ))}
               </ul>
