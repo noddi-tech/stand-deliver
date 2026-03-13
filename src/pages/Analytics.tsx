@@ -182,16 +182,19 @@ export default function Analytics() {
                 return (
                   <Card key={m.name} className="border bg-card">
                     <CardContent className="p-4 space-y-3">
-                      <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between">
                         <div>
                           <p className="text-sm font-semibold text-foreground">{m.name}</p>
                           <p className="text-[11px] text-muted-foreground capitalize">{m.role}</p>
                         </div>
-                        {sentimentConfig && (
-                          <Badge variant="outline" className={`text-[10px] ${sentimentConfig.className}`}>
-                            {sentimentConfig.label}
-                          </Badge>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <MemberBadgeIcons badges={getMemberBadges(m.name)} lookup={badgeLookup} max={3} />
+                          {sentimentConfig && (
+                            <Badge variant="outline" className={`text-[10px] ${sentimentConfig.className}`}>
+                              {sentimentConfig.label}
+                            </Badge>
+                          )}
+                        </div>
                       </div>
 
                       {/* Stats row */}
