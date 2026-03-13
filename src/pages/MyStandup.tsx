@@ -115,48 +115,35 @@ export default function MyStandup() {
   const [clickUpSearch, setClickUpSearch] = useState("");
   const [clickUpStatusFilter, setClickUpStatusFilter] = useState<string>("all");
 
-  // Fetch unacknowledged external activity for today
-  const { data: externalActivity = [], refetch: refetchActivity } = useQuery({
-    queryKey: ["external-activity-today", memberId, teamId],
-    enabled: !!memberId && !!teamId,
+  // AI-powered focus suggestions
+  interface FocusSuggestion {
+    title: string;
+    reason: string;
+    priority: "high" | "medium" | "low";
+  }
+  const [addedSuggestions, setAddedSuggestions] = useState<Set<string>>(new Set());
+
+  const { data: aiSuggestions, isLoading: suggestionsLoading } = useQuery({
+    queryKey: ["ai-focus-suggestions", memberId, teamId],
+    enabled: !!memberId && !!teamId && !submitted && !isEditing,
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    retry: false,
     queryFn: async () => {
-      const today = format(new Date(), "yyyy-MM-dd");
-      const { data, error } = await supabase
-        .from("external_activity")
-        .select("*")
-        .eq("team_id", teamId!)
-        .eq("member_id", memberId!)
-        .eq("is_acknowledged", false)
-        .gte("occurred_at", `${today}T00:00:00.000Z`)
-        .order("occurred_at", { ascending: false });
+      const { data, error } = await supabase.functions.invoke("ai-suggest-focus", {
+        body: { member_id: memberId, team_id: teamId },
+      });
       if (error) throw error;
-      return data || [];
+      return (data?.suggestions || []) as FocusSuggestion[];
     },
   });
 
-  const acknowledgeActivity = async (activityId: string) => {
-    await supabase
-      .from("external_activity")
-      .update({ is_acknowledged: true })
-      .eq("id", activityId);
-    refetchActivity();
-  };
-
-  const addActivityToStandup = (activity: any) => {
-    if (activity.activity_type === "task_completed" || activity.activity_type === "pr_merged" || activity.activity_type === "commit") {
-      toast.success(`Added "${activity.title}" to your standup context`);
-    } else {
-      setTodayCommitments((prev) => [
-        ...prev,
-        {
-          title: activity.title,
-          priority: "medium" as CommitmentPriority,
-          clickup_task_id: activity.source === "clickup" ? activity.external_id : undefined,
-        },
-      ]);
-      toast.success(`Added "${activity.title}" to today's focus`);
-    }
-    acknowledgeActivity(activity.id);
+  const addSuggestionToFocus = (suggestion: FocusSuggestion) => {
+    setTodayCommitments((prev) => [
+      ...prev,
+      { title: suggestion.title, priority: suggestion.priority as CommitmentPriority },
+    ]);
+    setAddedSuggestions((prev) => new Set(prev).add(suggestion.title));
+    toast.success(`Added "${suggestion.title}" to today's focus`);
   };
 
   // Fetch user's org for ClickUp
