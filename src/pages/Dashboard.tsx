@@ -204,10 +204,39 @@ export default function Dashboard() {
               <Skeleton key={i} className="h-24 rounded-lg" />
             ))}
           </div>
-        ) : !attention?.commitments.length && !attention?.blockers.length ? (
+        ) : !attention?.commitments.length && !attention?.blockers.length && !attention?.missingStandups.length && !attention?.staleMembers.length ? (
           <EmptyState icon={CheckCircle2} title="All clear!" description="Nothing needs attention right now 🎉" iconClassName="text-emerald-500/60" />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {attention?.missingStandups.map((m) => (
+              <Card key={`missing-${m.id}`} className="border-amber-500/50">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <Clock className="h-5 w-5 text-amber-500 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{m.fullName || "Unknown"}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Hasn't submitted today's standup
+                    </p>
+                  </div>
+                  <Button size="sm" variant="ghost" onClick={() => navigate("/standup")}>
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+            {attention?.staleMembers.map((m) => (
+              <Card key={`stale-${m.id}`} className="border-muted-foreground/30">
+                <CardContent className="p-4 flex items-center gap-3">
+                  <Users className="h-5 w-5 text-muted-foreground shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{m.fullName || "Unknown"}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {m.daysSince ? `Hasn't checked in for ${m.daysSince} days` : "Has never submitted a standup"}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
             {attention?.commitments.map((c) => (
               <Card key={c.id} className="border-amber-500/50">
                 <CardContent className="p-4 flex items-center gap-3">
