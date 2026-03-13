@@ -580,11 +580,35 @@ Deno.serve(async (req) => {
         const authorData = authorRes.ok ? await authorRes.json() : { items: [] };
         const committerData = committerRes.ok ? await committerRes.json() : { items: [] };
 
-        const seenShas = new Set<string>();
-        let allCommits: any[] = [];
-        for (const item of [...(authorData.items || []), ...(committerData.items || [])]) {
-          if (item.sha && !seenShas.has(item.sha)) { seenShas.add(item.sha); allCommits.push(item); }
-        }
+    const seenShas = new Set<string>();
+    let allCommits: any[] = [];
+    for (const item of [...(authorData.items || []), ...(committerData.items || [])]) {
+      if (item.sha && !seenShas.has(item.sha)) { seenShas.add(item.sha); allCommits.push(item); }
+    }
+
+    // Also search by numeric GitHub user ID if available (catches renamed accounts)
+    if (githubUserId) {
+      const [authorIdRes, committerIdRes] = await Promise.all([
+        fetch(`${GH_API}/search/commits?q=author-id:${githubUserId}+committer-date:${dateRange}&per_page=50`, { headers: commitHeaders }).catch(() => null),
+        fetch(`${GH_API}/search/commits?q=committer-id:${githubUserId}+committer-date:${dateRange}&per_page=50`, { headers: commitHeaders }).catch(() => null),
+      ]);
+      const authorIdData = authorIdRes?.ok ? await authorIdRes.json() : { items: [] };
+      const committerIdData = committerIdRes?.ok ? await committerIdRes.json() : { items: [] };
+      for (const item of [...(authorIdData.items || []), ...(committerIdData.items || [])]) {
+        if (item.sha && !seenShas.has(item.sha)) { seenShas.add(item.sha); allCommits.push(item); }
+      }
+
+      // Update username if GitHub login changed
+      const currentLogin = allCommits[0]?.author?.login || allCommits[0]?.committer?.login;
+      if (currentLogin && currentLogin.toLowerCase() !== username.toLowerCase()) {
+        console.log(`GitHub username changed: ${username} → ${currentLogin}, updating mapping`);
+        await supabaseAdmin
+          .from("github_user_mappings")
+          .update({ github_username: currentLogin })
+          .eq("user_id", mapping.user_id)
+          .eq("org_id", install.org_id);
+      }
+    }
 
         // Per-repo scan (catches co-authored commits)
         let orgRepos: string[] | null = orgReposCache[install.org_id] || null;
