@@ -6,6 +6,8 @@ import { useAttentionItems } from "@/hooks/useAttentionItems";
 import { useTeamMembersStatus } from "@/hooks/useTeamMembers";
 import { useRecentActivity } from "@/hooks/useRecentActivity";
 import { useSkipStandup } from "@/hooks/useSkipStandup";
+import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
+import { MemberBadgeIcons } from "@/components/badges/MemberBadgeIcons";
 import { useNavigate } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
