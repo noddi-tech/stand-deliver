@@ -315,6 +315,11 @@ export default function Dashboard() {
                       <span className="text-sm font-medium truncate">
                         {m.fullName || "Unknown"}
                       </span>
+                      <MemberBadgeIcons
+                        badges={(teamBadges || []).filter(b => b.member_id === m.id)}
+                        lookup={badgeLookup}
+                        max={3}
+                      />
                       <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
                         {m.role}
                       </Badge>
