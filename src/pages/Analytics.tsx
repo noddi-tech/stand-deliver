@@ -1,11 +1,10 @@
 import { useState } from "react";
 import { AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { Activity, AlertTriangle, ArrowDownRight, TrendingUp, BarChart3, Sparkles, Loader2, RefreshCw, User, GitPullRequest, Clock, Eye } from "lucide-react";
+import { Activity, AlertTriangle, ArrowDownRight, TrendingUp, BarChart3, Sparkles, Loader2, RefreshCw, GitPullRequest, Clock, Eye } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import MetricCard from "@/components/analytics/MetricCard";
 import HealthGauge from "@/components/analytics/HealthGauge";
 import CommitmentFunnel from "@/components/analytics/CommitmentFunnel";
@@ -15,8 +14,8 @@ import { useUserTeam, useAnalyticsMetrics } from "@/hooks/useAnalytics";
 import { useTeamSummary } from "@/hooks/useTeamSummary";
 import { useEnrichedTeamMetrics } from "@/hooks/useEnrichedAnalytics";
 import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
-import { MemberBadgeIcons } from "@/components/badges/MemberBadgeIcons";
-import type { MemberStat, MemberHighlight } from "@/hooks/useTeamSummary";
+import { MemberBreakdown } from "@/components/team/MemberBreakdown";
+import { BadgeLegend } from "@/components/badges/BadgeLegend";
 
 const SENTIMENT_CONFIG: Record<string, { label: string; variant: "default" | "secondary" | "destructive"; className: string }> = {
   strong: { label: "Strong week", variant: "default", className: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" },
