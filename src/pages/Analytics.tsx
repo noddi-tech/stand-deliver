@@ -35,8 +35,24 @@ export default function Analytics() {
   const badgeLookup = useBadgeLookup();
   const loading = teamLoading || isLoading;
 
+  const analysis = summaryData?.analysis;
+  const memberStats = summaryData?.memberStats || [];
 
   if (!loading && !metrics) {
+    return (
+      <div className="bg-background p-6 md:p-8 max-w-7xl mx-auto">
+        <h1 className="text-2xl font-bold text-foreground mb-2">Analytics</h1>
+        <EmptyState
+          icon={BarChart3}
+          title="Not enough data yet"
+          description="Need at least 1 week of standup data to show analytics."
+          actionLabel="Start a Standup"
+          actionHref="/standup"
+        />
+      </div>
+    );
+  }
+
   const tooltipStyle = { backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, color: "hsl(var(--foreground))" };
 
   return (
