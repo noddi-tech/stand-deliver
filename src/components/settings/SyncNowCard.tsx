@@ -89,6 +89,8 @@ export function SyncNowCard({ orgId }: { orgId: string }) {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
       toast.success("ClickUp activity synced! ✅");
+      queryClient.invalidateQueries({ queryKey: ["recent-activity"] });
+      queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
     } catch (e: any) {
       toast.error(`Sync failed: ${e.message}`);
     } finally {

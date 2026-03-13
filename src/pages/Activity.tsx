@@ -34,6 +34,8 @@ function useActivityFeed(teamId: string | undefined, days: number, sourceFilter:
     queryKey: ["activity-feed", teamId, days, sourceFilter, memberFilter],
     enabled: !!teamId,
     staleTime: 30000,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
     queryFn: async () => {
       const since = subDays(new Date(), days).toISOString();
       const sinceDate = since.split("T")[0];

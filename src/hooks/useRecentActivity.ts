@@ -20,6 +20,8 @@ export function useRecentActivity(teamId: string | undefined) {
     queryKey: ["recent-activity", teamId],
     enabled: !!teamId,
     staleTime: 30000,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
     queryFn: async () => {
       const sevenDaysAgo = subDays(new Date(), 7).toISOString();
       const sevenDaysAgoDate = sevenDaysAgo.split("T")[0];
