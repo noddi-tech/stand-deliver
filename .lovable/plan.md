@@ -152,3 +152,9 @@
 - `WeeklyDigest.tsx` shows Weekly Awards card (trophy icon, member badges, stats) and Team Momentum card (3-column DORA grid with trend arrows)
 - `TeamInsights.tsx` shows live awards from `useWeeklyAwards` hook + DORA metrics panel
 - No individual leaderboard — awards celebrate specific contributions, not rankings
+
+### Badge Detection Completeness Fix
+- Added **Architect** detection: PRs with `metadata.files_changed >= 5` (structural changes)
+- Added **Guardian** detection: reviews followed by commits before merge (caught a bug), with fallback to 2+ review comments
+- Fixed **Speed Reviewer**: now requires 3+ reviews given within 2 hours of PR creation (was just 3+ total reviews)
+- All 10 badge definitions now have active detection logic in `detect-badges` edge function
