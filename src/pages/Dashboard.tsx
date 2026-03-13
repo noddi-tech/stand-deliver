@@ -57,7 +57,8 @@ export default function Dashboard() {
   const { data: members, isLoading: membersLoading } = useTeamMembersStatus(teamId);
   const { data: activity, isLoading: activityLoading } = useRecentActivity(teamId);
   const skipMutation = useSkipStandup();
-
+  const { data: teamBadges } = useTeamBadges(teamId);
+  const badgeLookup = useBadgeLookup();
   const [sourceFilter, setSourceFilter] = useState<string>("all");
 
   const handleSkip = () => {
