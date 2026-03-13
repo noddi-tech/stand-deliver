@@ -326,12 +326,13 @@ export default function MyStandup() {
     return map;
   }, [previousCommitments, statusOverrides]);
 
-  const resolvedCount = Object.values(effectiveStatuses).filter(
-    (s) => s === "done" || s === "dropped"
+  // Count items the user has explicitly addressed (any status change from active/carried counts)
+  const addressedCount = Object.values(effectiveStatuses).filter(
+    (s) => s === "done" || s === "dropped" || s === "in_progress" || s === "blocked"
   ).length;
   const totalPrevious = previousCommitments.length;
-  const allResolved = totalPrevious === 0 || resolvedCount === totalPrevious;
-  const progressPercent = totalPrevious > 0 ? Math.round((resolvedCount / totalPrevious) * 100) : 100;
+  const allResolved = totalPrevious === 0 || addressedCount === totalPrevious;
+  const progressPercent = totalPrevious > 0 ? Math.round((addressedCount / totalPrevious) * 100) : 100;
 
   const updateCommitmentMutation = useMutation({
     mutationFn: async ({ id, status, blocked_reason, resolution_note }: { id: string; status: CommitmentStatus; blocked_reason?: string; resolution_note?: string }) => {
@@ -426,7 +427,12 @@ export default function MyStandup() {
       console.error("Coach review failed:", err);
       // Fail gracefully — let them submit without review
       toast.info("AI coach unavailable — you can submit directly");
-      await handleSubmit();
+      try {
+        await handleSubmit();
+      } catch (submitErr: any) {
+        console.error("Submit after coach failure:", submitErr);
+        toast.error(submitErr.message || "Failed to submit standup");
+      }
     } finally {
       setCoachLoading(false);
     }
@@ -469,7 +475,35 @@ export default function MyStandup() {
     try {
       const today = format(new Date(), "yyyy-MM-dd");
 
-      // Update previous commitments and sync to ClickUp
+      // Upsert session first (needed for carry_forward)
+      let sessionId: string;
+      const { data: existingSession } = await supabase
+        .from("standup_sessions")
+        .select("id")
+        .eq("team_id", teamId)
+        .eq("session_date", today)
+        .maybeSingle();
+
+      if (existingSession) {
+        sessionId = existingSession.id;
+      } else {
+        const { data: newSession, error } = await supabase
+          .from("standup_sessions")
+          .insert({ team_id: teamId, session_date: today, status: "collecting" })
+          .select("id")
+          .single();
+        if (error) throw error;
+        sessionId = newSession.id;
+      }
+
+      // Carry forward FIRST (scoped to this member only), then apply user overrides
+      await supabase.rpc('carry_forward_commitments', {
+        p_team_id: teamId,
+        p_session_id: sessionId,
+        p_member_id: memberId,
+      });
+
+      // Now apply user's explicit status overrides (these take priority over carry_forward)
       for (const [id, status] of Object.entries(statusOverrides)) {
         await updateCommitmentMutation.mutateAsync({
           id,
@@ -494,33 +528,6 @@ export default function MyStandup() {
             });
         }
       }
-
-      // Upsert session
-      let sessionId: string;
-      const { data: existingSession } = await supabase
-        .from("standup_sessions")
-        .select("id")
-        .eq("team_id", teamId)
-        .eq("session_date", today)
-        .maybeSingle();
-
-      if (existingSession) {
-        sessionId = existingSession.id;
-      } else {
-        const { data: newSession, error } = await supabase
-          .from("standup_sessions")
-          .insert({ team_id: teamId, session_date: today, status: "collecting" })
-          .select("id")
-          .single();
-        if (error) throw error;
-        sessionId = newSession.id;
-      }
-
-      // Carry forward stale active/in_progress commitments
-      await supabase.rpc('carry_forward_commitments', {
-        p_team_id: teamId,
-        p_session_id: sessionId,
-      });
 
       const responseData = {
         mood,
@@ -829,7 +836,7 @@ export default function MyStandup() {
             <CardTitle className="text-base flex items-center justify-between">
               <span>Resolve Previous Commitments</span>
               <span className="text-sm font-normal text-muted-foreground">
-                {resolvedCount} of {totalPrevious} resolved
+                {addressedCount} of {totalPrevious} addressed
               </span>
             </CardTitle>
             <Progress value={progressPercent} className="h-2" />

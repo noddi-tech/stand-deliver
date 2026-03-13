@@ -1140,10 +1140,16 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      carry_forward_commitments: {
-        Args: { p_session_id: string; p_team_id: string }
-        Returns: number
-      }
+      carry_forward_commitments:
+        | { Args: { p_session_id: string; p_team_id: string }; Returns: number }
+        | {
+            Args: {
+              p_member_id?: string
+              p_session_id: string
+              p_team_id: string
+            }
+            Returns: number
+          }
       create_org_and_join: {
         Args: { p_name: string; p_slack_workspace_id?: string; p_slug: string }
         Returns: Json
