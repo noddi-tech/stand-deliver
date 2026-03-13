@@ -42,6 +42,8 @@ export default function TeamFeed() {
 
   const [dateFilter, setDateFilter] = useState<DateFilter>("week");
   const [memberFilter, setMemberFilter] = useState<string>("all");
+  const { data: teamBadges } = useTeamBadges(teamId);
+  const badgeLookup = useBadgeLookup();
 
   // Fetch team members with role
   const { data: members = [] } = useQuery({
