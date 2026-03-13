@@ -208,7 +208,7 @@ export default function Analytics() {
                           <p className="text-[10px] text-muted-foreground">Participation</p>
                         </div>
                         <div>
-                          <p className="text-lg font-bold text-foreground">{em?.codeImpactScore ?? (m.externalActivity.githubCommits + m.externalActivity.prs + m.externalActivity.clickupTasks)}</p>
+                          <p className="text-lg font-bold text-foreground">{em?.codeImpactScore ?? ((m.externalActivity?.githubCommits ?? 0) + (m.externalActivity?.prs ?? 0) + (m.externalActivity?.clickupTasks ?? 0))}</p>
                           <p className="text-[10px] text-muted-foreground">{em ? "Impact" : "Activity"}</p>
                         </div>
                       </div>
@@ -231,9 +231,9 @@ export default function Analytics() {
 
                       {/* Enriched engineering stats */}
                       <div className="flex flex-wrap gap-2 text-[10px] text-muted-foreground">
-                        {m.externalActivity.githubCommits > 0 && <span>🐙 {m.externalActivity.githubCommits}</span>}
-                        {m.externalActivity.prs > 0 && <span>🔀 {m.externalActivity.prs}</span>}
-                        {m.externalActivity.clickupTasks > 0 && <span>📋 {m.externalActivity.clickupTasks}</span>}
+                        {(m.externalActivity?.githubCommits ?? 0) > 0 && <span>🐙 {m.externalActivity.githubCommits}</span>}
+                        {(m.externalActivity?.prs ?? 0) > 0 && <span>🔀 {m.externalActivity.prs}</span>}
+                        {(m.externalActivity?.clickupTasks ?? 0) > 0 && <span>📋 {m.externalActivity.clickupTasks}</span>}
                         {em?.reviewsGiven ? <span>👀 {em.reviewsGiven} reviews</span> : null}
                         {em?.avgPRCycleTime !== null && em?.avgPRCycleTime !== undefined && <span>⏱ {em.avgPRCycleTime}h cycle</span>}
                         {m.activeBlockers > 0 && <span className="text-destructive">🚧 {m.activeBlockers}</span>}
