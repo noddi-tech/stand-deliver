@@ -137,96 +137,17 @@ export default function Analytics() {
       )}
 
       {/* Member Breakdown */}
-      {memberStats.length > 0 && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
-                <User className="h-4 w-4 text-muted-foreground" />
-                Member Breakdown
-              </CardTitle>
-              {memberStats.length > 6 && (
-                <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => setShowAllMembers(!showAllMembers)}>
-                  {showAllMembers ? "Show less" : `Show all (${memberStats.length})`}
-                </Button>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {displayMembers.map((m) => {
-                const highlight = getHighlight(m.name);
-                const sentimentConfig = highlight ? SENTIMENT_CONFIG[highlight.sentiment] : null;
-                const em = getEnrichedMember(m.name);
-                return (
-                  <Card key={m.name} className="border bg-card">
-                    <CardContent className="p-4 space-y-3">
-                        <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-semibold text-foreground">{m.name}</p>
-                          <p className="text-[11px] text-muted-foreground capitalize">{m.role}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <MemberBadgeIcons badges={getMemberBadges(m.name)} lookup={badgeLookup} max={3} />
-                          {sentimentConfig && (
-                            <Badge variant="outline" className={`text-[10px] ${sentimentConfig.className}`}>
-                              {sentimentConfig.label}
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
+      <MemberBreakdown
+        memberStats={memberStats}
+        highlights={analysis?.memberHighlights}
+        teamBadges={teamBadges}
+        badgeLookup={badgeLookup}
+        enrichedMembers={enriched?.members}
+        loading={summaryLoading}
+      />
 
-                      {/* Stats row */}
-                      <div className="grid grid-cols-3 gap-2 text-center">
-                        <div>
-                          <p className="text-lg font-bold text-foreground">{m.commitments.completionRate}%</p>
-                          <p className="text-[10px] text-muted-foreground">Completion</p>
-                        </div>
-                        <div>
-                          <p className="text-lg font-bold text-foreground">{m.standup.participationRate}%</p>
-                          <p className="text-[10px] text-muted-foreground">Participation</p>
-                        </div>
-                        <div>
-                          <p className="text-lg font-bold text-foreground">{em?.codeImpactScore ?? ((m.externalActivity?.githubCommits ?? 0) + (m.externalActivity?.prs ?? 0) + (m.externalActivity?.clickupTasks ?? 0))}</p>
-                          <p className="text-[10px] text-muted-foreground">{em ? "Impact" : "Activity"}</p>
-                        </div>
-                      </div>
-
-                      {/* Completion bar */}
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-[10px] text-muted-foreground">
-                          <span>{m.commitments.done}/{m.commitments.total} done</span>
-                          <span>{m.commitments.carried} carried</span>
-                        </div>
-                        <Progress value={m.commitments.completionRate} className="h-1.5" />
-                      </div>
-
-                      {/* AI highlight */}
-                      {highlight && (
-                        <p className="text-xs text-muted-foreground italic leading-snug">
-                          "{highlight.highlight}"
-                        </p>
-                      )}
-
-                      {/* Enriched engineering stats */}
-                      <div className="flex flex-wrap gap-2 text-[10px] text-muted-foreground">
-                        {(m.externalActivity?.githubCommits ?? 0) > 0 && <span>🐙 {m.externalActivity.githubCommits}</span>}
-                        {(m.externalActivity?.prs ?? 0) > 0 && <span>🔀 {m.externalActivity.prs}</span>}
-                        {(m.externalActivity?.clickupTasks ?? 0) > 0 && <span>📋 {m.externalActivity.clickupTasks}</span>}
-                        {em?.reviewsGiven ? <span>👀 {em.reviewsGiven} reviews</span> : null}
-                        {em?.avgPRCycleTime !== null && em?.avgPRCycleTime !== undefined && <span>⏱ {em.avgPRCycleTime}h cycle</span>}
-                        {m.activeBlockers > 0 && <span className="text-destructive">🚧 {m.activeBlockers}</span>}
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* PR Cycle Time Trend + Review Health */}
+      {/* Badge Legend */}
+      <BadgeLegend />
       {enriched && (enriched.prCycleTimeTrend.some(w => w.avgHours > 0) || enriched.teamTotalReviews > 0) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
