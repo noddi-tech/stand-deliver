@@ -141,3 +141,14 @@
 - `useBadges.ts` hook with `useBadgeDefinitions`, `useTeamBadges`, `useMemberBadges`, `useBadgeLookup`
 - `BadgeShowcase` component on MyAnalytics page — full badge grid with tooltips and earn dates
 - `MemberBadgeIcons` inline component — emoji badges on Analytics member cards and Team Feed entries
+
+### Phase 4 — Weekly Awards & Team Momentum
+- `weekly_awards` and `dora_metrics` JSONB columns added to `ai_weekly_digests` table
+- `useWeeklyAwards.ts` hook computes MVP (highest composite score), Unsung Hero (most reviews relative to own PRs), Momentum (biggest week-over-week improvement) from `external_activity` data
+- DORA-style metrics: avg PR cycle time, PR merge rate, review turnaround — all with week-over-week trend arrows
+- `ai-weekly-digest` edge function rewritten: reads `external_activity` directly (no more per-user `github-fetch-activity` calls), computes awards + DORA metrics server-side, stores in digest
+- AI narrative prompt enriched with DORA metrics and award context for natural mentions
+- Slack weekly digest now includes awards section and PR cycle time stat
+- `WeeklyDigest.tsx` shows Weekly Awards card (trophy icon, member badges, stats) and Team Momentum card (3-column DORA grid with trend arrows)
+- `TeamInsights.tsx` shows live awards from `useWeeklyAwards` hook + DORA metrics panel
+- No individual leaderboard — awards celebrate specific contributions, not rankings
