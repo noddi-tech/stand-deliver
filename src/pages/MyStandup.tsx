@@ -427,7 +427,12 @@ export default function MyStandup() {
       console.error("Coach review failed:", err);
       // Fail gracefully — let them submit without review
       toast.info("AI coach unavailable — you can submit directly");
-      await handleSubmit();
+      try {
+        await handleSubmit();
+      } catch (submitErr: any) {
+        console.error("Submit after coach failure:", submitErr);
+        toast.error(submitErr.message || "Failed to submit standup");
+      }
     } finally {
       setCoachLoading(false);
     }
