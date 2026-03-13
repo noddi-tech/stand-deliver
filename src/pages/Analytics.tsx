@@ -14,6 +14,8 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { useUserTeam, useAnalyticsMetrics } from "@/hooks/useAnalytics";
 import { useTeamSummary } from "@/hooks/useTeamSummary";
 import { useEnrichedTeamMetrics } from "@/hooks/useEnrichedAnalytics";
+import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
+import { MemberBadgeIcons } from "@/components/badges/MemberBadgeIcons";
 import type { MemberStat, MemberHighlight } from "@/hooks/useTeamSummary";
 
 const SENTIMENT_CONFIG: Record<string, { label: string; variant: "default" | "secondary" | "destructive"; className: string }> = {
