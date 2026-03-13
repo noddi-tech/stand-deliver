@@ -233,7 +233,7 @@ export default function Activity() {
           {grouped.map(([date, items]) => (
             <div key={date}>
               <h3 className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">
-                {format(new Date(date), "EEEE, MMM d")}
+                {isToday(new Date(date)) ? "Today" : isYesterday(new Date(date)) ? "Yesterday" : format(new Date(date), "EEEE, MMM d")}
               </h3>
               <div className="space-y-1.5">
                 {items.map(a => (

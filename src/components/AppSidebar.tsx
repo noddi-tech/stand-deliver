@@ -1,4 +1,4 @@
-import { LayoutDashboard, PenSquare, Users, Presentation, BarChart3, Activity, Settings, LogOut } from "lucide-react";
+import { LayoutDashboard, PenSquare, Users, Presentation, BarChart3, Activity, Settings, LogOut, User, BookOpen, FileText } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
@@ -11,13 +11,13 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,14 +31,19 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-const navItems = [
+const mainNavItems = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "My Standup", url: "/standup", icon: PenSquare },
   { title: "Team Feed", url: "/team", icon: Users },
   { title: "Meeting Mode", url: "/meeting", icon: Presentation },
   { title: "Activity", url: "/activity", icon: Activity },
+];
+
+const insightsNavItems = [
   { title: "Analytics", url: "/analytics", icon: BarChart3 },
-  { title: "Settings", url: "/settings", icon: Settings },
+  { title: "My Analytics", url: "/my-analytics", icon: User },
+  { title: "Team Insights", url: "/team-insights", icon: BookOpen },
+  { title: "Weekly Digest", url: "/weekly-digest", icon: FileText },
 ];
 
 export function AppSidebar() {
@@ -81,6 +86,40 @@ export function AppSidebar() {
     .slice(0, 2)
     .toUpperCase();
 
+  const renderNavGroup = (items: typeof mainNavItems, label?: string) => (
+    <SidebarGroup>
+      {label && !collapsed && <SidebarGroupLabel className="text-[10px] uppercase tracking-wider text-sidebar-foreground/40 px-3">{label}</SidebarGroupLabel>}
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {items.map((item) => (
+            <SidebarMenuItem key={item.title}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <SidebarMenuButton asChild>
+                    <NavLink
+                      to={item.url}
+                      end={item.url === "/dashboard"}
+                      className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                      activeClassName="bg-primary/10 text-primary font-medium"
+                    >
+                      <item.icon className="h-4 w-4 shrink-0" />
+                      {!collapsed && <span>{item.title}</span>}
+                    </NavLink>
+                  </SidebarMenuButton>
+                </TooltipTrigger>
+                {collapsed && (
+                  <TooltipContent side="right">
+                    {item.title}
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border bg-sidebar">
       <SidebarHeader className="p-4">
@@ -119,41 +158,14 @@ export function AppSidebar() {
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <TooltipProvider delayDuration={0}>
-              <SidebarMenu>
-                {navItems.map((item) => (
-                  <SidebarMenuItem key={item.title}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <SidebarMenuButton asChild>
-                          <NavLink
-                            to={item.url}
-                            end={item.url === "/dashboard"}
-                            className="flex items-center gap-3 px-3 py-2 rounded-md text-sm text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                            activeClassName="bg-primary/10 text-primary font-medium"
-                          >
-                            <item.icon className="h-4 w-4 shrink-0" />
-                            {!collapsed && <span>{item.title}</span>}
-                          </NavLink>
-                        </SidebarMenuButton>
-                      </TooltipTrigger>
-                      {collapsed && (
-                        <TooltipContent side="right">
-                          {item.title}
-                        </TooltipContent>
-                      )}
-                    </Tooltip>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </TooltipProvider>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        <TooltipProvider delayDuration={0}>
+          {renderNavGroup(mainNavItems)}
+          {renderNavGroup(insightsNavItems, "Insights")}
+          {renderNavGroup([{ title: "Settings", url: "/settings", icon: Settings }])}
+        </TooltipProvider>
       </SidebarContent>
 
-      <SidebarFooter className="p-3 space-y-1">
+      <SidebarFooter className="p-3">
         {!collapsed && (
           <div className="flex items-center justify-center">
             <kbd className="px-2 py-0.5 text-[10px] font-mono rounded bg-sidebar-accent text-sidebar-foreground/50 border border-sidebar-border">
@@ -161,15 +173,6 @@ export function AppSidebar() {
             </kbd>
           </div>
         )}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={signOut}
-          className="w-full justify-start gap-2 text-sidebar-foreground/60 hover:text-sidebar-foreground"
-        >
-          <LogOut className="h-4 w-4 shrink-0" />
-          {!collapsed && <span>Sign out</span>}
-        </Button>
       </SidebarFooter>
     </Sidebar>
   );
