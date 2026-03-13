@@ -711,7 +711,7 @@ Deno.serve(async (req) => {
 
         if (orgName) {
           if (!orgRepos) { orgRepos = await fetchOrgRepos(token, orgName); orgReposCache[install.org_id] = orgRepos; }
-          const perRepoMerged = await fetchPRsPerRepo(token, orgRepos, username, startDate, endDate, "merged");
+          const perRepoMerged = await fetchPRsPerRepo(token, orgRepos, username, startDate, endDate, "merged", githubUserId);
           const existingIds = new Set(mergedItems.map((item: any) => item.id));
           for (const pr of perRepoMerged) { if (!existingIds.has(pr.id)) mergedItems.push(pr); }
         }
