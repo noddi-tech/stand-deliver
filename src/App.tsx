@@ -22,7 +22,14 @@ import WeeklyDigest from "@/pages/WeeklyDigest";
 import Activity from "@/pages/Activity";
 import NotFound from "./pages/NotFound";
 
-const queryClient = new QueryClient(); // force rebuild
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60_000,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>

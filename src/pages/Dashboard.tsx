@@ -3,18 +3,16 @@ import { useAuth } from "@/hooks/useAuth";
 import { useUserTeam } from "@/hooks/useAnalytics";
 import { useTeamMetrics, useTodaySession } from "@/hooks/useTeamMetrics";
 import { useAttentionItems } from "@/hooks/useAttentionItems";
-import { useTeamMembersStatus } from "@/hooks/useTeamMembers";
 import { useRecentActivity } from "@/hooks/useRecentActivity";
 import { useSkipStandup } from "@/hooks/useSkipStandup";
 import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
-import { MemberBadgeIcons } from "@/components/badges/MemberBadgeIcons";
 import { MemberBreakdown } from "@/components/team/MemberBreakdown";
 
 import { useTeamSummary } from "@/hooks/useTeamSummary";
 import { useEnrichedTeamMetrics } from "@/hooks/useEnrichedAnalytics";
 import { useNavigate } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -24,14 +22,6 @@ import HealthGauge from "@/components/analytics/HealthGauge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LineChart, Line, ResponsiveContainer } from "recharts";
 import { AlertTriangle, CheckCircle2, Clock, ArrowRight, Users, SkipForward, GitBranch, ExternalLink } from "lucide-react";
-
-const MOOD_EMOJI: Record<string, string> = {
-  great: "🚀",
-  good: "👍",
-  okay: "😐",
-  struggling: "😓",
-  rough: "😰",
-};
 
 const SOURCE_ICONS: Record<string, string> = {
   github: "🐙",
@@ -48,6 +38,13 @@ const ACTIVITY_LABELS: Record<string, string> = {
   standup_submitted: "Standup",
 };
 
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -58,7 +55,6 @@ export default function Dashboard() {
   const { data: metrics, isLoading: metricsLoading } = useTeamMetrics(teamId);
   const { data: todaySession } = useTodaySession(teamId, memberId);
   const { data: attention, isLoading: attentionLoading } = useAttentionItems(teamId);
-  const { data: members, isLoading: membersLoading } = useTeamMembersStatus(teamId);
   const { data: activity, isLoading: activityLoading } = useRecentActivity(teamId);
   const skipMutation = useSkipStandup();
   const { data: teamBadges } = useTeamBadges(teamId);
@@ -124,6 +120,33 @@ export default function Dashboard() {
 
   const loading = teamLoading || metricsLoading;
 
+  // Page-level loading skeleton
+  if (teamLoading) {
+    return (
+      <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-8">
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+          <Skeleton className="h-9 w-40" />
+        </div>
+        <Skeleton className="h-48 rounded-lg" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-28 rounded-lg" />
+          ))}
+        </div>
+        <Skeleton className="h-32 rounded-lg" />
+        <div className="space-y-2">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-14 rounded-lg" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 md:p-8 max-w-7xl mx-auto space-y-8">
       {/* Header */}
@@ -131,7 +154,7 @@ export default function Dashboard() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Welcome back, {user?.user_metadata?.full_name || user?.email}
+            {getGreeting()}, {user?.user_metadata?.full_name || user?.email}
           </p>
         </div>
         {standupButton()}
@@ -205,7 +228,10 @@ export default function Dashboard() {
             ))}
           </div>
         ) : !attention?.commitments.length && !attention?.blockers.length && !attention?.missingStandups.length && !attention?.staleMembers.length ? (
-          <EmptyState icon={CheckCircle2} title="All clear!" description="Nothing needs attention right now 🎉" iconClassName="text-emerald-500/60" />
+          <div className="flex items-center gap-3 py-4 px-4 rounded-lg border border-dashed border-border">
+            <CheckCircle2 className="h-5 w-5 text-emerald-500/60 shrink-0" />
+            <p className="text-sm text-muted-foreground">All clear — nothing needs attention right now 🎉</p>
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {attention?.missingStandups.map((m) => (
@@ -334,61 +360,6 @@ export default function Dashboard() {
           </div>
         )}
       </section>
-
-      {/* Team Members */}
-      <section>
-        <h2 className="text-lg font-semibold text-foreground mb-3">Team Members</h2>
-        {membersLoading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {[1, 2, 3].map((i) => (
-              <Skeleton key={i} className="h-20 rounded-lg" />
-            ))}
-          </div>
-        ) : !members?.length ? (
-          <EmptyState icon={Users} title="No team members" description="Invite your team to get started." actionLabel="Go to Settings" actionHref="/settings" />
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {members.map((m) => (
-              <Card key={m.id}>
-                <CardContent className="p-4 flex items-center gap-3">
-                  <Avatar className="h-9 w-9">
-                    <AvatarImage src={m.avatarUrl || undefined} />
-                    <AvatarFallback>
-                      {(m.fullName || "?").charAt(0).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium truncate">
-                        {m.fullName || "Unknown"}
-                      </span>
-                      <MemberBadgeIcons
-                        badges={(teamBadges || []).filter(b => b.member_id === m.id)}
-                        lookup={badgeLookup}
-                        max={3}
-                      />
-                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                        {m.role}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {m.openCommitments} open · {
-                        m.submissionStatus === "submitted"
-                          ? "✅"
-                          : m.submissionStatus === "pending"
-                          ? "⏳"
-                          : "➖"
-                      }{" "}
-                      {m.lastMood ? MOOD_EMOJI[m.lastMood] || "" : ""}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-      </section>
-
     </div>
   );
 }
