@@ -69,6 +69,11 @@ export default function Analytics() {
   const getEnrichedMember = (name: string) =>
     enriched?.members?.find(m => m.memberName === name);
 
+  const getMemberBadges = (name: string) => {
+    const em = getEnrichedMember(name);
+    if (!em || !teamBadges) return [];
+    return teamBadges.filter(b => b.member_id === em.memberId);
+  };
   const tooltipStyle = { backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, color: "hsl(var(--foreground))" };
 
   return (
