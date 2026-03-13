@@ -177,7 +177,7 @@ export default function TeamInsights() {
               <ul className="space-y-2">
                 {celebrations.map((c, i) => (
                   <li key={i} className="text-sm text-foreground flex items-start gap-2">
-                    <span className="text-emerald-500">🎉</span> {c}
+                    <span className="text-primary">🎉</span> {c}
                   </li>
                 ))}
               </ul>
