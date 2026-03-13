@@ -875,10 +875,17 @@ Deno.serve(async (req) => {
             body: JSON.stringify({ team_id: tid }),
           }
         );
+        if (!badgeRes.ok) {
+          const errBody = await badgeRes.text();
+          console.error(`detect-badges HTTP ${badgeRes.status} for team ${tid}: ${errBody}`);
+          badgeResults.push(`${tid}: ERROR ${badgeRes.status}`);
+          continue;
+        }
         const badgeData = await badgeRes.json();
-        badgeResults.push(`${tid}: ${badgeData.badges_awarded || 0} badges`);
+        badgeResults.push(`${tid}: ${badgeData.badges_awarded || 0} badges (${(badgeData.details || []).join(", ")})`);
       } catch (e) {
         console.error(`Badge detection failed for team ${tid}:`, e);
+        badgeResults.push(`${tid}: EXCEPTION ${e.message}`);
       }
     }
     console.log("Badge detection results:", badgeResults);

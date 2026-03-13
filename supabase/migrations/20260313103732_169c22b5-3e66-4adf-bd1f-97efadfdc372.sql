@@ -1,0 +1,1 @@
+SELECT cron.unschedule('one-time-badge-detect');
