@@ -12,6 +12,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2, CheckCircle2, Target, AlertCircle, PenSquare } from "lucide-react";
 import { Link } from "react-router-dom";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
+import { MemberBadgeIcons } from "@/components/badges/MemberBadgeIcons";
 
 const moodEmoji: Record<string, string> = {
   great: "🚀",
@@ -40,6 +42,8 @@ export default function TeamFeed() {
 
   const [dateFilter, setDateFilter] = useState<DateFilter>("week");
   const [memberFilter, setMemberFilter] = useState<string>("all");
+  const { data: teamBadges } = useTeamBadges(teamId);
+  const badgeLookup = useBadgeLookup();
 
   // Fetch team members with role
   const { data: members = [] } = useQuery({
@@ -209,6 +213,11 @@ export default function TeamFeed() {
                       <span className="font-medium text-sm text-foreground">
                         {profile?.full_name || "Unknown"}
                       </span>
+                      <MemberBadgeIcons
+                        badges={(teamBadges || []).filter(b => b.member_id === r.member_id)}
+                        lookup={badgeLookup}
+                        max={3}
+                      />
                       {role && (
                         <Badge variant={role === "lead" ? "default" : "secondary"} className="text-[10px]">
                           {role}

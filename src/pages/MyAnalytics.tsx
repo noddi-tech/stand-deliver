@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Lightbulb, GitPullRequest, Eye, Code2, Target } from "lucide-react";
 import { useUserTeam, useMyAnalytics } from "@/hooks/useAnalytics";
 import { usePersonalEnrichedMetrics } from "@/hooks/useEnrichedAnalytics";
+import { BadgeShowcase } from "@/components/badges/BadgeShowcase";
 
 export default function MyAnalytics() {
   const { data: teamData, isLoading: teamLoading } = useUserTeam();
@@ -28,6 +29,9 @@ export default function MyAnalytics() {
         <h1 className="text-2xl font-bold text-foreground">My Analytics</h1>
         <p className="text-sm text-muted-foreground">Your personal performance over the last 30 days</p>
       </div>
+
+      {/* Badge Showcase */}
+      <BadgeShowcase memberId={memberId} teamId={teamId} />
 
       {/* Enriched Insight Cards */}
       {enriched && enriched.insights.length > 0 && (

@@ -79,6 +79,33 @@ export type Database = {
           },
         ]
       }
+      badge_definitions: {
+        Row: {
+          category: string
+          criteria: Json
+          description: string
+          emoji: string
+          id: string
+          name: string
+        }
+        Insert: {
+          category?: string
+          criteria?: Json
+          description: string
+          emoji: string
+          id: string
+          name: string
+        }
+        Update: {
+          category?: string
+          criteria?: Json
+          description?: string
+          emoji?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
       blockers: {
         Row: {
           category: Database["public"]["Enums"]["blocker_category"]
@@ -557,6 +584,55 @@ export type Database = {
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_badges: {
+        Row: {
+          badge_id: string
+          earned_at: string
+          id: string
+          member_id: string
+          metadata: Json | null
+          team_id: string
+        }
+        Insert: {
+          badge_id: string
+          earned_at?: string
+          id?: string
+          member_id: string
+          metadata?: Json | null
+          team_id: string
+        }
+        Update: {
+          badge_id?: string
+          earned_at?: string
+          id?: string
+          member_id?: string
+          metadata?: Json | null
+          team_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_badges_badge_id_fkey"
+            columns: ["badge_id"]
+            isOneToOne: false
+            referencedRelation: "badge_definitions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_badges_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "team_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_badges_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
             referencedColumns: ["id"]
           },
         ]

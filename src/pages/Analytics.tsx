@@ -14,6 +14,8 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { useUserTeam, useAnalyticsMetrics } from "@/hooks/useAnalytics";
 import { useTeamSummary } from "@/hooks/useTeamSummary";
 import { useEnrichedTeamMetrics } from "@/hooks/useEnrichedAnalytics";
+import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
+import { MemberBadgeIcons } from "@/components/badges/MemberBadgeIcons";
 import type { MemberStat, MemberHighlight } from "@/hooks/useTeamSummary";
 
 const SENTIMENT_CONFIG: Record<string, { label: string; variant: "default" | "secondary" | "destructive"; className: string }> = {
@@ -36,6 +38,8 @@ export default function Analytics() {
   const { data: metrics, isLoading } = useAnalyticsMetrics(teamId);
   const { data: summaryData, isLoading: summaryLoading, refetch: refetchSummary } = useTeamSummary(teamId);
   const { data: enriched, isLoading: enrichedLoading } = useEnrichedTeamMetrics(teamId);
+  const { data: teamBadges } = useTeamBadges(teamId);
+  const badgeLookup = useBadgeLookup();
   const loading = teamLoading || isLoading;
 
   const [showAllMembers, setShowAllMembers] = useState(false);
@@ -65,6 +69,11 @@ export default function Analytics() {
   const getEnrichedMember = (name: string) =>
     enriched?.members?.find(m => m.memberName === name);
 
+  const getMemberBadges = (name: string) => {
+    const em = getEnrichedMember(name);
+    if (!em || !teamBadges) return [];
+    return teamBadges.filter(b => b.member_id === em.memberId);
+  };
   const tooltipStyle = { backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, color: "hsl(var(--foreground))" };
 
   return (
@@ -173,16 +182,19 @@ export default function Analytics() {
                 return (
                   <Card key={m.name} className="border bg-card">
                     <CardContent className="p-4 space-y-3">
-                      <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between">
                         <div>
                           <p className="text-sm font-semibold text-foreground">{m.name}</p>
                           <p className="text-[11px] text-muted-foreground capitalize">{m.role}</p>
                         </div>
-                        {sentimentConfig && (
-                          <Badge variant="outline" className={`text-[10px] ${sentimentConfig.className}`}>
-                            {sentimentConfig.label}
-                          </Badge>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <MemberBadgeIcons badges={getMemberBadges(m.name)} lookup={badgeLookup} max={3} />
+                          {sentimentConfig && (
+                            <Badge variant="outline" className={`text-[10px] ${sentimentConfig.className}`}>
+                              {sentimentConfig.label}
+                            </Badge>
+                          )}
+                        </div>
                       </div>
 
                       {/* Stats row */}
