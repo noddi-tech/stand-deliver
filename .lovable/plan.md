@@ -159,3 +159,10 @@
 - Cron job (no `limit_users` param) now processes all mapped users in one invocation instead of only the first 2
 - Manual sync UI still passes `limit_users: 2` for progress bar behavior
 - 120-second time budget prevents runaway execution
+
+### AI-Powered Focus Suggestions (Replace Recent Activity)
+- Removed "Recent Activity" card from MyStandup (raw GitHub/ClickUp events)
+- New `ai-suggest-focus` edge function gathers 7-day context (external activity, commitments, blockers, carry-overs) and calls Gemini via tool calling for structured suggestions
+- MyStandup shows "Suggested Focus" card with AI-generated items (title, reason, priority) and "Add" button
+- Suggestions cached for 5 minutes, graceful fallback on AI errors
+- Auto-acknowledges all unacknowledged external activity on standup submit
