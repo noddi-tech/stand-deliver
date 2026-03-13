@@ -470,7 +470,35 @@ export default function MyStandup() {
     try {
       const today = format(new Date(), "yyyy-MM-dd");
 
-      // Update previous commitments and sync to ClickUp
+      // Upsert session first (needed for carry_forward)
+      let sessionId: string;
+      const { data: existingSession } = await supabase
+        .from("standup_sessions")
+        .select("id")
+        .eq("team_id", teamId)
+        .eq("session_date", today)
+        .maybeSingle();
+
+      if (existingSession) {
+        sessionId = existingSession.id;
+      } else {
+        const { data: newSession, error } = await supabase
+          .from("standup_sessions")
+          .insert({ team_id: teamId, session_date: today, status: "collecting" })
+          .select("id")
+          .single();
+        if (error) throw error;
+        sessionId = newSession.id;
+      }
+
+      // Carry forward FIRST (scoped to this member only), then apply user overrides
+      await supabase.rpc('carry_forward_commitments', {
+        p_team_id: teamId,
+        p_session_id: sessionId,
+        p_member_id: memberId,
+      });
+
+      // Now apply user's explicit status overrides (these take priority over carry_forward)
       for (const [id, status] of Object.entries(statusOverrides)) {
         await updateCommitmentMutation.mutateAsync({
           id,
@@ -495,33 +523,6 @@ export default function MyStandup() {
             });
         }
       }
-
-      // Upsert session
-      let sessionId: string;
-      const { data: existingSession } = await supabase
-        .from("standup_sessions")
-        .select("id")
-        .eq("team_id", teamId)
-        .eq("session_date", today)
-        .maybeSingle();
-
-      if (existingSession) {
-        sessionId = existingSession.id;
-      } else {
-        const { data: newSession, error } = await supabase
-          .from("standup_sessions")
-          .insert({ team_id: teamId, session_date: today, status: "collecting" })
-          .select("id")
-          .single();
-        if (error) throw error;
-        sessionId = newSession.id;
-      }
-
-      // Carry forward stale active/in_progress commitments
-      await supabase.rpc('carry_forward_commitments', {
-        p_team_id: teamId,
-        p_session_id: sessionId,
-      });
 
       const responseData = {
         mood,
