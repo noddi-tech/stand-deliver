@@ -21,6 +21,7 @@ export type Database = {
           completion_rate: number | null
           created_at: string
           cross_platform_activity: Json | null
+          dora_metrics: Json | null
           health_score: number | null
           id: string
           team_id: string
@@ -31,6 +32,7 @@ export type Database = {
           total_completed: number | null
           week_end: string
           week_start: string
+          weekly_awards: Json | null
           work_distribution: Json | null
         }
         Insert: {
@@ -39,6 +41,7 @@ export type Database = {
           completion_rate?: number | null
           created_at?: string
           cross_platform_activity?: Json | null
+          dora_metrics?: Json | null
           health_score?: number | null
           id?: string
           team_id: string
@@ -49,6 +52,7 @@ export type Database = {
           total_completed?: number | null
           week_end: string
           week_start: string
+          weekly_awards?: Json | null
           work_distribution?: Json | null
         }
         Update: {
@@ -57,6 +61,7 @@ export type Database = {
           completion_rate?: number | null
           created_at?: string
           cross_platform_activity?: Json | null
+          dora_metrics?: Json | null
           health_score?: number | null
           id?: string
           team_id?: string
@@ -67,6 +72,7 @@ export type Database = {
           total_completed?: number | null
           week_end?: string
           week_start?: string
+          weekly_awards?: Json | null
           work_distribution?: Json | null
         }
         Relationships: [
