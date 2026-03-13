@@ -6,6 +6,8 @@ import { useAttentionItems } from "@/hooks/useAttentionItems";
 import { useTeamMembersStatus } from "@/hooks/useTeamMembers";
 import { useRecentActivity } from "@/hooks/useRecentActivity";
 import { useSkipStandup } from "@/hooks/useSkipStandup";
+import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
+import { MemberBadgeIcons } from "@/components/badges/MemberBadgeIcons";
 import { useNavigate } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -55,7 +57,8 @@ export default function Dashboard() {
   const { data: members, isLoading: membersLoading } = useTeamMembersStatus(teamId);
   const { data: activity, isLoading: activityLoading } = useRecentActivity(teamId);
   const skipMutation = useSkipStandup();
-
+  const { data: teamBadges } = useTeamBadges(teamId);
+  const badgeLookup = useBadgeLookup();
   const [sourceFilter, setSourceFilter] = useState<string>("all");
 
   const handleSkip = () => {
@@ -312,6 +315,11 @@ export default function Dashboard() {
                       <span className="text-sm font-medium truncate">
                         {m.fullName || "Unknown"}
                       </span>
+                      <MemberBadgeIcons
+                        badges={(teamBadges || []).filter(b => b.member_id === m.id)}
+                        lookup={badgeLookup}
+                        max={3}
+                      />
                       <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
                         {m.role}
                       </Badge>

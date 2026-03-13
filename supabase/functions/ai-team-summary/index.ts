@@ -6,6 +6,13 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -26,12 +33,13 @@ serve(async (req) => {
     const sinceDate = since.split("T")[0];
 
     // Fetch all data in parallel
-    const [membersRes, commitmentsRes, blockersRes, sessionsRes, activityRes] = await Promise.all([
+    const [membersRes, commitmentsRes, blockersRes, sessionsRes, activityRes, badgesRes] = await Promise.all([
       supabase.from("team_members").select("id, user_id, role, profile:profiles(full_name)").eq("team_id", team_id).eq("is_active", true),
       supabase.from("commitments").select("*").eq("team_id", team_id).gte("created_at", since),
       supabase.from("blockers").select("*").eq("team_id", team_id).gte("created_at", since),
       supabase.from("standup_sessions").select("id, session_date").eq("team_id", team_id).gte("session_date", sinceDate),
       supabase.from("external_activity").select("*").eq("team_id", team_id).gte("occurred_at", since),
+      supabase.from("member_badges").select("member_id, badge_id").eq("team_id", team_id),
     ]);
 
     const members = membersRes.data || [];
@@ -39,6 +47,12 @@ serve(async (req) => {
     const blockers = blockersRes.data || [];
     const sessions = sessionsRes.data || [];
     const activity = activityRes.data || [];
+    const allBadges = badgesRes.data || [];
+
+    // Get badge definitions for names
+    const { data: badgeDefs } = await supabase.from("badge_definitions").select("id, name, emoji");
+    const badgeDefMap: Record<string, { name: string; emoji: string }> = {};
+    for (const d of badgeDefs || []) badgeDefMap[d.id] = { name: d.name, emoji: d.emoji };
 
     // Get responses for these sessions
     const sessionIds = sessions.map(s => s.id);
@@ -48,53 +62,131 @@ serve(async (req) => {
       responses = data || [];
     }
 
-    // Build per-member stats
+    // Build per-member stats with deep engineering metrics
     const memberStats = members.map(m => {
       const name = (m.profile as any)?.full_name || "Unknown";
       const mCommitments = commitments.filter(c => c.member_id === m.id);
       const mBlockers = blockers.filter(b => b.member_id === m.id);
       const mResponses = responses.filter(r => r.member_id === m.id);
       const mActivity = activity.filter(a => a.member_id === m.id);
-      
+      const mBadges = allBadges.filter(b => b.member_id === m.id);
+
+      // Standup stats
       const total = mCommitments.length;
       const done = mCommitments.filter(c => c.status === "done").length;
       const carried = mCommitments.filter(c => c.carry_count > 0).length;
       const activeBlockers = mBlockers.filter(b => !b.is_resolved).length;
-      const skippedDays = mResponses.filter(r => r.yesterday_text === "Skipped" && !r.mood).length;
       const standupCount = mResponses.length;
       const totalSessions = sessions.length;
       const participationRate = totalSessions > 0 ? Math.round((standupCount / totalSessions) * 100) : 0;
-      
+
       // Mood summary
       const moods = mResponses.filter(r => r.mood).map(r => r.mood);
       const moodSummary = moods.length > 0 ? moods.join(", ") : "no mood data";
 
-      // External activity breakdown
-      const githubCommits = mActivity.filter(a => a.source === "github" && a.activity_type === "commit").length;
-      const prs = mActivity.filter(a => a.source === "github" && (a.activity_type === "pr_opened" || a.activity_type === "pr_merged")).length;
-      const clickupTasks = mActivity.filter(a => a.source === "clickup").length;
+      // === Deep engineering metrics ===
+      const commits = mActivity.filter(a => a.source === "github" && a.activity_type === "commit");
+      const prsOpened = mActivity.filter(a => a.source === "github" && a.activity_type === "pr_opened");
+      const prsMerged = mActivity.filter(a => a.source === "github" && a.activity_type === "pr_merged");
+      const prReviews = mActivity.filter(a => a.source === "github" && a.activity_type === "pr_review");
+      const clickupTasks = mActivity.filter(a => a.source === "clickup");
+
+      // Total LOC (additions + deletions)
+      let totalAdditions = 0, totalDeletions = 0;
+      for (const c of commits) {
+        const meta = c.metadata as any;
+        if (typeof meta?.additions === "number") totalAdditions += meta.additions;
+        if (typeof meta?.deletions === "number") totalDeletions += meta.deletions;
+      }
+
+      // Avg files per PR
+      const prFileCounts = [...prsOpened, ...prsMerged]
+        .map(pr => (pr.metadata as any)?.files_changed)
+        .filter((f): f is number => typeof f === "number");
+      const avgFilesPerPR = prFileCounts.length > 0 ? Math.round(prFileCounts.reduce((a, b) => a + b, 0) / prFileCounts.length) : 0;
+
+      // PR cycle time (created_at -> merged_at in hours)
+      const cycleTimes: number[] = [];
+      for (const pr of [...prsOpened, ...prsMerged]) {
+        const meta = pr.metadata as any;
+        if (meta?.created_at && meta?.merged_at) {
+          const hours = (new Date(meta.merged_at).getTime() - new Date(meta.created_at).getTime()) / 3600000;
+          if (hours > 0) cycleTimes.push(hours);
+        }
+      }
+      const medianCycleTimeHours = median(cycleTimes);
+
+      // Review velocity (pr_created_at -> reviewed_at in hours)
+      const reviewTimes: number[] = [];
+      for (const r of prReviews) {
+        const meta = r.metadata as any;
+        if (meta?.pr_created_at && (meta?.reviewed_at || r.occurred_at)) {
+          const hours = (new Date(meta.reviewed_at || r.occurred_at).getTime() - new Date(meta.pr_created_at).getTime()) / 3600000;
+          if (hours > 0) reviewTimes.push(hours);
+        }
+      }
+      const medianReviewVelocityHours = median(reviewTimes);
+
+      // Work type breakdown
+      const workTypes: Record<string, number> = {};
+      for (const c of commits) {
+        const wt = (c.metadata as any)?.work_type || "unclassified";
+        workTypes[wt] = (workTypes[wt] || 0) + 1;
+      }
+
+      // PR LOC stats
+      let prAdditions = 0, prDeletions = 0;
+      for (const pr of [...prsOpened, ...prsMerged]) {
+        const meta = pr.metadata as any;
+        if (typeof meta?.additions === "number") prAdditions += meta.additions;
+        if (typeof meta?.deletions === "number") prDeletions += meta.deletions;
+      }
+
+      // Badges earned
+      const badgeNames = mBadges
+        .map(b => badgeDefMap[b.badge_id])
+        .filter(Boolean)
+        .map(d => `${d!.emoji} ${d!.name}`);
 
       return {
         name,
         role: m.role,
         commitments: { total, done, carried, completionRate: total > 0 ? Math.round((done / total) * 100) : 0 },
         activeBlockers,
-        standup: { submitted: standupCount, skipped: skippedDays, participationRate, totalSessions },
+        standup: { submitted: standupCount, participationRate, totalSessions },
         moods: moodSummary,
-        externalActivity: { githubCommits, prs, clickupTasks },
+        engineering: {
+          commits: commits.length,
+          prsOpened: prsOpened.length,
+          prsMerged: prsMerged.length,
+          reviewsGiven: prReviews.length,
+          totalLOC: { additions: totalAdditions, deletions: totalDeletions, net: totalAdditions - totalDeletions },
+          prLOC: { additions: prAdditions, deletions: prDeletions },
+          avgFilesPerPR,
+          medianPRCycleTimeHours: Math.round(medianCycleTimeHours * 10) / 10,
+          medianReviewVelocityHours: Math.round(medianReviewVelocityHours * 10) / 10,
+          workTypes,
+          clickupTasksUpdated: clickupTasks.length,
+        },
+        badges: badgeNames,
       };
     });
 
-    const prompt = `You are a direct, insightful team performance analyst for a standup tool called StandFlow. Analyze the following ${days}-day team data and provide honest, actionable insights. 
+    const prompt = `You are a direct, insightful team performance analyst for a standup tool called StandFlow. Analyze the following ${days}-day team data and provide honest, actionable insights.
 
-It's OK to celebrate wins explicitly ("crushing it", "strong velocity") AND flag concerns directly ("needs to step up", "going quiet", "may need a check-in"). Be specific with names and numbers.
+CRITICAL RULES:
+1. Engineering output (commits, PRs, LOC, reviews, PR cycle times) is the PRIMARY signal of productivity — weigh it heavily. A member with high commit/PR output is productive even if standup participation is low.
+2. You MUST return exactly one highlight for every member listed below. No exceptions. Even if a member has zero activity, say something like "No standup or code activity this period — may need a check-in."
+3. It's OK to celebrate wins explicitly ("crushing it", "strong velocity") AND flag concerns directly ("needs to step up", "going quiet").
+4. Be specific with names, numbers, and engineering metrics (LOC, PR count, cycle times).
 
 Team data (${days} days):
 ${JSON.stringify(memberStats, null, 2)}
 
 Total sessions in period: ${sessions.length}
 Total team commitments: ${commitments.length}
-Total team blockers: ${blockers.length} (${blockers.filter(b => !b.is_resolved).length} unresolved)`;
+Total team blockers: ${blockers.length} (${blockers.filter(b => !b.is_resolved).length} unresolved)
+Total members: ${members.length} — you MUST return exactly ${members.length} highlights.`;
 
     const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -105,7 +197,7 @@ Total team blockers: ${blockers.length} (${blockers.filter(b => !b.is_resolved).
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
         messages: [
-          { role: "system", content: "You analyze team standup data. Be direct and specific." },
+          { role: "system", content: "You analyze team standup and engineering data. Be direct and specific. Prioritize engineering output metrics." },
           { role: "user", content: prompt },
         ],
         tools: [{
@@ -116,7 +208,7 @@ Total team blockers: ${blockers.length} (${blockers.filter(b => !b.is_resolved).
             parameters: {
               type: "object",
               properties: {
-                teamSummary: { type: "string", description: "2-3 sentence team-level narrative summary" },
+                teamSummary: { type: "string", description: "2-3 sentence team-level narrative summary highlighting both standup and engineering metrics" },
                 memberHighlights: {
                   type: "array",
                   items: {
@@ -124,7 +216,7 @@ Total team blockers: ${blockers.length} (${blockers.filter(b => !b.is_resolved).
                     properties: {
                       name: { type: "string" },
                       sentiment: { type: "string", enum: ["strong", "steady", "needs_attention"] },
-                      highlight: { type: "string", description: "1-2 sentence specific highlight about this person" },
+                      highlight: { type: "string", description: "1-2 sentence specific highlight referencing engineering metrics (commits, PRs, LOC, review speed)" },
                     },
                     required: ["name", "sentiment", "highlight"],
                     additionalProperties: false,
@@ -168,12 +260,29 @@ Total team blockers: ${blockers.length} (${blockers.filter(b => !b.is_resolved).
     if (toolCall?.function?.arguments) {
       analysis = JSON.parse(toolCall.function.arguments);
     } else {
-      // Fallback: use the message content
       analysis = {
         teamSummary: aiData.choices?.[0]?.message?.content || "Unable to generate summary.",
         memberHighlights: [],
         recommendations: [],
       };
+    }
+
+    // Ensure every member has a highlight (fallback for AI misses)
+    const highlightedNames = new Set(
+      (analysis.memberHighlights || []).map((h: any) => h.name?.toLowerCase())
+    );
+    for (const ms of memberStats) {
+      if (!highlightedNames.has(ms.name.toLowerCase())) {
+        const totalEng = ms.engineering.commits + ms.engineering.prsOpened + ms.engineering.prsMerged + ms.engineering.reviewsGiven;
+        const highlight = totalEng > 0
+          ? `${ms.engineering.commits} commits, ${ms.engineering.prsOpened + ms.engineering.prsMerged} PRs — active in code but didn't get an AI highlight.`
+          : "No standup or code activity this period — may need a check-in.";
+        analysis.memberHighlights.push({
+          name: ms.name,
+          sentiment: totalEng > 0 ? "steady" : "needs_attention",
+          highlight,
+        });
+      }
     }
 
     return new Response(JSON.stringify({ analysis, memberStats }), {
