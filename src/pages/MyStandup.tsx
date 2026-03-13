@@ -836,7 +836,7 @@ export default function MyStandup() {
             <CardTitle className="text-base flex items-center justify-between">
               <span>Resolve Previous Commitments</span>
               <span className="text-sm font-normal text-muted-foreground">
-                {resolvedCount} of {totalPrevious} resolved
+                {addressedCount} of {totalPrevious} addressed
               </span>
             </CardTitle>
             <Progress value={progressPercent} className="h-2" />
