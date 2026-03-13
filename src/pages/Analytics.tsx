@@ -17,12 +17,6 @@ import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
 import { MemberBreakdown } from "@/components/team/MemberBreakdown";
 import { BadgeLegend } from "@/components/badges/BadgeLegend";
 
-const SENTIMENT_CONFIG: Record<string, { label: string; variant: "default" | "secondary" | "destructive"; className: string }> = {
-  strong: { label: "Strong week", variant: "default", className: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" },
-  steady: { label: "Steady", variant: "secondary", className: "bg-primary/10 text-primary border-primary/20" },
-  needs_attention: { label: "Needs check-in", variant: "destructive", className: "bg-amber-500/10 text-amber-600 border-amber-500/20" },
-};
-
 const WORK_TYPE_LABELS: Record<string, string> = {
   feature: "Feature",
   bugfix: "Bug Fix",
