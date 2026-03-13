@@ -151,7 +151,9 @@ async function fetchPRsPerRepo(
           if (type === "opened") {
             return prs
               .filter((pr: any) => {
-                if (pr.user?.login?.toLowerCase() !== userLower) return false;
+                const prAuthorLogin = pr.user?.login?.toLowerCase();
+                const prAuthorId = pr.user?.id;
+                if (prAuthorLogin !== userLower && prAuthorId !== githubUserId) return false;
                 const created = pr.created_at?.split("T")[0];
                 return created >= startDate && created <= endDate;
               })
