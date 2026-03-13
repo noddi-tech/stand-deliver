@@ -33,7 +33,7 @@ export function useRecentActivity(teamId: string | undefined) {
         .eq("team_id", teamId!)
         .gte("occurred_at", sevenDaysAgo)
         .order("occurred_at", { ascending: false })
-        .limit(30);
+        .limit(200);
 
       // Two-step standup query: first get session IDs, then responses
       const { data: sessions } = await supabase
@@ -54,11 +54,12 @@ export function useRecentActivity(teamId: string | undefined) {
           .limit(20);
       }
 
-      const items: ActivityItem[] = [];
+      // Build items grouped by member to ensure balanced representation
+      const memberItems: Record<string, ActivityItem[]> = {};
 
       for (const e of extRes.data || []) {
         const m = e.member as any;
-        items.push({
+        const item: ActivityItem = {
           id: e.id,
           type: "external",
           source: e.source,
@@ -69,13 +70,15 @@ export function useRecentActivity(teamId: string | undefined) {
           memberId: e.member_id,
           timestamp: e.occurred_at,
           externalUrl: e.external_url,
-        });
+        };
+        if (!memberItems[e.member_id]) memberItems[e.member_id] = [];
+        memberItems[e.member_id].push(item);
       }
 
       for (const r of respRes.data || []) {
         const m = r.member as any;
         const moodEmoji: Record<string, string> = { great: "🚀", good: "👍", okay: "😐", struggling: "😓", rough: "😰" };
-        items.push({
+        const item: ActivityItem = {
           id: r.id,
           type: "standup",
           source: "standup",
@@ -85,11 +88,26 @@ export function useRecentActivity(teamId: string | undefined) {
           memberAvatar: m?.profile?.avatar_url || null,
           memberId: r.member_id,
           timestamp: r.submitted_at,
-        });
+        };
+        if (!memberItems[r.member_id]) memberItems[r.member_id] = [];
+        memberItems[r.member_id].push(item);
       }
 
-      items.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      return items.slice(0, 25);
+      // Balanced merge: take up to 8 items per member, then fill remaining slots
+      const MAX_PER_MEMBER_INITIAL = 8;
+      const MAX_TOTAL = 30;
+      const members = Object.keys(memberItems);
+      const selected: ActivityItem[] = [];
+
+      // First pass: take up to MAX_PER_MEMBER_INITIAL from each member
+      for (const mid of members) {
+        const sorted = memberItems[mid].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        selected.push(...sorted.slice(0, MAX_PER_MEMBER_INITIAL));
+      }
+
+      // Sort by timestamp and cap
+      selected.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      return selected.slice(0, MAX_TOTAL);
     },
   });
 }

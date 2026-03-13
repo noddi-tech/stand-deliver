@@ -111,7 +111,7 @@ Deno.serve(async (req) => {
                       ? new Date(parseInt(task.date_updated)).toISOString()
                       : new Date().toISOString(),
                   },
-                  { onConflict: "external_id,activity_type,source" }
+                  { onConflict: "team_id,member_id,external_id,activity_type,source" }
                 );
               } catch (e) {
                 console.error("Insert error:", e);

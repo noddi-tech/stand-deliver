@@ -42,20 +42,29 @@ function useActivityFeed(teamId: string | undefined, days: number, sourceFilter:
       const items: ActivityItem[] = [];
       const moodEmoji: Record<string, string> = { great: "🚀", good: "👍", okay: "😐", struggling: "😓", rough: "😰" };
 
-      // Fetch external activity (skip if source is "standup")
+      // Fetch external activity with pagination - get up to 1000 rows
       if (sourceFilter !== "standup") {
-        let extQuery = supabase
-          .from("external_activity")
-          .select("id, source, activity_type, title, member_id, occurred_at, external_url, member:team_members!inner(id, user_id, profile:profiles!inner(full_name, avatar_url))")
-          .eq("team_id", teamId!)
-          .gte("occurred_at", since)
-          .order("occurred_at", { ascending: false })
-          .limit(200);
-        if (sourceFilter !== "all") extQuery = extQuery.eq("source", sourceFilter);
-        if (memberFilter !== "all") extQuery = extQuery.eq("member_id", memberFilter);
-        const extRes = await extQuery;
+        let allExternal: any[] = [];
+        let from = 0;
+        const pageSize = 500;
+        while (from < 1000) {
+          let extQuery = supabase
+            .from("external_activity")
+            .select("id, source, activity_type, title, member_id, occurred_at, external_url, member:team_members!inner(id, user_id, profile:profiles!inner(full_name, avatar_url))")
+            .eq("team_id", teamId!)
+            .gte("occurred_at", since)
+            .order("occurred_at", { ascending: false })
+            .range(from, from + pageSize - 1);
+          if (sourceFilter !== "all") extQuery = extQuery.eq("source", sourceFilter);
+          if (memberFilter !== "all") extQuery = extQuery.eq("member_id", memberFilter);
+          const extRes = await extQuery;
+          const batch = extRes.data || [];
+          allExternal = [...allExternal, ...batch];
+          if (batch.length < pageSize) break;
+          from += pageSize;
+        }
 
-        for (const e of extRes.data || []) {
+        for (const e of allExternal) {
           const m = e.member as any;
           items.push({
             id: e.id, type: "external", source: e.source, activityType: e.activity_type,
@@ -66,7 +75,7 @@ function useActivityFeed(teamId: string | undefined, days: number, sourceFilter:
         }
       }
 
-      // Fetch standup responses (skip if source is github/clickup)
+      // Fetch standup responses
       if (sourceFilter === "all" || sourceFilter === "standup") {
         const { data: sessions } = await supabase
           .from("standup_sessions")
@@ -81,7 +90,7 @@ function useActivityFeed(teamId: string | undefined, days: number, sourceFilter:
             .select("id, member_id, submitted_at, mood, yesterday_text, member:team_members!inner(id, user_id, profile:profiles!inner(full_name, avatar_url))")
             .in("session_id", sessionIds)
             .order("submitted_at", { ascending: false })
-            .limit(100);
+            .limit(200);
           if (memberFilter !== "all") respQuery = respQuery.eq("member_id", memberFilter);
           const { data: respData } = await respQuery;
 

@@ -611,9 +611,9 @@ Deno.serve(async (req) => {
         if (item.sha && !seenShas.has(item.sha)) { seenShas.add(item.sha); allCommits.push(item); }
       }
 
-      // Update username if GitHub login changed
+      // Update username if GitHub login changed (skip bot accounts)
       const currentLogin = allCommits[0]?.author?.login || allCommits[0]?.committer?.login;
-      if (currentLogin && currentLogin.toLowerCase() !== username.toLowerCase()) {
+      if (currentLogin && currentLogin.toLowerCase() !== username.toLowerCase() && !currentLogin.includes("[bot]")) {
         console.log(`GitHub username changed: ${username} → ${currentLogin}, updating mapping`);
         await supabaseAdmin
           .from("github_user_mappings")
@@ -686,7 +686,7 @@ Deno.serve(async (req) => {
                   },
                   occurred_at: item.commit?.committer?.date || item.commit?.author?.date || new Date().toISOString(),
                 },
-                { onConflict: "external_id,activity_type,source" }
+                { onConflict: "team_id,member_id,external_id,activity_type,source" }
               );
             } catch { /* dedup */ }
           }
@@ -765,7 +765,7 @@ Deno.serve(async (req) => {
                   },
                   occurred_at: item.created_at,
                 },
-                { onConflict: "external_id,activity_type,source" }
+                { onConflict: "team_id,member_id,external_id,activity_type,source" }
               );
             } catch { /* dedup */ }
           }
@@ -797,7 +797,7 @@ Deno.serve(async (req) => {
                   },
                   occurred_at: item.merged_at || item.closed_at || item.updated_at,
                 },
-                { onConflict: "external_id,activity_type,source" }
+                { onConflict: "team_id,member_id,external_id,activity_type,source" }
               );
             } catch { /* dedup */ }
           }
@@ -828,7 +828,7 @@ Deno.serve(async (req) => {
                       },
                       occurred_at: review.submitted_at,
                     },
-                    { onConflict: "external_id,activity_type,source" }
+                    { onConflict: "team_id,member_id,external_id,activity_type,source" }
                   );
                 } catch { /* dedup */ }
               }
