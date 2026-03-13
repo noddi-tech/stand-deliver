@@ -916,6 +916,32 @@ Deno.serve(async (req) => {
     }
     console.log("Badge detection results:", badgeResults);
 
+    // If triggered by cron and there are more users, self-invoke to continue
+    if (isCronTrigger && hasMore && nextOffset < totalUsers) {
+      console.log(`Cron continuation: processed ${nextOffset}/${totalUsers}, invoking next batch`);
+      try {
+        await fetch(
+          `${Deno.env.get("SUPABASE_URL")}/functions/v1/github-sync-activity`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              days_back: daysBack,
+              org_id: orgIdFilter,
+              offset: nextOffset,
+              limit_users: limitUsers,
+              is_cron: true,
+            }),
+          }
+        );
+      } catch (e) {
+        console.error("Cron continuation call failed:", e);
+      }
+    }
+
     return new Response(JSON.stringify({
       results,
       processed_users: processedCount,
