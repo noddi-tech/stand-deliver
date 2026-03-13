@@ -132,3 +132,12 @@
 - Main handler resolves GitHub user ID once per user before commit scan, passes it through
 - Fixes attribution for renamed accounts (e.g., ClickUpBotGOAT → Jokkos1337) where Lovable bot writes old username in commit trailers but numeric ID (164879107) stays constant
 - 16 Deno tests passing including 5 new rename-proof co-author scenarios
+
+### Phase 3 — Achievement Badges
+- `badge_definitions` table with 10 seeded badges (surgeon, janitor, speed_reviewer, promise_keeper, collaborator, shipper, streak, architect, first_commit, guardian)
+- `member_badges` table with RLS (team members can view/insert), unique constraint on (member_id, badge_id, earned_at)
+- `detect-badges` edge function evaluates badge criteria from `external_activity` + `commitments` data
+- Checks: surgeon (bugfix PR <10 LOC), janitor (net negative LOC/week), shipper (PR merged <4h), streak (daily commits 2 weeks), promise_keeper (5-day commitment streak), speed_reviewer (3+ reviews), collaborator (3+ review recipients), first_commit (new repo)
+- `useBadges.ts` hook with `useBadgeDefinitions`, `useTeamBadges`, `useMemberBadges`, `useBadgeLookup`
+- `BadgeShowcase` component on MyAnalytics page — full badge grid with tooltips and earn dates
+- `MemberBadgeIcons` inline component — emoji badges on Analytics member cards and Team Feed entries
