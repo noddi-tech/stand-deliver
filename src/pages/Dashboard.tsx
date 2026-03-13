@@ -9,7 +9,7 @@ import { useSkipStandup } from "@/hooks/useSkipStandup";
 import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
 import { MemberBadgeIcons } from "@/components/badges/MemberBadgeIcons";
 import { MemberBreakdown } from "@/components/team/MemberBreakdown";
-import { BadgeLegend } from "@/components/badges/BadgeLegend";
+
 import { useTeamSummary } from "@/hooks/useTeamSummary";
 import { useEnrichedTeamMetrics } from "@/hooks/useEnrichedAnalytics";
 import { useNavigate } from "react-router-dom";
@@ -136,6 +136,18 @@ export default function Dashboard() {
         </div>
         {standupButton()}
       </div>
+
+      {/* Member Breakdown (AI-powered) */}
+      <section>
+        <MemberBreakdown
+          memberStats={summaryData?.memberStats || []}
+          highlights={summaryData?.analysis?.memberHighlights}
+          teamBadges={teamBadges}
+          badgeLookup={badgeLookup}
+          enrichedMembers={enriched?.members}
+          loading={summaryLoading}
+        />
+      </section>
 
       {/* Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -348,20 +360,6 @@ export default function Dashboard() {
         )}
       </section>
 
-      {/* Member Breakdown (AI-powered) */}
-      <section>
-        <MemberBreakdown
-          memberStats={summaryData?.memberStats || []}
-          highlights={summaryData?.analysis?.memberHighlights}
-          teamBadges={teamBadges}
-          badgeLookup={badgeLookup}
-          enrichedMembers={enriched?.members}
-          loading={summaryLoading}
-        />
-      </section>
-
-      {/* Badge Guide */}
-      <BadgeLegend />
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { User } from "lucide-react";
 import { MemberBadgeIcons } from "@/components/badges/MemberBadgeIcons";
+import { BadgeLegend } from "@/components/badges/BadgeLegend";
 import type { MemberStat, MemberHighlight } from "@/hooks/useTeamSummary";
 import type { MemberBadge, BadgeDefinition } from "@/hooks/useBadges";
 
@@ -153,6 +154,9 @@ export function MemberBreakdown({
               </Card>
             );
           })}
+        </div>
+        <div className="mt-4">
+          <BadgeLegend />
         </div>
       </CardContent>
     </Card>
