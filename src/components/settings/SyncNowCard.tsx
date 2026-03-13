@@ -8,6 +8,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Progress } from "@/components/ui/progress";
 
 export function SyncNowCard({ orgId }: { orgId: string }) {
+  const queryClient = useQueryClient();
   const [syncingGithub, setSyncingGithub] = useState(false);
   const [syncingClickup, setSyncingClickup] = useState(false);
   const [githubProgress, setGithubProgress] = useState<{ done: number; total: number } | null>(null);
