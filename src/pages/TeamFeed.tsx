@@ -12,6 +12,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2, CheckCircle2, Target, AlertCircle, PenSquare } from "lucide-react";
 import { Link } from "react-router-dom";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
+import { MemberBadgeIcons } from "@/components/badges/MemberBadgeIcons";
 
 const moodEmoji: Record<string, string> = {
   great: "🚀",
