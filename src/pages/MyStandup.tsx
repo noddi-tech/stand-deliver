@@ -326,12 +326,13 @@ export default function MyStandup() {
     return map;
   }, [previousCommitments, statusOverrides]);
 
-  const resolvedCount = Object.values(effectiveStatuses).filter(
-    (s) => s === "done" || s === "dropped"
+  // Count items the user has explicitly addressed (any status change from active/carried counts)
+  const addressedCount = Object.values(effectiveStatuses).filter(
+    (s) => s === "done" || s === "dropped" || s === "in_progress" || s === "blocked"
   ).length;
   const totalPrevious = previousCommitments.length;
-  const allResolved = totalPrevious === 0 || resolvedCount === totalPrevious;
-  const progressPercent = totalPrevious > 0 ? Math.round((resolvedCount / totalPrevious) * 100) : 100;
+  const allResolved = totalPrevious === 0 || addressedCount === totalPrevious;
+  const progressPercent = totalPrevious > 0 ? Math.round((addressedCount / totalPrevious) * 100) : 100;
 
   const updateCommitmentMutation = useMutation({
     mutationFn: async ({ id, status, blocked_reason, resolution_note }: { id: string; status: CommitmentStatus; blocked_reason?: string; resolution_note?: string }) => {
