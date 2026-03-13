@@ -186,10 +186,62 @@ Deno.serve(async (req) => {
         tryAward("promise_keeper", { consecutive_days: consecutivePerfect });
       }
 
-      // === SPEED REVIEWER: 3+ reviews given ===
-      const reviews = acts.filter((a) => a.activity_type === "pr_review");
-      if (reviews.length >= 3) {
-        tryAward("speed_reviewer", { review_count: reviews.length });
+      // === SPEED REVIEWER: 3+ reviews given within 2 hours of PR creation ===
+      const fastReviews = acts.filter((a) => {
+        if (a.activity_type !== "pr_review") return false;
+        const prCreated = a.metadata?.pr_created_at;
+        const reviewedAt = a.metadata?.reviewed_at || a.occurred_at;
+        if (!prCreated) return false;
+        const hours = (new Date(reviewedAt).getTime() - new Date(prCreated).getTime()) / 3600000;
+        return hours > 0 && hours <= 2;
+      });
+      if (fastReviews.length >= 3) {
+        tryAward("speed_reviewer", { fast_review_count: fastReviews.length });
+      }
+
+      // === ARCHITECT: PR with 5+ files changed (structural change) ===
+      const architectPRs = acts.filter(
+        (a) => (a.activity_type === "pr_merged" || a.activity_type === "pr_opened") &&
+          typeof a.metadata?.files_changed === "number" &&
+          a.metadata.files_changed >= 5
+      );
+      if (architectPRs.length > 0) {
+        tryAward("architect", { pr: architectPRs[0].title, files: architectPRs[0].metadata.files_changed });
+      }
+
+      // === GUARDIAN: Review that led to changes (commits after review, before merge) ===
+      const prReviews = acts.filter((a) => a.activity_type === "pr_review");
+      for (const review of prReviews) {
+        const prNumber = review.metadata?.pr_number;
+        const repo = review.metadata?.repo;
+        const reviewedAt = review.metadata?.reviewed_at || review.occurred_at;
+        if (!prNumber || !repo || !reviewedAt) continue;
+        // Find if a PR was merged after this review AND had commits after the review
+        const relatedMerge = acts.find(
+          (a) => (a.activity_type === "pr_merged") &&
+            a.metadata?.pr_number === prNumber &&
+            a.metadata?.repo === repo &&
+            a.metadata?.merged_at &&
+            new Date(a.metadata.merged_at).getTime() > new Date(reviewedAt).getTime()
+        );
+        if (relatedMerge) {
+          // Check for commits on same repo after review but before merge
+          const commitAfterReview = acts.find(
+            (a) => a.activity_type === "commit" &&
+              a.metadata?.repo === repo &&
+              new Date(a.occurred_at).getTime() > new Date(reviewedAt).getTime() &&
+              new Date(a.occurred_at).getTime() < new Date(relatedMerge.metadata.merged_at).getTime()
+          );
+          if (commitAfterReview) {
+            tryAward("guardian", { pr: relatedMerge.title, repo });
+            break;
+          }
+        }
+        // Fallback: reviewer left 2+ review comments (metadata.review_comments >= 2)
+        if (typeof review.metadata?.review_comments === "number" && review.metadata.review_comments >= 2) {
+          tryAward("guardian", { pr: review.metadata?.pr_title || review.title, comments: review.metadata.review_comments });
+          break;
+        }
       }
 
       // === COLLABORATOR: Co-authored with 3+ people in 30 days ===
