@@ -27,7 +27,7 @@ export function useTeamSummary(teamId: string | undefined, period = "7d") {
   return useQuery({
     queryKey: ["team-summary", teamId, period],
     enabled: !!teamId,
-    staleTime: 10 * 60 * 1000, // 10 min cache
+    staleTime: 30 * 60 * 1000, // 30 min cache - AI calls are expensive
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke("ai-team-summary", {
         body: { team_id: teamId, period },

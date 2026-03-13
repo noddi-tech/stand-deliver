@@ -1,11 +1,10 @@
-import { useState } from "react";
+
 import { AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { Activity, AlertTriangle, ArrowDownRight, TrendingUp, BarChart3, Sparkles, Loader2, RefreshCw, User, GitPullRequest, Clock, Eye } from "lucide-react";
+import { Activity, AlertTriangle, ArrowDownRight, TrendingUp, BarChart3, Sparkles, Loader2, RefreshCw, GitPullRequest, Clock, Eye } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
 import MetricCard from "@/components/analytics/MetricCard";
 import HealthGauge from "@/components/analytics/HealthGauge";
 import CommitmentFunnel from "@/components/analytics/CommitmentFunnel";
@@ -15,14 +14,8 @@ import { useUserTeam, useAnalyticsMetrics } from "@/hooks/useAnalytics";
 import { useTeamSummary } from "@/hooks/useTeamSummary";
 import { useEnrichedTeamMetrics } from "@/hooks/useEnrichedAnalytics";
 import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
-import { MemberBadgeIcons } from "@/components/badges/MemberBadgeIcons";
-import type { MemberStat, MemberHighlight } from "@/hooks/useTeamSummary";
-
-const SENTIMENT_CONFIG: Record<string, { label: string; variant: "default" | "secondary" | "destructive"; className: string }> = {
-  strong: { label: "Strong week", variant: "default", className: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" },
-  steady: { label: "Steady", variant: "secondary", className: "bg-primary/10 text-primary border-primary/20" },
-  needs_attention: { label: "Needs check-in", variant: "destructive", className: "bg-amber-500/10 text-amber-600 border-amber-500/20" },
-};
+import { MemberBreakdown } from "@/components/team/MemberBreakdown";
+import { BadgeLegend } from "@/components/badges/BadgeLegend";
 
 const WORK_TYPE_LABELS: Record<string, string> = {
   feature: "Feature",
@@ -42,7 +35,8 @@ export default function Analytics() {
   const badgeLookup = useBadgeLookup();
   const loading = teamLoading || isLoading;
 
-  const [showAllMembers, setShowAllMembers] = useState(false);
+  const analysis = summaryData?.analysis;
+  const memberStats = summaryData?.memberStats || [];
 
   if (!loading && !metrics) {
     return (
@@ -59,21 +53,6 @@ export default function Analytics() {
     );
   }
 
-  const analysis = summaryData?.analysis;
-  const memberStats = summaryData?.memberStats || [];
-  const displayMembers = showAllMembers ? memberStats : memberStats.slice(0, 6);
-
-  const getHighlight = (name: string): MemberHighlight | undefined =>
-    analysis?.memberHighlights?.find(h => h.name === name);
-
-  const getEnrichedMember = (name: string) =>
-    enriched?.members?.find(m => m.memberName === name);
-
-  const getMemberBadges = (name: string) => {
-    const em = getEnrichedMember(name);
-    if (!em || !teamBadges) return [];
-    return teamBadges.filter(b => b.member_id === em.memberId);
-  };
   const tooltipStyle = { backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, color: "hsl(var(--foreground))" };
 
   return (
@@ -158,96 +137,17 @@ export default function Analytics() {
       )}
 
       {/* Member Breakdown */}
-      {memberStats.length > 0 && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
-                <User className="h-4 w-4 text-muted-foreground" />
-                Member Breakdown
-              </CardTitle>
-              {memberStats.length > 6 && (
-                <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => setShowAllMembers(!showAllMembers)}>
-                  {showAllMembers ? "Show less" : `Show all (${memberStats.length})`}
-                </Button>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {displayMembers.map((m) => {
-                const highlight = getHighlight(m.name);
-                const sentimentConfig = highlight ? SENTIMENT_CONFIG[highlight.sentiment] : null;
-                const em = getEnrichedMember(m.name);
-                return (
-                  <Card key={m.name} className="border bg-card">
-                    <CardContent className="p-4 space-y-3">
-                        <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-semibold text-foreground">{m.name}</p>
-                          <p className="text-[11px] text-muted-foreground capitalize">{m.role}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <MemberBadgeIcons badges={getMemberBadges(m.name)} lookup={badgeLookup} max={3} />
-                          {sentimentConfig && (
-                            <Badge variant="outline" className={`text-[10px] ${sentimentConfig.className}`}>
-                              {sentimentConfig.label}
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
+      <MemberBreakdown
+        memberStats={memberStats}
+        highlights={analysis?.memberHighlights}
+        teamBadges={teamBadges}
+        badgeLookup={badgeLookup}
+        enrichedMembers={enriched?.members}
+        loading={summaryLoading}
+      />
 
-                      {/* Stats row */}
-                      <div className="grid grid-cols-3 gap-2 text-center">
-                        <div>
-                          <p className="text-lg font-bold text-foreground">{m.commitments.completionRate}%</p>
-                          <p className="text-[10px] text-muted-foreground">Completion</p>
-                        </div>
-                        <div>
-                          <p className="text-lg font-bold text-foreground">{m.standup.participationRate}%</p>
-                          <p className="text-[10px] text-muted-foreground">Participation</p>
-                        </div>
-                        <div>
-                          <p className="text-lg font-bold text-foreground">{em?.codeImpactScore ?? ((m.externalActivity?.githubCommits ?? 0) + (m.externalActivity?.prs ?? 0) + (m.externalActivity?.clickupTasks ?? 0))}</p>
-                          <p className="text-[10px] text-muted-foreground">{em ? "Impact" : "Activity"}</p>
-                        </div>
-                      </div>
-
-                      {/* Completion bar */}
-                      <div className="space-y-1">
-                        <div className="flex justify-between text-[10px] text-muted-foreground">
-                          <span>{m.commitments.done}/{m.commitments.total} done</span>
-                          <span>{m.commitments.carried} carried</span>
-                        </div>
-                        <Progress value={m.commitments.completionRate} className="h-1.5" />
-                      </div>
-
-                      {/* AI highlight */}
-                      {highlight && (
-                        <p className="text-xs text-muted-foreground italic leading-snug">
-                          "{highlight.highlight}"
-                        </p>
-                      )}
-
-                      {/* Enriched engineering stats */}
-                      <div className="flex flex-wrap gap-2 text-[10px] text-muted-foreground">
-                        {(m.externalActivity?.githubCommits ?? 0) > 0 && <span>🐙 {m.externalActivity.githubCommits}</span>}
-                        {(m.externalActivity?.prs ?? 0) > 0 && <span>🔀 {m.externalActivity.prs}</span>}
-                        {(m.externalActivity?.clickupTasks ?? 0) > 0 && <span>📋 {m.externalActivity.clickupTasks}</span>}
-                        {em?.reviewsGiven ? <span>👀 {em.reviewsGiven} reviews</span> : null}
-                        {em?.avgPRCycleTime !== null && em?.avgPRCycleTime !== undefined && <span>⏱ {em.avgPRCycleTime}h cycle</span>}
-                        {m.activeBlockers > 0 && <span className="text-destructive">🚧 {m.activeBlockers}</span>}
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* PR Cycle Time Trend + Review Health */}
+      {/* Badge Legend */}
+      <BadgeLegend />
       {enriched && (enriched.prCycleTimeTrend.some(w => w.avgHours > 0) || enriched.teamTotalReviews > 0) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>

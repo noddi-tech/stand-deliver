@@ -8,6 +8,10 @@ import { useRecentActivity } from "@/hooks/useRecentActivity";
 import { useSkipStandup } from "@/hooks/useSkipStandup";
 import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
 import { MemberBadgeIcons } from "@/components/badges/MemberBadgeIcons";
+import { MemberBreakdown } from "@/components/team/MemberBreakdown";
+import { BadgeLegend } from "@/components/badges/BadgeLegend";
+import { useTeamSummary } from "@/hooks/useTeamSummary";
+import { useEnrichedTeamMetrics } from "@/hooks/useEnrichedAnalytics";
 import { useNavigate } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -59,6 +63,8 @@ export default function Dashboard() {
   const skipMutation = useSkipStandup();
   const { data: teamBadges } = useTeamBadges(teamId);
   const badgeLookup = useBadgeLookup();
+  const { data: summaryData, isLoading: summaryLoading } = useTeamSummary(teamId);
+  const { data: enriched } = useEnrichedTeamMetrics(teamId);
   const [sourceFilter, setSourceFilter] = useState<string>("all");
 
   const handleSkip = () => {
@@ -341,6 +347,21 @@ export default function Dashboard() {
           </div>
         )}
       </section>
+
+      {/* Member Breakdown (AI-powered) */}
+      <section>
+        <MemberBreakdown
+          memberStats={summaryData?.memberStats || []}
+          highlights={summaryData?.analysis?.memberHighlights}
+          teamBadges={teamBadges}
+          badgeLookup={badgeLookup}
+          enrichedMembers={enriched?.members}
+          loading={summaryLoading}
+        />
+      </section>
+
+      {/* Badge Guide */}
+      <BadgeLegend />
     </div>
   );
 }
