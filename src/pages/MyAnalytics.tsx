@@ -30,6 +30,9 @@ export default function MyAnalytics() {
         <p className="text-sm text-muted-foreground">Your personal performance over the last 30 days</p>
       </div>
 
+      {/* Badge Showcase */}
+      <BadgeShowcase memberId={memberId} teamId={teamId} />
+
       {/* Enriched Insight Cards */}
       {enriched && enriched.insights.length > 0 && (
         <div>

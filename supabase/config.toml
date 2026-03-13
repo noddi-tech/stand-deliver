@@ -80,3 +80,6 @@ verify_jwt = false
 
 [functions.dev-impersonate]
 verify_jwt = false
+
+[functions.detect-badges]
+verify_jwt = false
