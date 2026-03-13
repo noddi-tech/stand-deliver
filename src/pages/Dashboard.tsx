@@ -205,7 +205,7 @@ export default function Dashboard() {
             ))}
           </div>
         ) : !attention?.commitments.length && !attention?.blockers.length && !attention?.missingStandups.length && !attention?.staleMembers.length ? (
-          <EmptyState icon={CheckCircle2} title="All clear!" description="Nothing needs attention right now 🎉" iconClassName="text-emerald-500/60" className="py-4" />
+          <EmptyState icon={CheckCircle2} title="All clear!" description="Nothing needs attention right now 🎉" iconClassName="text-emerald-500/60" />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {attention?.missingStandups.map((m) => (
