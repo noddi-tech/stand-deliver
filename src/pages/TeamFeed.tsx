@@ -213,6 +213,11 @@ export default function TeamFeed() {
                       <span className="font-medium text-sm text-foreground">
                         {profile?.full_name || "Unknown"}
                       </span>
+                      <MemberBadgeIcons
+                        badges={(teamBadges || []).filter(b => b.member_id === r.member_id)}
+                        lookup={badgeLookup}
+                        max={3}
+                      />
                       {role && (
                         <Badge variant={role === "lead" ? "default" : "secondary"} className="text-[10px]">
                           {role}
