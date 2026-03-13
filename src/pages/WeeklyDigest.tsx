@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import HealthGauge from "@/components/analytics/HealthGauge";
 import MetricCard from "@/components/analytics/MetricCard";
-import { Sparkles, ArrowLeft, Target, AlertTriangle, TrendingUp, CheckCircle, Github, SquareKanban, Zap } from "lucide-react";
+import { Sparkles, ArrowLeft, Target, AlertTriangle, TrendingUp, TrendingDown, Minus, CheckCircle, Github, SquareKanban, Zap, Trophy, Clock, GitPullRequest, Eye } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 function CrossPlatformCard({ activity }: { activity: Record<string, any> }) {
@@ -47,7 +47,7 @@ function CrossPlatformCard({ activity }: { activity: Record<string, any> }) {
 
         {hasGithub && (
           <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#24292f]/10">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-muted">
               <Github className="h-4 w-4 text-foreground" />
             </div>
             <div className="flex-1">
@@ -70,8 +70,8 @@ function CrossPlatformCard({ activity }: { activity: Record<string, any> }) {
 
         {hasClickup && (
           <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#7B68EE]/10">
-              <SquareKanban className="h-4 w-4 text-[#7B68EE]" />
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-accent">
+              <SquareKanban className="h-4 w-4 text-accent-foreground" />
             </div>
             <div className="flex-1">
               <p className="text-sm font-medium text-foreground">ClickUp</p>
@@ -81,6 +81,91 @@ function CrossPlatformCard({ activity }: { activity: Record<string, any> }) {
             </div>
           </div>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function TrendIcon({ direction, inverted }: { direction?: string; inverted?: boolean }) {
+  // For cycle time, "down" is good (inverted=true)
+  if (!direction || direction === "flat") return <Minus className="h-3 w-3 text-muted-foreground" />;
+  const isGood = inverted ? direction === "down" : direction === "up";
+  if (direction === "up") return <TrendingUp className={`h-3 w-3 ${isGood ? "text-emerald-500" : "text-destructive"}`} />;
+  return <TrendingDown className={`h-3 w-3 ${isGood ? "text-emerald-500" : "text-destructive"}`} />;
+}
+
+function WeeklyAwardsCard({ awards }: { awards: any[] }) {
+  if (!awards || awards.length === 0) return null;
+  return (
+    <Card className="border-primary/20 bg-primary/[0.02]">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Trophy className="h-5 w-5 text-primary" />
+          Weekly Awards
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {awards.map((award: any, i: number) => (
+          <div key={i} className="flex items-start gap-3 rounded-lg border border-border bg-card p-3">
+            <span className="text-2xl">{award.emoji}</span>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-semibold text-foreground">{award.title}</p>
+                <Badge variant="outline" className="text-xs">{award.member_name}</Badge>
+              </div>
+              <p className="text-xs text-muted-foreground mt-0.5">{award.description}</p>
+              <p className="text-xs font-medium text-primary mt-1">{award.stat}</p>
+            </div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function DORAMetricsCard({ dora }: { dora: Record<string, any> }) {
+  if (!dora || (!dora.avg_pr_cycle_time && !dora.pr_merge_rate && !dora.review_turnaround)) return null;
+  const trends = dora.trends || {};
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <GitPullRequest className="h-5 w-5 text-primary" />
+          Team Momentum
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="rounded-lg border border-border p-3 text-center space-y-1">
+            <div className="flex items-center justify-center gap-1">
+              <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+              <TrendIcon direction={trends.cycle_time} inverted />
+            </div>
+            <p className="text-xl font-bold text-foreground">
+              {dora.avg_pr_cycle_time !== null ? `${dora.avg_pr_cycle_time}h` : "—"}
+            </p>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Avg PR Cycle Time</p>
+          </div>
+          <div className="rounded-lg border border-border p-3 text-center space-y-1">
+            <div className="flex items-center justify-center gap-1">
+              <GitPullRequest className="h-3.5 w-3.5 text-muted-foreground" />
+              <TrendIcon direction={trends.merge_rate} />
+            </div>
+            <p className="text-xl font-bold text-foreground">{dora.pr_merge_rate ?? 0}</p>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">PRs Merged</p>
+          </div>
+          <div className="rounded-lg border border-border p-3 text-center space-y-1">
+            <div className="flex items-center justify-center gap-1">
+              <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+              <TrendIcon direction={trends.reviews} />
+            </div>
+            <p className="text-xl font-bold text-foreground">
+              {dora.review_turnaround !== null ? `${dora.review_turnaround}h` : "—"}
+            </p>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Review Turnaround</p>
+          </div>
+        </div>
       </CardContent>
     </Card>
   );
@@ -137,6 +222,8 @@ export default function WeeklyDigest() {
   const recommendations = (digest?.ai_recommendations as any[]) || [];
   const workDist = (digest?.work_distribution as Record<string, number>) || {};
   const crossPlatform = (digest?.cross_platform_activity as Record<string, any>) || {};
+  const weeklyAwards = (crossPlatform?.weekly_awards as any[]) || ((digest as any)?.weekly_awards as any[]) || [];
+  const doraMetrics = crossPlatform?.dora_metrics || (digest as any)?.dora_metrics || {};
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -196,7 +283,7 @@ export default function WeeklyDigest() {
               <MetricCard
                 label="Completion Rate"
                 value={`${digest.completion_rate || 0}%`}
-                icon={<CheckCircle className="h-4 w-4 text-success" />}
+                icon={<CheckCircle className="h-4 w-4 text-primary" />}
               />
               <MetricCard
                 label="Commitments"
@@ -211,6 +298,12 @@ export default function WeeklyDigest() {
                 icon={<AlertTriangle className="h-4 w-4 text-destructive" />}
               />
             </div>
+
+            {/* Weekly Awards */}
+            <WeeklyAwardsCard awards={weeklyAwards} />
+
+            {/* DORA / Team Momentum */}
+            <DORAMetricsCard dora={doraMetrics} />
 
             {/* AI Narrative */}
             <Card>
