@@ -137,6 +137,18 @@ export default function Dashboard() {
         {standupButton()}
       </div>
 
+      {/* Member Breakdown (AI-powered) */}
+      <section>
+        <MemberBreakdown
+          memberStats={summaryData?.memberStats || []}
+          highlights={summaryData?.analysis?.memberHighlights}
+          teamBadges={teamBadges}
+          badgeLookup={badgeLookup}
+          enrichedMembers={enriched?.members}
+          loading={summaryLoading}
+        />
+      </section>
+
       {/* Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard label="Team Health" value="" loading={loading}>
