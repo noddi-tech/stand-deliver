@@ -153,8 +153,9 @@
 - `TeamInsights.tsx` shows live awards from `useWeeklyAwards` hook + DORA metrics panel
 - No individual leaderboard — awards celebrate specific contributions, not rankings
 
-### Badge Detection Completeness Fix
-- Added **Architect** detection: PRs with `metadata.files_changed >= 5` (structural changes)
-- Added **Guardian** detection: reviews followed by commits before merge (caught a bug), with fallback to 2+ review comments
-- Fixed **Speed Reviewer**: now requires 3+ reviews given within 2 hours of PR creation (was just 3+ total reviews)
-- All 10 badge definitions now have active detection logic in `detect-badges` edge function
+
+### GitHub Cron Sync Fix (All Users)
+- Changed default `limitUsers` from `2` to `50` in `github-sync-activity` edge function
+- Cron job (no `limit_users` param) now processes all mapped users in one invocation instead of only the first 2
+- Manual sync UI still passes `limit_users: 2` for progress bar behavior
+- 120-second time budget prevents runaway execution
