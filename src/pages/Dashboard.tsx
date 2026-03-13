@@ -360,20 +360,6 @@ export default function Dashboard() {
         )}
       </section>
 
-      {/* Member Breakdown (AI-powered) */}
-      <section>
-        <MemberBreakdown
-          memberStats={summaryData?.memberStats || []}
-          highlights={summaryData?.analysis?.memberHighlights}
-          teamBadges={teamBadges}
-          badgeLookup={badgeLookup}
-          enrichedMembers={enriched?.members}
-          loading={summaryLoading}
-        />
-      </section>
-
-      {/* Badge Guide */}
-      <BadgeLegend />
     </div>
   );
 }

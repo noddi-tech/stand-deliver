@@ -155,6 +155,9 @@ export function MemberBreakdown({
             );
           })}
         </div>
+        <div className="mt-4">
+          <BadgeLegend />
+        </div>
       </CardContent>
     </Card>
   );
