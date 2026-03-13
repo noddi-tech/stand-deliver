@@ -69,6 +69,26 @@ Deno.serve(async (req) => {
 
       const acts = activity || [];
 
+      // Debug: log activity counts per type
+      const typeCounts: Record<string, number> = {};
+      for (const a of acts) typeCounts[a.activity_type] = (typeCounts[a.activity_type] || 0) + 1;
+      console.log(`Member ${member.id}: ${acts.length} activities`, JSON.stringify(typeCounts));
+
+      // Debug: check architect eligibility
+      const prWithFiles = acts.filter((a: any) => 
+        (a.activity_type === "pr_merged" || a.activity_type === "pr_opened") && a.metadata?.files_changed !== undefined
+      );
+      const archEligible = prWithFiles.filter((a: any) => {
+        const fc = a.metadata?.files_changed;
+        const fcType = typeof fc;
+        return fcType === "number" && fc >= 5;
+      });
+      console.log(`  PRs with files_changed: ${prWithFiles.length}, architect-eligible: ${archEligible.length}`);
+      if (prWithFiles.length > 0) {
+        const sample = prWithFiles[0];
+        console.log(`  Sample PR metadata:`, JSON.stringify({ files_changed: sample.metadata?.files_changed, type: typeof sample.metadata?.files_changed }));
+      }
+
       // Fetch commitments for this member (last 30 days)
       const { data: commitments } = await supabase
         .from("commitments")
