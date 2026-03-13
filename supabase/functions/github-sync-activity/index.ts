@@ -96,9 +96,13 @@ async function fetchCommitsPerRepo(
             .filter((c: any) => {
               const authorLogin = c.author?.login?.toLowerCase();
               const committerLogin = c.committer?.login?.toLowerCase();
+              const authorId = c.author?.id;
+              const committerId = c.committer?.id;
               const commitAuthorName = c.commit?.author?.name?.toLowerCase();
               const commitCommitterName = c.commit?.committer?.name?.toLowerCase();
               const message = (c.commit?.message || "").toLowerCase();
+              // ID-first matching
+              if (githubUserId !== null && (authorId === githubUserId || committerId === githubUserId)) return true;
               return (
                 authorLogin === userLower || committerLogin === userLower ||
                 commitAuthorName === userLower || commitCommitterName === userLower ||
