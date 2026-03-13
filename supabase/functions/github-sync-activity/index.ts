@@ -479,6 +479,7 @@ Deno.serve(async (req) => {
     let orgIdFilter: string | null = null;
     let offset = 0;
     let limitUsers = 50;
+    let isCronTrigger = false;
     try {
       const body = await req.json();
       if (body?.days_back && Number.isFinite(body.days_back)) {
