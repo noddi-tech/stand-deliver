@@ -38,6 +38,8 @@ export default function Analytics() {
   const { data: metrics, isLoading } = useAnalyticsMetrics(teamId);
   const { data: summaryData, isLoading: summaryLoading, refetch: refetchSummary } = useTeamSummary(teamId);
   const { data: enriched, isLoading: enrichedLoading } = useEnrichedTeamMetrics(teamId);
+  const { data: teamBadges } = useTeamBadges(teamId);
+  const badgeLookup = useBadgeLookup();
   const loading = teamLoading || isLoading;
 
   const [showAllMembers, setShowAllMembers] = useState(false);
