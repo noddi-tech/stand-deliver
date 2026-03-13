@@ -36,6 +36,8 @@ export function useTeamBadges(teamId: string | undefined) {
   return useQuery({
     queryKey: ["team-badges", teamId],
     enabled: !!teamId,
+    refetchInterval: 60_000, // auto-refresh every 60s
+    refetchOnWindowFocus: true,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("member_badges")
