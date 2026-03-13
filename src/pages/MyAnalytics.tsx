@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Lightbulb, GitPullRequest, Eye, Code2, Target } from "lucide-react";
 import { useUserTeam, useMyAnalytics } from "@/hooks/useAnalytics";
 import { usePersonalEnrichedMetrics } from "@/hooks/useEnrichedAnalytics";
+import { BadgeShowcase } from "@/components/badges/BadgeShowcase";
 
 export default function MyAnalytics() {
   const { data: teamData, isLoading: teamLoading } = useUserTeam();
