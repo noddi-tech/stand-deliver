@@ -26,6 +26,8 @@ Deno.serve(async (req) => {
     const sunday = new Date(monday);
     sunday.setDate(monday.getDate() + 6);
     sunday.setHours(23, 59, 59, 999);
+    const lastMonday = new Date(monday);
+    lastMonday.setDate(monday.getDate() - 7);
 
     const weekStart = monday.toISOString().split("T")[0];
     const weekEnd = sunday.toISOString().split("T")[0];
@@ -42,7 +44,7 @@ Deno.serve(async (req) => {
     // Fetch week's commitments
     const { data: commitments } = await supabaseAdmin
       .from("commitments")
-      .select("status, carry_count, title, priority")
+      .select("status, carry_count, title, priority, member_id")
       .eq("team_id", team_id)
       .gte("created_at", monday.toISOString())
       .lte("created_at", sunday.toISOString());
@@ -55,14 +57,14 @@ Deno.serve(async (req) => {
       .gte("created_at", monday.toISOString())
       .lte("created_at", sunday.toISOString());
 
-    // Compute metrics
+    // Compute core metrics
     const totalCommitments = commitments?.length || 0;
     const totalCompleted = commitments?.filter(c => c.status === "done").length || 0;
     const totalCarried = commitments?.filter(c => c.carry_count > 0).length || 0;
     const totalBlocked = blockers?.filter(b => !b.is_resolved).length || 0;
     const completionRate = totalCommitments > 0 ? Math.round((totalCompleted / totalCommitments) * 100) : 0;
 
-    // Health score (0-100)
+    // Health score
     let healthScore = 50;
     if (completionRate > 80) healthScore += 25;
     else if (completionRate > 60) healthScore += 15;
@@ -84,8 +86,6 @@ Deno.serve(async (req) => {
 
     // ---- Cross-platform activity ----
     const crossPlatform: Record<string, any> = { standflow: {}, github: {}, clickup: {} };
-
-    // StandFlow activity
     crossPlatform.standflow = {
       commitments_made: totalCommitments,
       commitments_completed: totalCompleted,
@@ -93,7 +93,10 @@ Deno.serve(async (req) => {
       blockers_unresolved: totalBlocked,
     };
 
-    // GitHub activity
+    // Fetch GitHub activity for DORA metrics + awards
+    let ghActivity: any[] = [];
+    let lastWeekGhActivity: any[] = [];
+
     if (orgId) {
       try {
         const { data: ghInstall } = await supabaseAdmin
@@ -103,64 +106,216 @@ Deno.serve(async (req) => {
           .maybeSingle();
 
         if (ghInstall) {
-          // Get team members with github mappings
           const { data: teamMembers } = await supabaseAdmin
             .from("team_members")
-            .select("user_id")
+            .select("user_id, id, profile:profiles!inner(full_name)")
             .eq("team_id", team_id)
             .eq("is_active", true);
 
-          const userIds = (teamMembers || []).map(m => m.user_id);
-          const { data: ghMappings } = await supabaseAdmin
-            .from("github_user_mappings")
-            .select("github_username")
-            .eq("org_id", orgId)
-            .in("user_id", userIds);
+          const memberIds = (teamMembers || []).map(m => m.id);
 
-          let totalCommits = 0, totalPrsOpened = 0, totalPrsMerged = 0, totalReviews = 0;
+          // This week's activity
+          const { data: thisWeekAct } = await supabaseAdmin
+            .from("external_activity")
+            .select("activity_type, member_id, metadata, occurred_at")
+            .eq("team_id", team_id)
+            .eq("source", "github")
+            .gte("occurred_at", monday.toISOString())
+            .lte("occurred_at", sunday.toISOString())
+            .limit(1000);
+          ghActivity = thisWeekAct || [];
+
+          // Last week's activity (for trends)
+          const { data: lastWeekAct } = await supabaseAdmin
+            .from("external_activity")
+            .select("activity_type, member_id, metadata, occurred_at")
+            .eq("team_id", team_id)
+            .eq("source", "github")
+            .gte("occurred_at", lastMonday.toISOString())
+            .lt("occurred_at", monday.toISOString())
+            .limit(1000);
+          lastWeekGhActivity = lastWeekAct || [];
+
+          // Aggregate for cross-platform card
+          let totalCommitsGH = 0, totalPrsOpened = 0, totalPrsMerged = 0, totalReviews = 0;
           const allRepos = new Set<string>();
-
-          for (const mapping of ghMappings || []) {
-            try {
-              const actRes = await fetch(
-                `${Deno.env.get("SUPABASE_URL")}/functions/v1/github-fetch-activity`,
-                {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-                  },
-                  body: JSON.stringify({
-                    org_id: orgId,
-                    github_username: mapping.github_username,
-                    week_start: weekStart,
-                    week_end: weekEnd,
-                  }),
-                }
-              );
-              if (actRes.ok) {
-                const act = await actRes.json();
-                totalCommits += act.commits || 0;
-                totalPrsOpened += act.prs_opened || 0;
-                totalPrsMerged += act.prs_merged || 0;
-                totalReviews += act.reviews || 0;
-                for (const r of act.top_repos || []) allRepos.add(r);
-              }
-            } catch (e) {
-              console.error(`GitHub fetch failed for ${mapping.github_username}:`, e);
-            }
+          for (const a of ghActivity) {
+            if (a.activity_type === "commit") totalCommitsGH++;
+            if (a.activity_type === "pr_opened") totalPrsOpened++;
+            if (a.activity_type === "pr_merged") totalPrsMerged++;
+            if (a.activity_type === "pr_review") totalReviews++;
+            const meta = a.metadata as any;
+            if (meta?.repo) allRepos.add(meta.repo);
           }
-
           crossPlatform.github = {
-            commits: totalCommits,
+            commits: totalCommitsGH,
             prs_opened: totalPrsOpened,
             prs_merged: totalPrsMerged,
             reviews: totalReviews,
             top_repos: Array.from(allRepos).slice(0, 8),
           };
+
+          // ---- DORA Metrics ----
+          function computeCycleTimes(prs: any[]): number[] {
+            const times: number[] = [];
+            for (const pr of prs.filter(p => p.activity_type === "pr_merged")) {
+              const meta = pr.metadata as any;
+              if (meta?.created_at && meta?.merged_at) {
+                const hours = (new Date(meta.merged_at).getTime() - new Date(meta.created_at).getTime()) / 3600000;
+                if (hours >= 0 && hours < 720) times.push(hours);
+              }
+            }
+            return times;
+          }
+
+          const thisWeekCycles = computeCycleTimes(ghActivity);
+          const lastWeekCycles = computeCycleTimes(lastWeekGhActivity);
+          const thisWeekAvgCycle = thisWeekCycles.length > 0 ? Math.round(thisWeekCycles.reduce((a, b) => a + b, 0) / thisWeekCycles.length * 10) / 10 : null;
+          const lastWeekAvgCycle = lastWeekCycles.length > 0 ? Math.round(lastWeekCycles.reduce((a, b) => a + b, 0) / lastWeekCycles.length * 10) / 10 : null;
+
+          // Review turnaround
+          function computeReviewTurnaround(acts: any[]): number | null {
+            const times: number[] = [];
+            for (const pr of acts.filter(p => p.activity_type === "pr_opened")) {
+              const meta = pr.metadata as any;
+              if (meta?.created_at && meta?.first_review_at) {
+                const hours = (new Date(meta.first_review_at).getTime() - new Date(meta.created_at).getTime()) / 3600000;
+                if (hours >= 0 && hours < 720) times.push(hours);
+              }
+            }
+            return times.length > 0 ? Math.round(times.reduce((a, b) => a + b, 0) / times.length * 10) / 10 : null;
+          }
+
+          const doraMetrics = {
+            avg_pr_cycle_time: thisWeekAvgCycle,
+            pr_merge_rate: totalPrsMerged,
+            review_turnaround: computeReviewTurnaround(ghActivity),
+            trends: {
+              cycle_time: thisWeekAvgCycle !== null && lastWeekAvgCycle !== null
+                ? (lastWeekAvgCycle < thisWeekAvgCycle ? "up" : lastWeekAvgCycle > thisWeekAvgCycle ? "down" : "flat")
+                : "flat",
+              merge_rate: totalPrsMerged > (lastWeekGhActivity.filter(a => a.activity_type === "pr_merged").length)
+                ? "up" : totalPrsMerged < (lastWeekGhActivity.filter(a => a.activity_type === "pr_merged").length) ? "down" : "flat",
+              reviews: totalReviews > (lastWeekGhActivity.filter(a => a.activity_type === "pr_review").length) ? "up" : totalReviews < (lastWeekGhActivity.filter(a => a.activity_type === "pr_review").length) ? "down" : "flat",
+            },
+          };
+
+          crossPlatform.dora_metrics = doraMetrics;
+
+          // ---- Weekly Awards ----
+          const memberNameMap = new Map<string, string>();
+          for (const tm of teamMembers || []) {
+            memberNameMap.set(tm.id, (tm as any).profile?.full_name || "Unknown");
+          }
+
+          interface MemberScore { name: string; impact: number; reviews: number; completions: number; prsOpened: number; }
+          const thisWeekScores = new Map<string, MemberScore>();
+          const lastWeekScores = new Map<string, MemberScore>();
+
+          function populateScores(acts: any[], scores: Map<string, MemberScore>) {
+            for (const a of acts) {
+              if (!scores.has(a.member_id)) {
+                scores.set(a.member_id, { name: memberNameMap.get(a.member_id) || "Unknown", impact: 0, reviews: 0, completions: 0, prsOpened: 0 });
+              }
+              const s = scores.get(a.member_id)!;
+              const meta = a.metadata as any;
+              if (a.activity_type === "commit") {
+                const adds = meta?.additions || 0;
+                const dels = meta?.deletions || 0;
+                const files = meta?.files_changed || 0;
+                s.impact += Math.round(Math.sqrt(adds + dels) * 2 + files * 1.5);
+              } else if (a.activity_type === "pr_review") {
+                s.reviews++;
+              } else if (a.activity_type === "pr_opened") {
+                s.prsOpened++;
+              }
+            }
+          }
+
+          populateScores(ghActivity, thisWeekScores);
+          populateScores(lastWeekGhActivity, lastWeekScores);
+
+          // Add commitment completions
+          for (const c of commitments || []) {
+            if (c.status === "done") {
+              const s = thisWeekScores.get(c.member_id);
+              if (s) s.completions++;
+            }
+          }
+
+          const weeklyAwards: any[] = [];
+          const members = Array.from(thisWeekScores.entries())
+            .map(([id, s]) => ({ id, ...s }))
+            .filter(m => m.impact + m.reviews + m.completions > 0);
+
+          if (members.length > 0) {
+            // MVP
+            const mvp = members.reduce((best, m) => {
+              const score = m.impact + m.reviews * 20 + m.completions * 15;
+              const bestScore = best.impact + best.reviews * 20 + best.completions * 15;
+              return score > bestScore ? m : best;
+            });
+            weeklyAwards.push({
+              type: "mvp",
+              emoji: "🏆",
+              title: "MVP",
+              member_name: mvp.name,
+              member_id: mvp.id,
+              description: "Highest composite of code impact, reviews, and commitments completed",
+              stat: `Impact: ${mvp.impact} · Reviews: ${mvp.reviews} · Done: ${mvp.completions}`,
+            });
+
+            // Unsung Hero
+            const hero = members
+              .filter(m => m.reviews >= 2 && m.id !== mvp.id)
+              .reduce<typeof members[0] | null>((best, m) => {
+                const ratio = m.reviews / Math.max(m.prsOpened, 1);
+                const bestRatio = best ? best.reviews / Math.max(best.prsOpened, 1) : 0;
+                return ratio > bestRatio ? m : best;
+              }, null);
+            if (hero) {
+              weeklyAwards.push({
+                type: "unsung_hero",
+                emoji: "🦸",
+                title: "Unsung Hero",
+                member_name: hero.name,
+                member_id: hero.id,
+                description: "Most reviews given relative to own PRs",
+                stat: `${hero.reviews} reviews · ${hero.prsOpened} PRs`,
+              });
+            }
+
+            // Momentum
+            let bestImprovement = 0.2; // threshold
+            let momentumMember: typeof members[0] | null = null;
+            for (const m of members) {
+              if (m.id === mvp.id) continue;
+              const lastWeek = lastWeekScores.get(m.id);
+              const lastScore = lastWeek ? lastWeek.impact + lastWeek.reviews * 20 + lastWeek.completions * 15 : 0;
+              const thisScore = m.impact + m.reviews * 20 + m.completions * 15;
+              const improvement = lastScore > 0 ? (thisScore - lastScore) / lastScore : thisScore > 30 ? 1 : 0;
+              if (improvement > bestImprovement) {
+                bestImprovement = improvement;
+                momentumMember = m;
+              }
+            }
+            if (momentumMember) {
+              weeklyAwards.push({
+                type: "momentum",
+                emoji: "🚀",
+                title: "Momentum",
+                member_name: momentumMember.name,
+                member_id: momentumMember.id,
+                description: "Biggest week-over-week improvement",
+                stat: `+${Math.round(bestImprovement * 100)}% vs last week`,
+              });
+            }
+          }
+
+          crossPlatform.weekly_awards = weeklyAwards;
         }
       } catch (e) {
-        console.error("GitHub integration error:", e);
+        console.error("GitHub/DORA integration error:", e);
       }
     }
 
@@ -174,7 +329,6 @@ Deno.serve(async (req) => {
           .maybeSingle();
 
         if (cuInstall) {
-          // Count commitments that came from ClickUp (have clickup_task_id)
           const clickupCommitments = (commitments || []).filter(c => (c as any).clickup_task_id);
           crossPlatform.clickup = {
             tasks_tracked: clickupCommitments.length,
@@ -194,14 +348,24 @@ Deno.serve(async (req) => {
     if (LOVABLE_API_KEY) {
       try {
         let crossPlatformContext = "";
-        const gh = crossPlatform.github;
+        const gh = crossPlatform.github || {};
         if (gh.commits > 0 || gh.prs_opened > 0) {
           crossPlatformContext += `\nGitHub Activity:\n- ${gh.commits} commits across ${gh.top_repos?.length || 0} repos (${(gh.top_repos || []).join(", ")})\n- ${gh.prs_opened} PRs opened, ${gh.prs_merged} merged\n- ${gh.reviews} code reviews completed`;
         }
-        const cu = crossPlatform.clickup;
+        const cu = crossPlatform.clickup || {};
         if (cu.tasks_tracked > 0) {
           crossPlatformContext += `\nClickUp Activity:\n- ${cu.tasks_tracked} tasks tracked, ${cu.tasks_completed} completed`;
         }
+
+        // DORA metrics context
+        const dora = crossPlatform.dora_metrics;
+        let doraContext = "";
+        if (dora) {
+          doraContext = `\nEngineering Metrics:\n- Avg PR Cycle Time: ${dora.avg_pr_cycle_time !== null ? dora.avg_pr_cycle_time + "h" : "N/A"}\n- PRs Merged This Week: ${dora.pr_merge_rate}\n- Avg Review Turnaround: ${dora.review_turnaround !== null ? dora.review_turnaround + "h" : "N/A"}\n- Cycle Time Trend: ${dora.trends?.cycle_time || "flat"}`;
+        }
+
+        // Awards context
+        const awardsCtx = (crossPlatform.weekly_awards || []).map((a: any) => `- ${a.emoji} ${a.title}: ${a.member_name} (${a.stat})`).join("\n");
 
         const context = `Team: ${team?.name || "Unknown"}
 Week: ${weekStart} to ${weekEnd}
@@ -209,7 +373,8 @@ Commitments: ${totalCommitments} total, ${totalCompleted} completed, ${totalCarr
 Blockers: ${totalBlocked} unresolved out of ${blockers?.length || 0} total
 Completion rate: ${completionRate}%
 Health score: ${healthScore}/100
-Work distribution: ${JSON.stringify(workDist)}${crossPlatformContext}`;
+Work distribution: ${JSON.stringify(workDist)}${crossPlatformContext}${doraContext}
+${awardsCtx ? `\nWeekly Awards:\n${awardsCtx}` : ""}`;
 
         const aiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
           method: "POST",
@@ -222,7 +387,7 @@ Work distribution: ${JSON.stringify(workDist)}${crossPlatformContext}`;
             messages: [
               {
                 role: "system",
-                content: "You generate weekly team health digests. Be warm, supportive, and actionable. Never rank individuals. Frame concerns as questions, not judgments. When cross-platform data (GitHub, ClickUp) is available, weave it into the narrative naturally.",
+                content: "You generate weekly team health digests. Be warm, supportive, and actionable. Never rank individuals negatively. Frame concerns as questions, not judgments. When cross-platform data (GitHub, ClickUp) is available, weave it into the narrative naturally. When weekly awards are present, celebrate them warmly but briefly. When DORA/engineering metrics are available, mention trends naturally.",
               },
               { role: "user", content: `Generate a weekly digest narrative and 3-5 recommendations:\n\n${context}` },
             ],
@@ -297,6 +462,8 @@ Work distribution: ${JSON.stringify(workDist)}${crossPlatformContext}`;
         ai_recommendations: aiRecommendations,
         work_distribution: workDist,
         cross_platform_activity: crossPlatform,
+        weekly_awards: crossPlatform.weekly_awards || [],
+        dora_metrics: crossPlatform.dora_metrics || {},
         top_themes: [],
       }, { onConflict: "team_id,week_start" })
       .select()
@@ -317,9 +484,22 @@ Work distribution: ${JSON.stringify(workDist)}${crossPlatformContext}`;
         if (installation?.bot_token) {
           let slackText = `📊 *Weekly Digest — ${weekStart} to ${weekEnd}*\n\n🏥 Health Score: ${healthScore}/100\n✅ Completion Rate: ${completionRate}%\n\n${aiNarrative}`;
 
-          const gh = crossPlatform.github;
+          const gh = crossPlatform.github || {};
           if (gh.commits > 0 || gh.prs_opened > 0) {
             slackText += `\n\n🐙 *GitHub*: ${gh.commits} commits, ${gh.prs_opened} PRs opened, ${gh.prs_merged} merged, ${gh.reviews} reviews`;
+          }
+
+          const dora = crossPlatform.dora_metrics;
+          if (dora?.avg_pr_cycle_time !== null && dora?.avg_pr_cycle_time !== undefined) {
+            slackText += `\n⏱ *PR Cycle Time*: ${dora.avg_pr_cycle_time}h avg`;
+          }
+
+          const awards = crossPlatform.weekly_awards || [];
+          if (awards.length > 0) {
+            slackText += `\n\n🏅 *Weekly Awards*`;
+            for (const a of awards) {
+              slackText += `\n${a.emoji} *${a.title}*: ${a.member_name} — ${a.stat}`;
+            }
           }
 
           await fetch("https://slack.com/api/chat.postMessage", {
