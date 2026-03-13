@@ -83,3 +83,6 @@ verify_jwt = false
 
 [functions.detect-badges]
 verify_jwt = false
+
+[functions.ai-suggest-focus]
+verify_jwt = false
