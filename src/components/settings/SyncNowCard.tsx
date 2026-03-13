@@ -4,10 +4,11 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Loader2, RefreshCw } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Progress } from "@/components/ui/progress";
 
 export function SyncNowCard({ orgId }: { orgId: string }) {
+  const queryClient = useQueryClient();
   const [syncingGithub, setSyncingGithub] = useState(false);
   const [syncingClickup, setSyncingClickup] = useState(false);
   const [githubProgress, setGithubProgress] = useState<{ done: number; total: number } | null>(null);
@@ -67,6 +68,8 @@ export function SyncNowCard({ orgId }: { orgId: string }) {
         if (!data.has_more) break;
       }
       toast.success(`GitHub synced! ${allResults.length} user(s) processed ✅`);
+      queryClient.invalidateQueries({ queryKey: ["recent-activity"] });
+      queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
     } catch (e: any) {
       if (allResults.length > 0) {
         toast.error(`Sync failed after ${allResults.length} user(s): ${e.message}. Retry to continue.`);
@@ -86,6 +89,8 @@ export function SyncNowCard({ orgId }: { orgId: string }) {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
       toast.success("ClickUp activity synced! ✅");
+      queryClient.invalidateQueries({ queryKey: ["recent-activity"] });
+      queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
     } catch (e: any) {
       toast.error(`Sync failed: ${e.message}`);
     } finally {

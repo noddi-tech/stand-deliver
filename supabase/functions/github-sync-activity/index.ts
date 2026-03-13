@@ -96,9 +96,13 @@ async function fetchCommitsPerRepo(
             .filter((c: any) => {
               const authorLogin = c.author?.login?.toLowerCase();
               const committerLogin = c.committer?.login?.toLowerCase();
+              const authorId = c.author?.id;
+              const committerId = c.committer?.id;
               const commitAuthorName = c.commit?.author?.name?.toLowerCase();
               const commitCommitterName = c.commit?.committer?.name?.toLowerCase();
               const message = (c.commit?.message || "").toLowerCase();
+              // ID-first matching
+              if (githubUserId !== null && (authorId === githubUserId || committerId === githubUserId)) return true;
               return (
                 authorLogin === userLower || committerLogin === userLower ||
                 commitAuthorName === userLower || commitCommitterName === userLower ||
@@ -125,7 +129,8 @@ async function fetchCommitsPerRepo(
 
 async function fetchPRsPerRepo(
   token: string, repos: string[], username: string,
-  startDate: string, endDate: string, type: "opened" | "merged"
+  startDate: string, endDate: string, type: "opened" | "merged",
+  githubUserId: number | null = null
 ): Promise<any[]> {
   const allPRs: any[] = [];
   const seenIds = new Set<number>();
@@ -147,7 +152,9 @@ async function fetchPRsPerRepo(
           if (type === "opened") {
             return prs
               .filter((pr: any) => {
-                if (pr.user?.login?.toLowerCase() !== userLower) return false;
+                const prAuthorLogin = pr.user?.login?.toLowerCase();
+                const prAuthorId = pr.user?.id;
+                if (prAuthorLogin !== userLower && prAuthorId !== githubUserId) return false;
                 const created = pr.created_at?.split("T")[0];
                 return created >= startDate && created <= endDate;
               })
@@ -160,13 +167,17 @@ async function fetchPRsPerRepo(
             return merged >= startDate && merged <= endDate;
           });
 
+          const isUserPR = (pr: any) => {
+            const login = pr.user?.login?.toLowerCase();
+            const id = pr.user?.id;
+            return login === userLower || (githubUserId !== null && id === githubUserId);
+          };
+
           const authorPRs = mergedInRange
-            .filter((pr: any) => pr.user?.login?.toLowerCase() === userLower)
+            .filter(isUserPR)
             .map((pr: any) => ({ ...pr, _repoFullName: repoFullName }));
 
-          const nonAuthorPRs = mergedInRange.filter(
-            (pr: any) => pr.user?.login?.toLowerCase() !== userLower
-          );
+          const nonAuthorPRs = mergedInRange.filter((pr: any) => !isUserPR(pr));
 
           const mergerPRs: any[] = [];
           for (let j = 0; j < nonAuthorPRs.length; j += DETAIL_BATCH_SIZE) {
@@ -479,6 +490,7 @@ Deno.serve(async (req) => {
     let orgIdFilter: string | null = null;
     let offset = 0;
     let limitUsers = 50;
+    let isCronTrigger = false;
     try {
       const body = await req.json();
       if (body?.days_back && Number.isFinite(body.days_back)) {
@@ -486,7 +498,8 @@ Deno.serve(async (req) => {
       }
       if (body?.org_id) orgIdFilter = body.org_id;
       if (body?.offset && Number.isFinite(body.offset)) offset = Math.max(0, body.offset);
-      if (body?.limit_users && Number.isFinite(body.limit_users)) limitUsers = Math.max(1, Math.min(body.limit_users, 10));
+      if (body?.limit_users && Number.isFinite(body.limit_users)) limitUsers = Math.max(1, Math.min(body.limit_users, 50));
+      if (body?.is_cron) isCronTrigger = true;
     } catch { /* no body */ }
 
     const endDate = new Date().toISOString().split("T")[0];
@@ -580,11 +593,35 @@ Deno.serve(async (req) => {
         const authorData = authorRes.ok ? await authorRes.json() : { items: [] };
         const committerData = committerRes.ok ? await committerRes.json() : { items: [] };
 
-        const seenShas = new Set<string>();
-        let allCommits: any[] = [];
-        for (const item of [...(authorData.items || []), ...(committerData.items || [])]) {
-          if (item.sha && !seenShas.has(item.sha)) { seenShas.add(item.sha); allCommits.push(item); }
-        }
+    const seenShas = new Set<string>();
+    let allCommits: any[] = [];
+    for (const item of [...(authorData.items || []), ...(committerData.items || [])]) {
+      if (item.sha && !seenShas.has(item.sha)) { seenShas.add(item.sha); allCommits.push(item); }
+    }
+
+    // Also search by numeric GitHub user ID if available (catches renamed accounts)
+    if (githubUserId) {
+      const [authorIdRes, committerIdRes] = await Promise.all([
+        fetch(`${GH_API}/search/commits?q=author-id:${githubUserId}+committer-date:${dateRange}&per_page=50`, { headers: commitHeaders }).catch(() => null),
+        fetch(`${GH_API}/search/commits?q=committer-id:${githubUserId}+committer-date:${dateRange}&per_page=50`, { headers: commitHeaders }).catch(() => null),
+      ]);
+      const authorIdData = authorIdRes?.ok ? await authorIdRes.json() : { items: [] };
+      const committerIdData = committerIdRes?.ok ? await committerIdRes.json() : { items: [] };
+      for (const item of [...(authorIdData.items || []), ...(committerIdData.items || [])]) {
+        if (item.sha && !seenShas.has(item.sha)) { seenShas.add(item.sha); allCommits.push(item); }
+      }
+
+      // Update username if GitHub login changed
+      const currentLogin = allCommits[0]?.author?.login || allCommits[0]?.committer?.login;
+      if (currentLogin && currentLogin.toLowerCase() !== username.toLowerCase()) {
+        console.log(`GitHub username changed: ${username} → ${currentLogin}, updating mapping`);
+        await supabaseAdmin
+          .from("github_user_mappings")
+          .update({ github_username: currentLogin })
+          .eq("user_id", mapping.user_id)
+          .eq("org_id", install.org_id);
+      }
+    }
 
         // Per-repo scan (catches co-authored commits)
         let orgRepos: string[] | null = orgReposCache[install.org_id] || null;
@@ -665,7 +702,7 @@ Deno.serve(async (req) => {
 
         if (prsItems.length === 0 && orgName) {
           if (!orgRepos) { orgRepos = await fetchOrgRepos(token, orgName); orgReposCache[install.org_id] = orgRepos; }
-          prsItems = await fetchPRsPerRepo(token, orgRepos, username, startDate, endDate, "opened");
+          prsItems = await fetchPRsPerRepo(token, orgRepos, username, startDate, endDate, "opened", githubUserId);
         }
 
         // --- PRs MERGED ---
@@ -678,7 +715,7 @@ Deno.serve(async (req) => {
 
         if (orgName) {
           if (!orgRepos) { orgRepos = await fetchOrgRepos(token, orgName); orgReposCache[install.org_id] = orgRepos; }
-          const perRepoMerged = await fetchPRsPerRepo(token, orgRepos, username, startDate, endDate, "merged");
+          const perRepoMerged = await fetchPRsPerRepo(token, orgRepos, username, startDate, endDate, "merged", githubUserId);
           const existingIds = new Set(mergedItems.map((item: any) => item.id));
           for (const pr of perRepoMerged) { if (!existingIds.has(pr.id)) mergedItems.push(pr); }
         }
@@ -889,6 +926,32 @@ Deno.serve(async (req) => {
       }
     }
     console.log("Badge detection results:", badgeResults);
+
+    // If triggered by cron and there are more users, self-invoke to continue
+    if (isCronTrigger && hasMore && nextOffset < totalUsers) {
+      console.log(`Cron continuation: processed ${nextOffset}/${totalUsers}, invoking next batch`);
+      try {
+        await fetch(
+          `${Deno.env.get("SUPABASE_URL")}/functions/v1/github-sync-activity`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              days_back: daysBack,
+              org_id: orgIdFilter,
+              offset: nextOffset,
+              limit_users: limitUsers,
+              is_cron: true,
+            }),
+          }
+        );
+      } catch (e) {
+        console.error("Cron continuation call failed:", e);
+      }
+    }
 
     return new Response(JSON.stringify({
       results,
