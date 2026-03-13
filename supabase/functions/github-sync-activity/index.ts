@@ -486,7 +486,8 @@ Deno.serve(async (req) => {
       }
       if (body?.org_id) orgIdFilter = body.org_id;
       if (body?.offset && Number.isFinite(body.offset)) offset = Math.max(0, body.offset);
-      if (body?.limit_users && Number.isFinite(body.limit_users)) limitUsers = Math.max(1, Math.min(body.limit_users, 10));
+      if (body?.limit_users && Number.isFinite(body.limit_users)) limitUsers = Math.max(1, Math.min(body.limit_users, 50));
+      if (body?.is_cron) isCronTrigger = true;
     } catch { /* no body */ }
 
     const endDate = new Date().toISOString().split("T")[0];
