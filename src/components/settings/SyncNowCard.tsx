@@ -68,6 +68,8 @@ export function SyncNowCard({ orgId }: { orgId: string }) {
         if (!data.has_more) break;
       }
       toast.success(`GitHub synced! ${allResults.length} user(s) processed ✅`);
+      queryClient.invalidateQueries({ queryKey: ["recent-activity"] });
+      queryClient.invalidateQueries({ queryKey: ["activity-feed"] });
     } catch (e: any) {
       if (allResults.length > 0) {
         toast.error(`Sync failed after ${allResults.length} user(s): ${e.message}. Retry to continue.`);
