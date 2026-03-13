@@ -167,13 +167,17 @@ async function fetchPRsPerRepo(
             return merged >= startDate && merged <= endDate;
           });
 
+          const isUserPR = (pr: any) => {
+            const login = pr.user?.login?.toLowerCase();
+            const id = pr.user?.id;
+            return login === userLower || (githubUserId !== null && id === githubUserId);
+          };
+
           const authorPRs = mergedInRange
-            .filter((pr: any) => pr.user?.login?.toLowerCase() === userLower)
+            .filter(isUserPR)
             .map((pr: any) => ({ ...pr, _repoFullName: repoFullName }));
 
-          const nonAuthorPRs = mergedInRange.filter(
-            (pr: any) => pr.user?.login?.toLowerCase() !== userLower
-          );
+          const nonAuthorPRs = mergedInRange.filter((pr: any) => !isUserPR(pr));
 
           const mergerPRs: any[] = [];
           for (let j = 0; j < nonAuthorPRs.length; j += DETAIL_BATCH_SIZE) {
