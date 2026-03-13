@@ -854,6 +854,35 @@ Deno.serve(async (req) => {
     const nextOffset = offset + processedCount;
     const hasMore = timeBudgetExceeded || nextOffset < totalUsers;
 
+    // Trigger badge detection for all teams that had activity
+    const teamsWithActivity = new Set<string>();
+    for (const entry of chunk.slice(0, processedCount || chunk.length)) {
+      for (const mr of entry.memberRecords) {
+        teamsWithActivity.add(mr.team_id);
+      }
+    }
+    const badgeResults: string[] = [];
+    for (const tid of teamsWithActivity) {
+      try {
+        const badgeRes = await fetch(
+          `${Deno.env.get("SUPABASE_URL")}/functions/v1/detect-badges`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ team_id: tid }),
+          }
+        );
+        const badgeData = await badgeRes.json();
+        badgeResults.push(`${tid}: ${badgeData.badges_awarded || 0} badges`);
+      } catch (e) {
+        console.error(`Badge detection failed for team ${tid}:`, e);
+      }
+    }
+    console.log("Badge detection results:", badgeResults);
+
     return new Response(JSON.stringify({
       results,
       processed_users: processedCount,
@@ -861,6 +890,7 @@ Deno.serve(async (req) => {
       offset,
       next_offset: nextOffset,
       has_more: hasMore,
+      badge_detection: badgeResults,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

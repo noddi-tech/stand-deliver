@@ -130,6 +130,44 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Trigger badge detection for all teams that had activity
+    const teamsWithActivity = new Set<string>();
+    for (const r of results) {
+      // Find team IDs from the processed mappings
+    }
+    // Collect unique team IDs from team members we processed
+    for (const install of installations) {
+      const { data: mappings } = await supabaseAdmin
+        .from("clickup_user_mappings")
+        .select("user_id")
+        .eq("org_id", install.org_id);
+      if (!mappings) continue;
+      const userIds = mappings.map((m) => m.user_id);
+      const { data: tms } = await supabaseAdmin
+        .from("team_members")
+        .select("team_id")
+        .in("user_id", userIds)
+        .eq("is_active", true);
+      for (const tm of tms || []) teamsWithActivity.add(tm.team_id);
+    }
+    for (const tid of teamsWithActivity) {
+      try {
+        await fetch(
+          `${Deno.env.get("SUPABASE_URL")}/functions/v1/detect-badges`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ team_id: tid }),
+          }
+        );
+      } catch (e) {
+        console.error(`Badge detection failed for team ${tid}:`, e);
+      }
+    }
+
     return new Response(JSON.stringify({ results }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

@@ -263,6 +263,25 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Trigger badge detection for all teams as a daily safety net
+    for (const team of teams) {
+      try {
+        await fetch(
+          `${Deno.env.get("SUPABASE_URL")}/functions/v1/detect-badges`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ team_id: team.id }),
+          }
+        );
+      } catch (e) {
+        console.error(`Badge detection failed for team ${team.id}:`, e);
+      }
+    }
+
     return new Response(JSON.stringify({ results }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
