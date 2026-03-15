@@ -41,6 +41,8 @@ export function MemberBreakdown({
   teamBadges,
   badgeLookup,
   enrichedMembers,
+  classification,
+  focusItems,
   loading,
 }: MemberBreakdownProps) {
   const [showAll, setShowAll] = useState(false);
