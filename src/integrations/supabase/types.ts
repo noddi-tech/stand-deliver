@@ -322,6 +322,7 @@ export type Database = {
           created_at: string
           current_session_id: string | null
           description: string | null
+          github_ref: string | null
           id: string
           member_id: string
           origin_session_id: string | null
@@ -340,6 +341,7 @@ export type Database = {
           created_at?: string
           current_session_id?: string | null
           description?: string | null
+          github_ref?: string | null
           id?: string
           member_id: string
           origin_session_id?: string | null
@@ -358,6 +360,7 @@ export type Database = {
           created_at?: string
           current_session_id?: string | null
           description?: string | null
+          github_ref?: string | null
           id?: string
           member_id?: string
           origin_session_id?: string | null
@@ -1145,6 +1148,7 @@ export type Database = {
           name: string
           org_id: string
           slack_channel_id: string | null
+          standup_day_modes: Json
           standup_days: string[]
           standup_time: string
           standup_timezone: string
@@ -1156,6 +1160,7 @@ export type Database = {
           name: string
           org_id: string
           slack_channel_id?: string | null
+          standup_day_modes?: Json
           standup_days?: string[]
           standup_time?: string
           standup_timezone?: string
@@ -1167,6 +1172,7 @@ export type Database = {
           name?: string
           org_id?: string
           slack_channel_id?: string | null
+          standup_day_modes?: Json
           standup_days?: string[]
           standup_time?: string
           standup_timezone?: string
