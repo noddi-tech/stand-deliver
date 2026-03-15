@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Lock, Check, X, AlertTriangle, Loader2, Plus, ArrowRight, Clock, Edit2, CheckCircle2, SquareKanban, ExternalLink, SkipForward, Sparkles, Target } from "lucide-react";
+import { Lock, Check, X, AlertTriangle, Loader2, Plus, ArrowRight, Clock, Edit2, CheckCircle2, SquareKanban, ExternalLink, SkipForward, Sparkles, Target, CalendarOff, Users } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/ui/EmptyState";
