@@ -11,8 +11,9 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { team_id } = await req.json();
+    const { team_id, day_mode } = await req.json();
     if (!team_id) throw new Error("team_id required");
+    const isPhysical = day_mode === "physical";
 
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL")!,
