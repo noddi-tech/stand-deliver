@@ -70,7 +70,7 @@ export function useAllTeamFocusItems(teamId: string | undefined) {
 export function useAddFocusItem(teamId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (item: { title: string; label: string; description?: string }) => {
+    mutationFn: async (item: { title: string; label: string; description?: string; starts_at?: string | null; ends_at?: string | null }) => {
       const { data, error } = await supabase
         .from("team_focus" as any)
         .insert({ team_id: teamId!, ...item } as any)
