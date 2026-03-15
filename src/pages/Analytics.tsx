@@ -15,6 +15,8 @@ import { useTeamSummary } from "@/hooks/useTeamSummary";
 import { useEnrichedTeamMetrics } from "@/hooks/useEnrichedAnalytics";
 import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
 import { MemberBreakdown } from "@/components/team/MemberBreakdown";
+import { useTeamFocusItems, useContributionClassification } from "@/hooks/useTeamFocus";
+import { FocusAlignment } from "@/components/analytics/FocusAlignment";
 
 
 const WORK_TYPE_LABELS: Record<string, string> = {
