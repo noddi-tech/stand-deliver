@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserTeam } from "@/hooks/useAnalytics";
 import { useAuth } from "@/hooks/useAuth";
@@ -23,7 +24,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Lock, Check, X, AlertTriangle, Loader2, Plus, ArrowRight, Clock, Edit2, CheckCircle2, SquareKanban, ExternalLink, SkipForward, Sparkles, Target } from "lucide-react";
+import { Lock, Check, X, AlertTriangle, Loader2, Plus, ArrowRight, Clock, Edit2, CheckCircle2, SquareKanban, ExternalLink, SkipForward, Sparkles, Target, CalendarOff, Users } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -73,10 +74,25 @@ function SkipTodayButton({ memberId, teamId }: { memberId: string; teamId: strin
 
 export default function MyStandup() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: teamData, isLoading: teamLoading } = useUserTeam();
   const memberId = teamData?.id;
   const teamId = teamData?.team_id;
+
+  // Fetch team schedule info
+  const { data: teamSchedule } = useQuery({
+    queryKey: ["team-schedule", teamId],
+    enabled: !!teamId,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("teams")
+        .select("standup_days, standup_timezone, standup_day_modes")
+        .eq("id", teamId!)
+        .single();
+      return data;
+    },
+  });
 
   const [newFocusTitle, setNewFocusTitle] = useState("");
   const [newFocusPriority, setNewFocusPriority] = useState<CommitmentPriority>("medium");
@@ -688,7 +704,66 @@ export default function MyStandup() {
     );
   }
 
-  // Post-submit read-only view
+  // Check if today is a standup day
+  if (teamSchedule && !submitted) {
+    const dayMap: Record<number, string> = { 0: "sun", 1: "mon", 2: "tue", 3: "wed", 4: "thu", 5: "fri", 6: "sat" };
+    const tz = teamSchedule.standup_timezone || "UTC";
+    const nowInTz = new Date(new Date().toLocaleString("en-US", { timeZone: tz }));
+    const todayCode = dayMap[nowInTz.getDay()];
+    const standupDays = teamSchedule.standup_days || [];
+    const dayModes = (teamSchedule as any).standup_day_modes || {};
+    const todayMode = dayModes[todayCode] || "async";
+
+    if (!standupDays.includes(todayCode)) {
+      // Find next standup day
+      const dayOrder = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+      const todayIdx = dayOrder.indexOf(todayCode);
+      let nextDay = "";
+      for (let i = 1; i <= 7; i++) {
+        const candidate = dayOrder[(todayIdx + i) % 7];
+        if (standupDays.includes(candidate)) {
+          nextDay = candidate.charAt(0).toUpperCase() + candidate.slice(1);
+          break;
+        }
+      }
+
+      return (
+        <div className="max-w-3xl mx-auto p-6 space-y-6">
+          <h1 className="text-2xl font-bold text-foreground">My Standup</h1>
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12 text-center space-y-3">
+              <CalendarOff className="h-10 w-10 text-muted-foreground/50" />
+              <h2 className="text-lg font-semibold text-foreground">No standup today</h2>
+              <p className="text-sm text-muted-foreground">
+                {nextDay ? `Next standup is on ${nextDay}.` : "No standup days configured."}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+
+    if (todayMode === "physical") {
+      return (
+        <div className="max-w-3xl mx-auto p-6 space-y-6">
+          <h1 className="text-2xl font-bold text-foreground">My Standup</h1>
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12 text-center space-y-4">
+              <Users className="h-10 w-10 text-primary/60" />
+              <h2 className="text-lg font-semibold text-foreground">Today is a live meeting standup</h2>
+              <p className="text-sm text-muted-foreground">
+                Your team has a physical standup scheduled. Use Meeting Mode to run it.
+              </p>
+              <Button onClick={() => navigate("/meeting")}>
+                Start Meeting
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+  }
+
   if (submitted && !isEditing) {
     return (
       <div className="max-w-3xl mx-auto p-6 space-y-6">
@@ -865,6 +940,11 @@ export default function MyStandup() {
                         {c.carry_count > 0 && (
                           <Badge variant="secondary" className="text-[10px]">
                             carried {c.carry_count}x {c.carry_count >= 2 ? "⚠️" : ""}
+                          </Badge>
+                        )}
+                        {c.resolution_note?.startsWith("Auto-resolved") && (
+                          <Badge variant="outline" className="text-[10px] text-primary border-primary/30">
+                            Auto-resolved ✓
                           </Badge>
                         )}
                         <span className="text-[10px] text-muted-foreground flex items-center gap-1">

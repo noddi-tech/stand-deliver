@@ -32,6 +32,7 @@ export function ScheduleTab() {
   const [standupTime, setStandupTime] = useState("09:00");
   const [timezone, setTimezone] = useState("UTC");
   const [timerSeconds, setTimerSeconds] = useState(120);
+  const [dayModes, setDayModes] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!user) return;
@@ -58,6 +59,7 @@ export function ScheduleTab() {
         setStandupTime(team.standup_time?.slice(0, 5) || "09:00");
         setTimezone(team.standup_timezone);
         setTimerSeconds(team.timer_seconds_per_person);
+        setDayModes((team as any).standup_day_modes || {});
       }
       setLoading(false);
     })();
@@ -79,7 +81,8 @@ export function ScheduleTab() {
         standup_time: standupTime + ":00",
         standup_timezone: timezone,
         timer_seconds_per_person: timerSeconds,
-      })
+        standup_day_modes: dayModes,
+      } as any)
       .eq("id", teamId);
 
     setSaving(false);
@@ -112,20 +115,40 @@ export function ScheduleTab() {
           <Label>Standup Days</Label>
           <div className="flex flex-wrap gap-2">
             {DAYS.map((day) => (
-              <button
-                key={day.value}
-                type="button"
-                onClick={() => toggleDay(day.value)}
-                className={`rounded-full px-4 py-1.5 text-sm font-medium border transition-colors ${
-                  standupDays.includes(day.value)
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-background text-muted-foreground border-input hover:bg-accent"
-                }`}
-              >
-                {day.label}
-              </button>
+              <div key={day.value} className="flex flex-col items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => toggleDay(day.value)}
+                  className={`rounded-full px-4 py-1.5 text-sm font-medium border transition-colors ${
+                    standupDays.includes(day.value)
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-background text-muted-foreground border-input hover:bg-accent"
+                  }`}
+                >
+                  {day.label}
+                </button>
+                {standupDays.includes(day.value) && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDayModes((prev) => ({
+                        ...prev,
+                        [day.value]: prev[day.value] === "physical" ? "async" : "physical",
+                      }))
+                    }
+                    className={`text-[10px] font-medium px-2 py-0.5 rounded border transition-colors ${
+                      dayModes[day.value] === "physical"
+                        ? "bg-accent text-accent-foreground border-accent"
+                        : "bg-background text-muted-foreground border-input"
+                    }`}
+                  >
+                    {dayModes[day.value] === "physical" ? "Meeting" : "Async"}
+                  </button>
+                )}
+              </div>
             ))}
           </div>
+          <p className="text-xs text-muted-foreground">Click the label below each day to toggle between async (digital) and meeting (physical) mode.</p>
         </div>
 
         {/* Time */}

@@ -800,6 +800,34 @@ Deno.serve(async (req) => {
                 { onConflict: "team_id,member_id,external_id,activity_type,source" }
               );
             } catch { /* dedup */ }
+
+            // Auto-resolve commitments linked via github_ref
+            try {
+              const prRef = `${repo}#${item.number}`;
+              const { data: linkedCommitments } = await supabaseAdmin
+                .from("commitments")
+                .select("id")
+                .eq("member_id", member.id)
+                .in("status", ["active", "in_progress", "carried"])
+                .or(`github_ref.eq.${prRef},github_ref.eq.${item.html_url}`);
+
+              if (linkedCommitments && linkedCommitments.length > 0) {
+                for (const commitment of linkedCommitments) {
+                  await supabaseAdmin
+                    .from("commitments")
+                    .update({
+                      status: "done",
+                      resolved_at: new Date().toISOString(),
+                      resolution_note: "Auto-resolved: GitHub PR merged",
+                      updated_at: new Date().toISOString(),
+                    })
+                    .eq("id", commitment.id);
+                  console.log(`Auto-resolved commitment ${commitment.id} (PR ${prRef})`);
+                }
+              }
+            } catch (e) {
+              console.error("GitHub auto-resolve error:", e);
+            }
           }
 
           // ─── ENRICH: Store PR reviews as separate activity items ───

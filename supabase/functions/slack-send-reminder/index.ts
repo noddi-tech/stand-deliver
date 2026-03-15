@@ -11,8 +11,9 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { team_id } = await req.json();
+    const { team_id, day_mode } = await req.json();
     if (!team_id) throw new Error("team_id required");
+    const isPhysical = day_mode === "physical";
 
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -67,7 +68,12 @@ Deno.serve(async (req) => {
       const blocks: any[] = [
         {
           type: "section",
-          text: { type: "mrkdwn", text: "🌅 Good morning! Time for your standup." },
+          text: {
+            type: "mrkdwn",
+            text: isPhysical
+              ? "🌅 Good morning! Today's standup is a *live meeting*."
+              : "🌅 Good morning! Time for your standup.",
+          },
         },
       ];
 
@@ -81,30 +87,40 @@ Deno.serve(async (req) => {
         });
       }
 
-      blocks.push({
-        type: "actions",
-        elements: [
-          {
-            type: "button",
-            text: { type: "plain_text", text: "▶️ Start Standup" },
-            style: "primary",
-            action_id: "start_standup",
-            value: JSON.stringify({ team_id, member_id: member.id }),
+      if (isPhysical) {
+        blocks.push({
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: "📍 Join the meeting to share your update in person.",
           },
-          {
-            type: "button",
-            text: { type: "plain_text", text: "⏰ Snooze 30m" },
-            action_id: "snooze_standup",
-            value: JSON.stringify({ team_id, member_id: member.id }),
-          },
-          {
-            type: "button",
-            text: { type: "plain_text", text: "⏭️ Skip Today" },
-            action_id: "skip_standup",
-            value: JSON.stringify({ team_id, member_id: member.id }),
-          },
-        ],
-      });
+        });
+      } else {
+        blocks.push({
+          type: "actions",
+          elements: [
+            {
+              type: "button",
+              text: { type: "plain_text", text: "▶️ Start Standup" },
+              style: "primary",
+              action_id: "start_standup",
+              value: JSON.stringify({ team_id, member_id: member.id }),
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "⏰ Snooze 30m" },
+              action_id: "snooze_standup",
+              value: JSON.stringify({ team_id, member_id: member.id }),
+            },
+            {
+              type: "button",
+              text: { type: "plain_text", text: "⏭️ Skip Today" },
+              action_id: "skip_standup",
+              value: JSON.stringify({ team_id, member_id: member.id }),
+            },
+          ],
+        });
+      }
 
       const res = await fetch("https://slack.com/api/chat.postMessage", {
         method: "POST",

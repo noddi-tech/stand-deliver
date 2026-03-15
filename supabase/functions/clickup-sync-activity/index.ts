@@ -116,6 +116,35 @@ Deno.serve(async (req) => {
               } catch (e) {
                 console.error("Insert error:", e);
               }
+
+              // Auto-resolve linked commitments when ClickUp task is completed
+              if (activityType === "task_completed") {
+                try {
+                  const { data: linkedCommitments } = await supabaseAdmin
+                    .from("commitments")
+                    .select("id")
+                    .eq("clickup_task_id", task.id)
+                    .eq("member_id", member.id)
+                    .in("status", ["active", "in_progress", "carried"]);
+
+                  if (linkedCommitments && linkedCommitments.length > 0) {
+                    for (const commitment of linkedCommitments) {
+                      await supabaseAdmin
+                        .from("commitments")
+                        .update({
+                          status: "done",
+                          resolved_at: new Date().toISOString(),
+                          resolution_note: "Auto-resolved: ClickUp task completed",
+                          updated_at: new Date().toISOString(),
+                        })
+                        .eq("id", commitment.id);
+                      console.log(`Auto-resolved commitment ${commitment.id} (ClickUp task ${task.id})`);
+                    }
+                  }
+                } catch (e) {
+                  console.error("Auto-resolve error:", e);
+                }
+              }
             }
           }
 
