@@ -7,8 +7,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { User } from "lucide-react";
 import { MemberBadgeIcons } from "@/components/badges/MemberBadgeIcons";
 import { BadgeLegend } from "@/components/badges/BadgeLegend";
+import { InlineFocusBar } from "@/components/analytics/FocusAlignment";
 import type { MemberStat, MemberHighlight } from "@/hooks/useTeamSummary";
 import type { MemberBadge, BadgeDefinition } from "@/hooks/useBadges";
+import type { ClassificationResult, TeamFocusItem } from "@/hooks/useTeamFocus";
 
 const SENTIMENT_CONFIG: Record<string, { label: string; className: string }> = {
   strong: { label: "Strong week", className: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" },
