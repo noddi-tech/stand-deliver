@@ -166,3 +166,14 @@
 - MyStandup shows "Suggested Focus" card with AI-generated items (title, reason, priority) and "Add" button
 - Suggestions cached for 5 minutes, graceful fallback on AI errors
 - Auto-acknowledges all unacknowledged external activity on standup submit
+
+### Team Focus & AI Contribution Classification
+- `team_focus` table with freeform `label` (no enum), RLS: members view, leads manage
+- `FocusTab` in Settings: add/edit/archive focus areas with label suggestions from existing items
+- `ai-classify-contributions` edge function: separate from `ai-team-summary`, fetches focus items + 7d activity, uses Gemini tool calling to return per-member `valueBreakdown` (dynamic keys) + per-activity `rationale`
+- `useTeamFocus.ts` hook: `useTeamFocusItems`, `useContributionClassification` (30min cache)
+- `FocusAlignment` component: horizontal stacked bars per member, tooltip shows AI rationale, auto-legend
+- Dashboard: conditionally renders FocusAlignment only when ≥1 focus item exists
+- Analytics: always shows FocusAlignment (with empty/prompt state if no focus items)
+- MemberBreakdown: inline 2px focus bar per member card when classification data available
+- Graceful degradation: handles missing classification data, shows "Generate Classification" button
