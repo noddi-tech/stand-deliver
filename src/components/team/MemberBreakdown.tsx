@@ -76,6 +76,21 @@ export function MemberBreakdown({
     );
   }
 
+  // Build focus color map for inline bars
+  const FOCUS_COLORS = [
+    "hsl(217, 91%, 60%)", "hsl(160, 84%, 39%)", "hsl(280, 67%, 55%)",
+    "hsl(43, 96%, 56%)", "hsl(340, 82%, 52%)", "hsl(190, 90%, 40%)",
+  ];
+  const focusColorMap: Record<string, string> = {};
+  (focusItems || []).forEach((item, i) => {
+    focusColorMap[item.label] = FOCUS_COLORS[i % FOCUS_COLORS.length];
+  });
+  focusColorMap["Unaligned"] = "hsl(215, 16%, 80%)";
+
+  const getMemberBreakdown = (name: string) => {
+    return classification?.memberBreakdowns?.find((mb) => mb.memberName === name)?.breakdown;
+  };
+
   if (!memberStats.length) return null;
 
   return (
