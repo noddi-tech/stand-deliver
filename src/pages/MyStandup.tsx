@@ -704,7 +704,66 @@ export default function MyStandup() {
     );
   }
 
-  // Post-submit read-only view
+  // Check if today is a standup day
+  if (teamSchedule && !submitted) {
+    const dayMap: Record<number, string> = { 0: "sun", 1: "mon", 2: "tue", 3: "wed", 4: "thu", 5: "fri", 6: "sat" };
+    const tz = teamSchedule.standup_timezone || "UTC";
+    const nowInTz = new Date(new Date().toLocaleString("en-US", { timeZone: tz }));
+    const todayCode = dayMap[nowInTz.getDay()];
+    const standupDays = teamSchedule.standup_days || [];
+    const dayModes = (teamSchedule as any).standup_day_modes || {};
+    const todayMode = dayModes[todayCode] || "async";
+
+    if (!standupDays.includes(todayCode)) {
+      // Find next standup day
+      const dayOrder = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+      const todayIdx = dayOrder.indexOf(todayCode);
+      let nextDay = "";
+      for (let i = 1; i <= 7; i++) {
+        const candidate = dayOrder[(todayIdx + i) % 7];
+        if (standupDays.includes(candidate)) {
+          nextDay = candidate.charAt(0).toUpperCase() + candidate.slice(1);
+          break;
+        }
+      }
+
+      return (
+        <div className="max-w-3xl mx-auto p-6 space-y-6">
+          <h1 className="text-2xl font-bold text-foreground">My Standup</h1>
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12 text-center space-y-3">
+              <CalendarOff className="h-10 w-10 text-muted-foreground/50" />
+              <h2 className="text-lg font-semibold text-foreground">No standup today</h2>
+              <p className="text-sm text-muted-foreground">
+                {nextDay ? `Next standup is on ${nextDay}.` : "No standup days configured."}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+
+    if (todayMode === "physical") {
+      return (
+        <div className="max-w-3xl mx-auto p-6 space-y-6">
+          <h1 className="text-2xl font-bold text-foreground">My Standup</h1>
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12 text-center space-y-4">
+              <Users className="h-10 w-10 text-primary/60" />
+              <h2 className="text-lg font-semibold text-foreground">Today is a live meeting standup</h2>
+              <p className="text-sm text-muted-foreground">
+                Your team has a physical standup scheduled. Use Meeting Mode to run it.
+              </p>
+              <Button onClick={() => navigate("/meeting")}>
+                Start Meeting
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+  }
+
   if (submitted && !isEditing) {
     return (
       <div className="max-w-3xl mx-auto p-6 space-y-6">
