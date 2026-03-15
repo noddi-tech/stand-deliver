@@ -7,8 +7,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { User } from "lucide-react";
 import { MemberBadgeIcons } from "@/components/badges/MemberBadgeIcons";
 import { BadgeLegend } from "@/components/badges/BadgeLegend";
+import { InlineFocusBar } from "@/components/analytics/FocusAlignment";
 import type { MemberStat, MemberHighlight } from "@/hooks/useTeamSummary";
 import type { MemberBadge, BadgeDefinition } from "@/hooks/useBadges";
+import type { ClassificationResult, TeamFocusItem } from "@/hooks/useTeamFocus";
 
 const SENTIMENT_CONFIG: Record<string, { label: string; className: string }> = {
   strong: { label: "Strong week", className: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" },
@@ -28,6 +30,8 @@ interface MemberBreakdownProps {
     reviewsGiven: number;
     avgPRCycleTime: number | null;
   }>;
+  classification?: ClassificationResult;
+  focusItems?: TeamFocusItem[];
   loading?: boolean;
 }
 
@@ -37,6 +41,8 @@ export function MemberBreakdown({
   teamBadges,
   badgeLookup,
   enrichedMembers,
+  classification,
+  focusItems,
   loading,
 }: MemberBreakdownProps) {
   const [showAll, setShowAll] = useState(false);
@@ -69,6 +75,21 @@ export function MemberBreakdown({
       </Card>
     );
   }
+
+  // Build focus color map for inline bars
+  const FOCUS_COLORS = [
+    "hsl(217, 91%, 60%)", "hsl(160, 84%, 39%)", "hsl(280, 67%, 55%)",
+    "hsl(43, 96%, 56%)", "hsl(340, 82%, 52%)", "hsl(190, 90%, 40%)",
+  ];
+  const focusColorMap: Record<string, string> = {};
+  (focusItems || []).forEach((item, i) => {
+    focusColorMap[item.label] = FOCUS_COLORS[i % FOCUS_COLORS.length];
+  });
+  focusColorMap["Unaligned"] = "hsl(215, 16%, 80%)";
+
+  const getMemberBreakdown = (name: string) => {
+    return classification?.memberBreakdowns?.find((mb) => mb.memberName === name)?.breakdown;
+  };
 
   if (!memberStats.length) return null;
 
@@ -135,6 +156,10 @@ export function MemberBreakdown({
                     </div>
                     <Progress value={m.commitments.completionRate} className="h-1.5" />
                   </div>
+
+                  {getMemberBreakdown(m.name) && (
+                    <InlineFocusBar breakdown={getMemberBreakdown(m.name)!} colorMap={focusColorMap} />
+                  )}
 
                   {highlight && (
                     <p className="text-xs text-muted-foreground italic leading-snug">

@@ -15,6 +15,8 @@ import { useTeamSummary } from "@/hooks/useTeamSummary";
 import { useEnrichedTeamMetrics } from "@/hooks/useEnrichedAnalytics";
 import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
 import { MemberBreakdown } from "@/components/team/MemberBreakdown";
+import { useTeamFocusItems, useContributionClassification } from "@/hooks/useTeamFocus";
+import { FocusAlignment } from "@/components/analytics/FocusAlignment";
 
 
 const WORK_TYPE_LABELS: Record<string, string> = {
@@ -33,6 +35,8 @@ export default function Analytics() {
   const { data: enriched, isLoading: enrichedLoading } = useEnrichedTeamMetrics(teamId);
   const { data: teamBadges } = useTeamBadges(teamId);
   const badgeLookup = useBadgeLookup();
+  const { data: focusItems } = useTeamFocusItems(teamId);
+  const { data: classification, isLoading: classificationLoading, refetch: refetchClassification } = useContributionClassification(teamId, (focusItems?.length ?? 0) > 0);
   const loading = teamLoading || isLoading;
 
   const analysis = summaryData?.analysis;
@@ -136,6 +140,14 @@ export default function Analytics() {
         </div>
       )}
 
+      {/* Focus Alignment — always shown on Analytics */}
+      <FocusAlignment
+        focusItems={focusItems || []}
+        classification={classification}
+        classificationLoading={classificationLoading}
+        onRefresh={() => refetchClassification()}
+      />
+
       {/* Member Breakdown */}
       <MemberBreakdown
         memberStats={memberStats}
@@ -143,6 +155,8 @@ export default function Analytics() {
         teamBadges={teamBadges}
         badgeLookup={badgeLookup}
         enrichedMembers={enriched?.members}
+        classification={classification}
+        focusItems={focusItems}
         loading={summaryLoading}
       />
 

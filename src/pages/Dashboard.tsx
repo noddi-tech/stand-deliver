@@ -7,6 +7,8 @@ import { useRecentActivity } from "@/hooks/useRecentActivity";
 import { useSkipStandup } from "@/hooks/useSkipStandup";
 import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
 import { MemberBreakdown } from "@/components/team/MemberBreakdown";
+import { useTeamFocusItems, useContributionClassification } from "@/hooks/useTeamFocus";
+import { FocusAlignment } from "@/components/analytics/FocusAlignment";
 
 import { useTeamSummary } from "@/hooks/useTeamSummary";
 import { useEnrichedTeamMetrics } from "@/hooks/useEnrichedAnalytics";
@@ -61,6 +63,9 @@ export default function Dashboard() {
   const badgeLookup = useBadgeLookup();
   const { data: summaryData, isLoading: summaryLoading } = useTeamSummary(teamId);
   const { data: enriched } = useEnrichedTeamMetrics(teamId);
+  const { data: focusItems } = useTeamFocusItems(teamId);
+  const hasFocusItems = (focusItems?.length ?? 0) > 0;
+  const { data: classification, isLoading: classificationLoading, refetch: refetchClassification } = useContributionClassification(teamId, hasFocusItems);
   const [sourceFilter, setSourceFilter] = useState<string>("all");
 
   const handleSkip = () => {
@@ -160,6 +165,18 @@ export default function Dashboard() {
         {standupButton()}
       </div>
 
+      {/* Focus Alignment — only when focus items exist */}
+      {hasFocusItems && (
+        <section>
+          <FocusAlignment
+            focusItems={focusItems!}
+            classification={classification}
+            classificationLoading={classificationLoading}
+            onRefresh={() => refetchClassification()}
+          />
+        </section>
+      )}
+
       {/* Member Breakdown (AI-powered) */}
       <section>
         <MemberBreakdown
@@ -168,6 +185,8 @@ export default function Dashboard() {
           teamBadges={teamBadges}
           badgeLookup={badgeLookup}
           enrichedMembers={enriched?.members}
+          classification={classification}
+          focusItems={focusItems}
           loading={summaryLoading}
         />
       </section>
