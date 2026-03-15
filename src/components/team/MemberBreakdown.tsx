@@ -157,6 +157,10 @@ export function MemberBreakdown({
                     <Progress value={m.commitments.completionRate} className="h-1.5" />
                   </div>
 
+                  {getMemberBreakdown(m.name) && (
+                    <InlineFocusBar breakdown={getMemberBreakdown(m.name)!} colorMap={focusColorMap} />
+                  )}
+
                   {highlight && (
                     <p className="text-xs text-muted-foreground italic leading-snug">
                       "{highlight.highlight}"

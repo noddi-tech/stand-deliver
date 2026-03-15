@@ -165,6 +165,18 @@ export default function Dashboard() {
         {standupButton()}
       </div>
 
+      {/* Focus Alignment — only when focus items exist */}
+      {hasFocusItems && (
+        <section>
+          <FocusAlignment
+            focusItems={focusItems!}
+            classification={classification}
+            classificationLoading={classificationLoading}
+            onRefresh={() => refetchClassification()}
+          />
+        </section>
+      )}
+
       {/* Member Breakdown (AI-powered) */}
       <section>
         <MemberBreakdown
@@ -173,6 +185,8 @@ export default function Dashboard() {
           teamBadges={teamBadges}
           badgeLookup={badgeLookup}
           enrichedMembers={enriched?.members}
+          classification={classification}
+          focusItems={focusItems}
           loading={summaryLoading}
         />
       </section>

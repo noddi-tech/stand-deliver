@@ -140,6 +140,14 @@ export default function Analytics() {
         </div>
       )}
 
+      {/* Focus Alignment — always shown on Analytics */}
+      <FocusAlignment
+        focusItems={focusItems || []}
+        classification={classification}
+        classificationLoading={classificationLoading}
+        onRefresh={() => refetchClassification()}
+      />
+
       {/* Member Breakdown */}
       <MemberBreakdown
         memberStats={memberStats}
@@ -147,6 +155,8 @@ export default function Analytics() {
         teamBadges={teamBadges}
         badgeLookup={badgeLookup}
         enrichedMembers={enriched?.members}
+        classification={classification}
+        focusItems={focusItems}
         loading={summaryLoading}
       />
 

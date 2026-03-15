@@ -5,6 +5,7 @@ import { TeamTab } from "@/components/settings/TeamTab";
 import { ScheduleTab } from "@/components/settings/ScheduleTab";
 import { MembersTab } from "@/components/settings/MembersTab";
 import { NotificationsTab } from "@/components/settings/NotificationsTab";
+import { FocusTab } from "@/components/settings/FocusTab";
 
 export default function Settings() {
   const [searchParams] = useSearchParams();
@@ -17,12 +18,14 @@ export default function Settings() {
         <Tabs defaultValue={defaultTab} className="space-y-6">
           <TabsList className="bg-muted">
             <TabsTrigger value="team">Team</TabsTrigger>
+            <TabsTrigger value="focus">Focus</TabsTrigger>
             <TabsTrigger value="schedule">Schedule</TabsTrigger>
             <TabsTrigger value="members">Members</TabsTrigger>
             <TabsTrigger value="notifications">Notifications</TabsTrigger>
             <TabsTrigger value="integrations">Integrations</TabsTrigger>
           </TabsList>
           <TabsContent value="team"><TeamTab /></TabsContent>
+          <TabsContent value="focus"><FocusTab /></TabsContent>
           <TabsContent value="schedule"><ScheduleTab /></TabsContent>
           <TabsContent value="members"><MembersTab /></TabsContent>
           <TabsContent value="notifications"><NotificationsTab /></TabsContent>
