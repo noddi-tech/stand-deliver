@@ -8,6 +8,8 @@ export interface TeamFocusItem {
   label: string;
   description: string | null;
   is_active: boolean;
+  starts_at: string | null;
+  ends_at: string | null;
   created_at: string;
   updated_at: string;
 }
