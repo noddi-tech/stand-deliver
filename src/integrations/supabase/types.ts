@@ -1050,9 +1050,11 @@ export type Database = {
         Row: {
           created_at: string
           description: string | null
+          ends_at: string | null
           id: string
           is_active: boolean
           label: string
+          starts_at: string | null
           team_id: string
           title: string
           updated_at: string
@@ -1060,9 +1062,11 @@ export type Database = {
         Insert: {
           created_at?: string
           description?: string | null
+          ends_at?: string | null
           id?: string
           is_active?: boolean
           label: string
+          starts_at?: string | null
           team_id: string
           title: string
           updated_at?: string
@@ -1070,9 +1074,11 @@ export type Database = {
         Update: {
           created_at?: string
           description?: string | null
+          ends_at?: string | null
           id?: string
           is_active?: boolean
           label?: string
+          starts_at?: string | null
           team_id?: string
           title?: string
           updated_at?: string
