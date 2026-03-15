@@ -59,6 +59,7 @@ export function ScheduleTab() {
         setStandupTime(team.standup_time?.slice(0, 5) || "09:00");
         setTimezone(team.standup_timezone);
         setTimerSeconds(team.timer_seconds_per_person);
+        setDayModes((team as any).standup_day_modes || {});
       }
       setLoading(false);
     })();
