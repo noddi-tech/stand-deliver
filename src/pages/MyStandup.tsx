@@ -74,10 +74,25 @@ function SkipTodayButton({ memberId, teamId }: { memberId: string; teamId: strin
 
 export default function MyStandup() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: teamData, isLoading: teamLoading } = useUserTeam();
   const memberId = teamData?.id;
   const teamId = teamData?.team_id;
+
+  // Fetch team schedule info
+  const { data: teamSchedule } = useQuery({
+    queryKey: ["team-schedule", teamId],
+    enabled: !!teamId,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("teams")
+        .select("standup_days, standup_timezone, standup_day_modes")
+        .eq("id", teamId!)
+        .single();
+      return data;
+    },
+  });
 
   const [newFocusTitle, setNewFocusTitle] = useState("");
   const [newFocusPriority, setNewFocusPriority] = useState<CommitmentPriority>("medium");
