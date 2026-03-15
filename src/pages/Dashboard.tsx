@@ -63,6 +63,9 @@ export default function Dashboard() {
   const badgeLookup = useBadgeLookup();
   const { data: summaryData, isLoading: summaryLoading } = useTeamSummary(teamId);
   const { data: enriched } = useEnrichedTeamMetrics(teamId);
+  const { data: focusItems } = useTeamFocusItems(teamId);
+  const hasFocusItems = (focusItems?.length ?? 0) > 0;
+  const { data: classification, isLoading: classificationLoading, refetch: refetchClassification } = useContributionClassification(teamId, hasFocusItems);
   const [sourceFilter, setSourceFilter] = useState<string>("all");
 
   const handleSkip = () => {
