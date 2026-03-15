@@ -78,6 +78,10 @@ Deno.serve(async (req) => {
           .insert({ team_id: team.id, session_date: today, status: "collecting" });
       }
 
+      // Determine today's session mode
+      const dayModes = (team as any).standup_day_modes || {};
+      const todayMode = dayModes[teamDay] || "async";
+
       // Call slack-send-reminder for this team
       const functionUrl = `${Deno.env.get("SUPABASE_URL")}/functions/v1/slack-send-reminder`;
       const res = await fetch(functionUrl, {
@@ -86,11 +90,11 @@ Deno.serve(async (req) => {
           "Content-Type": "application/json",
           Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
         },
-        body: JSON.stringify({ team_id: team.id }),
+        body: JSON.stringify({ team_id: team.id, day_mode: todayMode }),
       });
 
       const result = await res.json();
-      console.log(`Reminder for team ${team.name}: sent=${result.sent || 0}`);
+      console.log(`Reminder for team ${team.name}: sent=${result.sent || 0}, mode=${todayMode}`);
       triggered++;
     }
 
