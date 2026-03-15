@@ -81,7 +81,8 @@ export function ScheduleTab() {
         standup_time: standupTime + ":00",
         standup_timezone: timezone,
         timer_seconds_per_person: timerSeconds,
-      })
+        standup_day_modes: dayModes,
+      } as any)
       .eq("id", teamId);
 
     setSaving(false);
