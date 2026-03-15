@@ -76,9 +76,26 @@ serve(async (req) => {
       .limit(200);
 
     // 5. Build context for AI
-    const focusDescriptions = focusItems.map(
-      (f: any) => `- "${f.title}" [label: ${f.label}]${f.description ? ` — ${f.description}` : ""}`
-    ).join("\n");
+    const now = new Date();
+    const focusDescriptions = focusItems.map((f: any) => {
+      let line = `- "${f.title}" [label: ${f.label}]`;
+      if (f.description) line += ` — ${f.description}`;
+      if (f.starts_at || f.ends_at) {
+        const start = f.starts_at ? new Date(f.starts_at) : null;
+        const end = f.ends_at ? new Date(f.ends_at) : null;
+        if (start && end) {
+          line += ` (${start.toLocaleDateString()} – ${end.toLocaleDateString()})`;
+          if (end < now) line += " [EXPIRED]";
+        } else if (end) {
+          line += ` (deadline: ${end.toLocaleDateString()})`;
+          if (end < now) line += " [EXPIRED]";
+        } else if (start) {
+          line += ` (starting: ${start.toLocaleDateString()})`;
+          if (start > now) line += " [NOT YET STARTED]";
+        }
+      }
+      return line;
+    }).join("\n");
 
     const memberActivities: Record<string, string[]> = {};
     for (const mid of memberIds) {

@@ -15,6 +15,21 @@ import {
   type TeamFocusItem,
 } from "@/hooks/useTeamFocus";
 import { toast } from "@/hooks/use-toast";
+import { format } from "date-fns";
+
+function formatDateRange(item: TeamFocusItem) {
+  const start = item.starts_at ? new Date(item.starts_at) : null;
+  const end = item.ends_at ? new Date(item.ends_at) : null;
+  if (start && end) return `${format(start, "MMM d")} – ${format(end, "MMM d")}`;
+  if (end) return `Until ${format(end, "MMM d")}`;
+  if (start) return `From ${format(start, "MMM d")}`;
+  return null;
+}
+
+function isPastEnd(item: TeamFocusItem) {
+  if (!item.ends_at) return false;
+  return new Date(item.ends_at) < new Date();
+}
 
 export function FocusTab() {
   const { data: team } = useUserTeam();
@@ -30,29 +45,38 @@ export function FocusTab() {
   const [title, setTitle] = useState("");
   const [label, setLabel] = useState("");
   const [description, setDescription] = useState("");
+  const [startsAt, setStartsAt] = useState("");
+  const [endsAt, setEndsAt] = useState("");
 
   const activeItems = items?.filter((i) => i.is_active) || [];
   const archivedItems = items?.filter((i) => !i.is_active) || [];
-
-  // Collect unique labels for suggestions
   const existingLabels = [...new Set(items?.map((i) => i.label) || [])];
 
   const resetForm = () => {
     setTitle("");
     setLabel("");
     setDescription("");
+    setStartsAt("");
+    setEndsAt("");
     setShowForm(false);
     setEditingId(null);
   };
 
   const handleSubmit = async () => {
     if (!title.trim() || !label.trim()) return;
+    const payload = {
+      title,
+      label,
+      description: description || undefined,
+      starts_at: startsAt ? new Date(startsAt).toISOString() : null,
+      ends_at: endsAt ? new Date(endsAt).toISOString() : null,
+    };
     try {
       if (editingId) {
-        await updateMutation.mutateAsync({ id: editingId, title, label, description: description || undefined });
+        await updateMutation.mutateAsync({ id: editingId, ...payload });
         toast({ title: "Focus item updated" });
       } else {
-        await addMutation.mutateAsync({ title, label, description: description || undefined });
+        await addMutation.mutateAsync(payload);
         toast({ title: "Focus item added" });
       }
       resetForm();
@@ -66,6 +90,8 @@ export function FocusTab() {
     setTitle(item.title);
     setLabel(item.label);
     setDescription(item.description || "");
+    setStartsAt(item.starts_at ? item.starts_at.split("T")[0] : "");
+    setEndsAt(item.ends_at ? item.ends_at.split("T")[0] : "");
     setShowForm(true);
   };
 
@@ -122,29 +148,41 @@ export function FocusTab() {
             </div>
           )}
 
-          {activeItems.map((item) => (
-            <div key={item.id} className="flex items-start gap-3 p-3 rounded-lg border border-border bg-card">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <p className="text-sm font-medium text-foreground">{item.title}</p>
-                  <Badge variant="secondary" className="text-[10px]">{item.label}</Badge>
+          {activeItems.map((item) => {
+            const dateLabel = formatDateRange(item);
+            const expired = isPastEnd(item);
+            return (
+              <div
+                key={item.id}
+                className={`flex items-start gap-3 p-3 rounded-lg border border-border bg-card ${expired ? "opacity-50" : ""}`}
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <p className="text-sm font-medium text-foreground">{item.title}</p>
+                    <Badge variant="secondary" className="text-[10px]">{item.label}</Badge>
+                    {dateLabel && (
+                      <span className={`text-[10px] ${expired ? "text-destructive" : "text-muted-foreground"}`}>
+                        {expired ? `Ended ${dateLabel.replace("Until ", "")}` : dateLabel}
+                      </span>
+                    )}
+                  </div>
+                  {item.description && (
+                    <p className="text-xs text-muted-foreground">{item.description}</p>
+                  )}
                 </div>
-                {item.description && (
-                  <p className="text-xs text-muted-foreground">{item.description}</p>
+                {isLead && (
+                  <div className="flex gap-1 shrink-0">
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => startEdit(item)}>
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => handleArchive(item.id)}>
+                      <Archive className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 )}
               </div>
-              {isLead && (
-                <div className="flex gap-1 shrink-0">
-                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => startEdit(item)}>
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => handleArchive(item.id)}>
-                    <Archive className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              )}
-            </div>
-          ))}
+            );
+          })}
 
           {isLead && activeItems.length > 0 && !showForm && (
             <Button size="sm" variant="outline" onClick={() => setShowForm(true)}>
@@ -188,6 +226,26 @@ export function FocusTab() {
                 onChange={(e) => setDescription(e.target.value)}
                 className="text-sm min-h-[60px]"
               />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Starts (optional)</label>
+                  <Input
+                    type="date"
+                    value={startsAt}
+                    onChange={(e) => setStartsAt(e.target.value)}
+                    className="text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Ends (optional)</label>
+                  <Input
+                    type="date"
+                    value={endsAt}
+                    onChange={(e) => setEndsAt(e.target.value)}
+                    className="text-sm"
+                  />
+                </div>
+              </div>
               <div className="flex gap-2">
                 <Button size="sm" onClick={handleSubmit} disabled={!title.trim() || !label.trim()}>
                   {editingId ? "Update" : "Add"}
