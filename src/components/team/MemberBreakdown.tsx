@@ -30,6 +30,8 @@ interface MemberBreakdownProps {
     reviewsGiven: number;
     avgPRCycleTime: number | null;
   }>;
+  classification?: ClassificationResult;
+  focusItems?: TeamFocusItem[];
   loading?: boolean;
 }
 
