@@ -942,6 +942,11 @@ export default function MyStandup() {
                             carried {c.carry_count}x {c.carry_count >= 2 ? "⚠️" : ""}
                           </Badge>
                         )}
+                        {c.resolution_note?.startsWith("Auto-resolved") && (
+                          <Badge variant="outline" className="text-[10px] text-primary border-primary/30">
+                            Auto-resolved ✓
+                          </Badge>
+                        )}
                         <span className="text-[10px] text-muted-foreground flex items-center gap-1">
                           <Clock className="h-3 w-3" />
                           {formatDistanceToNow(new Date(c.created_at), { addSuffix: true })}
