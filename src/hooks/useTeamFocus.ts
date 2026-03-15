@@ -8,6 +8,8 @@ export interface TeamFocusItem {
   label: string;
   description: string | null;
   is_active: boolean;
+  starts_at: string | null;
+  ends_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -68,7 +70,7 @@ export function useAllTeamFocusItems(teamId: string | undefined) {
 export function useAddFocusItem(teamId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (item: { title: string; label: string; description?: string }) => {
+    mutationFn: async (item: { title: string; label: string; description?: string; starts_at?: string | null; ends_at?: string | null }) => {
       const { data, error } = await supabase
         .from("team_focus" as any)
         .insert({ team_id: teamId!, ...item } as any)
@@ -87,7 +89,7 @@ export function useAddFocusItem(teamId: string | undefined) {
 export function useUpdateFocusItem(teamId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, ...updates }: { id: string; title?: string; label?: string; description?: string; is_active?: boolean }) => {
+    mutationFn: async ({ id, ...updates }: { id: string; title?: string; label?: string; description?: string; is_active?: boolean; starts_at?: string | null; ends_at?: string | null }) => {
       const { error } = await supabase
         .from("team_focus" as any)
         .update({ ...updates, updated_at: new Date().toISOString() } as any)
