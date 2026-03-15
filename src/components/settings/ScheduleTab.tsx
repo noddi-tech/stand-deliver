@@ -32,6 +32,7 @@ export function ScheduleTab() {
   const [standupTime, setStandupTime] = useState("09:00");
   const [timezone, setTimezone] = useState("UTC");
   const [timerSeconds, setTimerSeconds] = useState(120);
+  const [dayModes, setDayModes] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!user) return;
