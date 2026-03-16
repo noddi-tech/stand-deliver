@@ -521,10 +521,6 @@ export default function MyStandup() {
 
   const handleSubmit = async () => {
     if (!memberId || !teamId) return;
-    if (!mood) {
-      toast.error("Please select your mood");
-      return;
-    }
     if (todayCommitments.length === 0) {
       toast.error("Add at least one focus item for today");
       return;
