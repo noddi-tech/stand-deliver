@@ -349,6 +349,48 @@ export default function MyStandup() {
       const { error } = await supabase.from("commitments").update(updates).eq("id", id);
       if (error) throw error;
     },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["previous-commitments"] });
+    },
+  });
+
+  // Direct-save mutation for adding commitments outside standup submission
+  const addDirectCommitmentMutation = useMutation({
+    mutationFn: async ({ title, priority }: { title: string; priority: CommitmentPriority }) => {
+      if (!memberId || !teamId) throw new Error("Missing member/team");
+      const today = format(new Date(), "yyyy-MM-dd");
+      let sessionId: string;
+      const { data: existingSession } = await supabase
+        .from("standup_sessions")
+        .select("id")
+        .eq("team_id", teamId)
+        .eq("session_date", today)
+        .maybeSingle();
+      if (existingSession) {
+        sessionId = existingSession.id;
+      } else {
+        const { data: newSession, error } = await supabase
+          .from("standup_sessions")
+          .insert({ team_id: teamId, session_date: today, status: "collecting" })
+          .select("id")
+          .single();
+        if (error) throw error;
+        sessionId = newSession.id;
+      }
+      const { error } = await supabase.from("commitments").insert({
+        title,
+        priority,
+        member_id: memberId,
+        team_id: teamId,
+        origin_session_id: sessionId,
+        current_session_id: sessionId,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["previous-commitments"] });
+      queryClient.invalidateQueries({ queryKey: ["existing-response-today"] });
+    },
   });
 
   const handleStatusChange = (id: string, status: CommitmentStatus) => {
