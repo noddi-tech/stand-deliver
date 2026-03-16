@@ -72,10 +72,6 @@ Deno.serve(async (req) => {
     let responseText = "";
 
     switch (actionId) {
-      case "start_standup": {
-        responseText = "✅ Great! Head to StandFlow to complete your standup.";
-        break;
-      }
       case "snooze_standup": {
         responseText = "⏰ Snoozed! I'll remind you in 30 minutes.";
         break;
