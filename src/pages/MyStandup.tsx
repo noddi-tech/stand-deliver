@@ -674,6 +674,27 @@ export default function MyStandup() {
           });
       }
 
+      // Fire-and-forget: classify standup commitments for VIS
+      if (memberId && teamId) {
+        const commitmentItems = todayCommitments.map((c, i) => ({
+          id: c.existingId || `standup-${sessionId}-${i}`,
+          source_type: "commitment" as const,
+          source: "standup",
+          activity_type: "commitment",
+          title: c.title,
+          member_id: memberId,
+        }));
+        if (commitmentItems.length > 0) {
+          supabase.functions
+            .invoke("ai-classify-contributions", {
+              body: { team_id: teamId, items: commitmentItems },
+            })
+            .then(({ error: classErr }) => {
+              if (classErr) console.error("VIS standup classification failed:", classErr);
+            });
+        }
+      }
+
       toast.success(existingResponseId ? "Standup updated! ✏️" : "Standup submitted! 🎉");
       queryClient.invalidateQueries({ queryKey: ["previous-commitments"] });
       queryClient.invalidateQueries({ queryKey: ["existing-response-today"] });

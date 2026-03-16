@@ -955,6 +955,70 @@ Deno.serve(async (req) => {
     }
     console.log("Badge detection results:", badgeResults);
 
+    // ─── VIS CLASSIFY: Trigger impact classification for synced activities ───
+    if (Date.now() - requestStart < TIME_BUDGET_MS - 10_000) {
+      for (const tid of teamsWithActivity) {
+        try {
+          // Fetch recent unclassified external_activity for this team from this sync
+          const { data: unclassified } = await supabaseAdmin
+            .from("external_activity")
+            .select("id, member_id, source, activity_type, title, metadata")
+            .eq("team_id", tid)
+            .gte("created_at", new Date(requestStart).toISOString())
+            .order("created_at", { ascending: false })
+            .limit(100);
+
+          if (!unclassified || unclassified.length === 0) continue;
+
+          // Check which are already classified
+          const activityIds = unclassified.map((a) => a.id);
+          const { data: existing } = await supabaseAdmin
+            .from("impact_classifications")
+            .select("activity_id")
+            .in("activity_id", activityIds)
+            .eq("source_type", "external_activity");
+
+          const existingIds = new Set((existing || []).map((e: any) => e.activity_id));
+          const toClassify = unclassified
+            .filter((a) => !existingIds.has(a.id))
+            .map((a) => ({
+              id: a.id,
+              source_type: "external_activity" as const,
+              source: a.source,
+              activity_type: a.activity_type,
+              title: a.title,
+              metadata: a.metadata,
+              member_id: a.member_id,
+            }));
+
+          if (toClassify.length === 0) continue;
+
+          // Batch in groups of 20
+          for (let b = 0; b < toClassify.length; b += 20) {
+            const batch = toClassify.slice(b, b + 20);
+            try {
+              await fetch(
+                `${Deno.env.get("SUPABASE_URL")}/functions/v1/ai-classify-contributions`,
+                {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({ team_id: tid, items: batch }),
+                }
+              );
+            } catch (classifyErr) {
+              console.error(`VIS classification batch failed for team ${tid}:`, classifyErr);
+            }
+          }
+          console.log(`VIS: queued ${toClassify.length} items for classification (team ${tid})`);
+        } catch (visErr) {
+          console.error(`VIS classification failed for team ${tid}:`, visErr);
+        }
+      }
+    }
+
     // If triggered by cron and there are more users, self-invoke to continue
     if (isCronTrigger && hasMore && nextOffset < totalUsers) {
       console.log(`Cron continuation: processed ${nextOffset}/${totalUsers}, invoking next batch`);

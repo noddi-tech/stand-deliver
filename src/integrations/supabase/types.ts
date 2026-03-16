@@ -597,6 +597,73 @@ export type Database = {
           },
         ]
       }
+      impact_classifications: {
+        Row: {
+          activity_id: string
+          created_at: string
+          focus_alignment: string
+          focus_item_id: string | null
+          id: string
+          impact_score: number
+          impact_tier: string
+          member_id: string
+          reasoning: string | null
+          source_type: string
+          team_id: string
+          value_type: string
+        }
+        Insert: {
+          activity_id: string
+          created_at?: string
+          focus_alignment?: string
+          focus_item_id?: string | null
+          id?: string
+          impact_score?: number
+          impact_tier: string
+          member_id: string
+          reasoning?: string | null
+          source_type: string
+          team_id: string
+          value_type: string
+        }
+        Update: {
+          activity_id?: string
+          created_at?: string
+          focus_alignment?: string
+          focus_item_id?: string | null
+          id?: string
+          impact_score?: number
+          impact_tier?: string
+          member_id?: string
+          reasoning?: string | null
+          source_type?: string
+          team_id?: string
+          value_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "impact_classifications_focus_item_id_fkey"
+            columns: ["focus_item_id"]
+            isOneToOne: false
+            referencedRelation: "team_focus"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "impact_classifications_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "team_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "impact_classifications_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       member_badges: {
         Row: {
           badge_id: string
@@ -1187,6 +1254,66 @@ export type Database = {
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      weekly_vis_scores: {
+        Row: {
+          breakdown: Json
+          created_at: string
+          delivery_score: number
+          focus_ratio: number
+          id: string
+          member_id: string
+          multiplier_score: number
+          normalized_impact: number
+          raw_impact: number
+          team_id: string
+          vis_total: number
+          week_start: string
+        }
+        Insert: {
+          breakdown?: Json
+          created_at?: string
+          delivery_score?: number
+          focus_ratio?: number
+          id?: string
+          member_id: string
+          multiplier_score?: number
+          normalized_impact?: number
+          raw_impact?: number
+          team_id: string
+          vis_total?: number
+          week_start: string
+        }
+        Update: {
+          breakdown?: Json
+          created_at?: string
+          delivery_score?: number
+          focus_ratio?: number
+          id?: string
+          member_id?: string
+          multiplier_score?: number
+          normalized_impact?: number
+          raw_impact?: number
+          team_id?: string
+          vis_total?: number
+          week_start?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "weekly_vis_scores_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "team_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "weekly_vis_scores_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
             referencedColumns: ["id"]
           },
         ]
