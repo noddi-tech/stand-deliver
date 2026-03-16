@@ -801,14 +801,75 @@ export default function MyStandup() {
               Cancel
             </Button>
           )}
-          {!isEditing && !submitted && memberId && teamId && (
+          {submitted && !isEditing && (
+            <Button variant="outline" size="sm" onClick={startEditMode}>
+              <Edit2 className="h-4 w-4 mr-1" /> Edit Standup
+            </Button>
+          )}
+          {showStandupForm && memberId && teamId && (
             <SkipTodayButton memberId={memberId} teamId={teamId} />
           )}
         </div>
       </div>
 
-      {/* AI-Powered Focus Suggestions */}
-      {!isEditing && !submitted && aiSuggestions && aiSuggestions.length > 0 && (
+      {/* Info Banners */}
+      {!scheduleInfo.isStandupDay && (
+        <Card className="border-muted">
+          <CardContent className="flex items-center gap-3 py-4">
+            <CalendarOff className="h-5 w-5 text-muted-foreground shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-foreground">No standup scheduled today</p>
+              <p className="text-xs text-muted-foreground">
+                {scheduleInfo.nextDay ? `Next standup: ${scheduleInfo.nextDay}.` : "No standup days configured."}{" "}
+                You can still manage your commitments below.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {scheduleInfo.isStandupDay && scheduleInfo.todayMode === "physical" && (
+        <Card className="border-primary/30">
+          <CardContent className="flex items-center justify-between gap-3 py-4">
+            <div className="flex items-center gap-3">
+              <Users className="h-5 w-5 text-primary shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-foreground">Today is a live meeting standup</p>
+                <p className="text-xs text-muted-foreground">Use Meeting Mode to run it. You can still manage commitments below.</p>
+              </div>
+            </div>
+            <Button size="sm" onClick={() => navigate("/meeting")}>Start Meeting</Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {submitted && !isEditing && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="py-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-primary shrink-0" />
+              <p className="text-sm font-medium text-foreground">Standup submitted today</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              {mood && (
+                <div>
+                  <p className="text-xs text-muted-foreground">Mood</p>
+                  <span>{moods.find((m) => m.value === mood)?.emoji} {moods.find((m) => m.value === mood)?.label}</span>
+                </div>
+              )}
+              {blockersText && (
+                <div>
+                  <p className="text-xs text-destructive font-medium">Blockers</p>
+                  <p className="text-foreground/80 whitespace-pre-line">{blockersText}</p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* AI-Powered Focus Suggestions - only during standup form */}
+      {showStandupForm && aiSuggestions && aiSuggestions.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
