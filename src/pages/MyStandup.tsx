@@ -34,15 +34,6 @@ import type { Database } from "@/integrations/supabase/types";
 
 type CommitmentStatus = Database["public"]["Enums"]["commitment_status"];
 type CommitmentPriority = Database["public"]["Enums"]["commitment_priority"];
-type MoodType = Database["public"]["Enums"]["mood_type"];
-
-const moods: { value: MoodType; emoji: string; label: string }[] = [
-  { value: "great", emoji: "🚀", label: "Great" },
-  { value: "good", emoji: "👍", label: "Good" },
-  { value: "okay", emoji: "😐", label: "Okay" },
-  { value: "struggling", emoji: "😓", label: "Struggling" },
-  { value: "rough", emoji: "😰", label: "Rough" },
-];
 
 const priorityColors: Record<CommitmentPriority, string> = {
   high: "text-destructive border-destructive/30",
