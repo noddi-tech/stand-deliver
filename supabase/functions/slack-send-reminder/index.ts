@@ -103,8 +103,7 @@ Deno.serve(async (req) => {
               type: "button",
               text: { type: "plain_text", text: "▶️ Start Standup" },
               style: "primary",
-              action_id: "start_standup",
-              value: JSON.stringify({ team_id, member_id: member.id }),
+              url: "https://standup-flow-app.lovable.app/my-standup",
             },
             {
               type: "button",
