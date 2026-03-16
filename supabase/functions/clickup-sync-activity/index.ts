@@ -197,6 +197,52 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ─── VIS CLASSIFY: Batch classification for all ClickUp activity ───
+    for (const tid of teamsWithActivity) {
+      try {
+        const { data: recentActivity } = await supabaseAdmin
+          .from("external_activity")
+          .select("id, activity_type, title, member_id, metadata, source")
+          .eq("team_id", tid)
+          .eq("source", "clickup")
+          .gte("created_at", new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString());
+
+        if (!recentActivity || recentActivity.length === 0) continue;
+
+        const toClassify = recentActivity.map((a) => ({
+          id: a.id,
+          source_type: "external_activity" as const,
+          source: a.source,
+          activity_type: a.activity_type,
+          title: a.title,
+          metadata: a.metadata as Record<string, any> | undefined,
+          member_id: a.member_id,
+        }));
+
+        for (let b = 0; b < toClassify.length; b += 20) {
+          const batch = toClassify.slice(b, b + 20);
+          try {
+            await fetch(
+              `${Deno.env.get("SUPABASE_URL")}/functions/v1/ai-classify-contributions`,
+              {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ team_id: tid, items: batch }),
+              }
+            );
+            console.log(`VIS: classified ${batch.length} ClickUp items for team ${tid}`);
+          } catch (batchErr) {
+            console.error(`VIS batch classification error for team ${tid}:`, batchErr);
+          }
+        }
+      } catch (visErr) {
+        console.error(`VIS ClickUp classification error for team ${tid}:`, visErr);
+      }
+    }
+
     return new Response(JSON.stringify({ results }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
