@@ -744,22 +744,6 @@ export default function MyStandup() {
     setMood(null);
   };
 
-  if (teamLoading || commitmentsLoading || existingLoading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  if (!teamData) {
-    return (
-      <div className="p-8 text-center text-muted-foreground">
-        You're not part of a team yet. Ask your admin to add you.
-      </div>
-    );
-  }
-
   // Compute schedule state (used for banners, not blocking)
   const scheduleInfo = useMemo(() => {
     if (!teamSchedule) return { isStandupDay: true, todayMode: "async" as string, nextDay: "" };
@@ -788,6 +772,22 @@ export default function MyStandup() {
   }, [teamSchedule]);
 
   const showStandupForm = scheduleInfo.isStandupDay && scheduleInfo.todayMode === "async" && !submitted && !isEditing;
+
+  if (teamLoading || commitmentsLoading || existingLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!teamData) {
+    return (
+      <div className="p-8 text-center text-muted-foreground">
+        You're not part of a team yet. Ask your admin to add you.
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-3xl mx-auto p-6 space-y-6">
