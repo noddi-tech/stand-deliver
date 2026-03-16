@@ -278,7 +278,6 @@ export default function MyStandup() {
       setSubmitted(true);
       setExistingResponseId(existingResponse.response.id);
       // Populate form state from DB for the summary view
-      setMood(existingResponse.response.mood);
       setBlockersText(existingResponse.response.blockers_text || "");
       setNotesText(existingResponse.response.notes || "");
       setTodayCommitments(
