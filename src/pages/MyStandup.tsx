@@ -585,7 +585,6 @@ export default function MyStandup() {
       }
 
       const responseData = {
-        mood,
         today_text: todayCommitments.map((c) => c.title).join("\n"),
         yesterday_text: previousCommitments.map((c) => `${c.title} → ${effectiveStatuses[c.id]}`).join("\n"),
         blockers_text: blockersText || null,
