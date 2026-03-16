@@ -734,7 +734,7 @@ export default function MyStandup() {
     setTodayCommitments([]);
     setBlockersText("");
     setNotesText("");
-    setMood(null);
+    
   };
 
   // Compute schedule state (used for banners, not blocking)
