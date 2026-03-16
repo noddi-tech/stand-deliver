@@ -121,7 +121,7 @@ export function useTodaySession(teamId: string | undefined, memberId: string | u
 
       const { data: response } = await supabase
         .from("standup_responses")
-        .select("id, yesterday_text, mood")
+        .select("id, yesterday_text")
         .eq("session_id", session.id)
         .eq("member_id", memberId!)
         .limit(1)
