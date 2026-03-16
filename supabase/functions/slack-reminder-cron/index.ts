@@ -51,8 +51,10 @@ Deno.serve(async (req) => {
       // Check if today is a standup day
       if (!team.standup_days.includes(teamDay)) continue;
 
-      // Parse standup_time (HH:MM:SS format)
-      const [hours, minutes] = (team.standup_time || "09:00:00").split(":").map(Number);
+      // Parse standup_time — use per-day override if available
+      const dayTimesMap = (team as any).standup_day_times || {};
+      const effectiveTime = dayTimesMap[teamDay] || team.standup_time || "09:00:00";
+      const [hours, minutes] = effectiveTime.split(":").map(Number);
       const teamHour = teamNow.getHours();
       const teamMinute = teamNow.getMinutes();
 
