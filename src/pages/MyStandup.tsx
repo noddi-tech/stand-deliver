@@ -349,6 +349,48 @@ export default function MyStandup() {
       const { error } = await supabase.from("commitments").update(updates).eq("id", id);
       if (error) throw error;
     },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["previous-commitments"] });
+    },
+  });
+
+  // Direct-save mutation for adding commitments outside standup submission
+  const addDirectCommitmentMutation = useMutation({
+    mutationFn: async ({ title, priority }: { title: string; priority: CommitmentPriority }) => {
+      if (!memberId || !teamId) throw new Error("Missing member/team");
+      const today = format(new Date(), "yyyy-MM-dd");
+      let sessionId: string;
+      const { data: existingSession } = await supabase
+        .from("standup_sessions")
+        .select("id")
+        .eq("team_id", teamId)
+        .eq("session_date", today)
+        .maybeSingle();
+      if (existingSession) {
+        sessionId = existingSession.id;
+      } else {
+        const { data: newSession, error } = await supabase
+          .from("standup_sessions")
+          .insert({ team_id: teamId, session_date: today, status: "collecting" })
+          .select("id")
+          .single();
+        if (error) throw error;
+        sessionId = newSession.id;
+      }
+      const { error } = await supabase.from("commitments").insert({
+        title,
+        priority,
+        member_id: memberId,
+        team_id: teamId,
+        origin_session_id: sessionId,
+        current_session_id: sessionId,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["previous-commitments"] });
+      queryClient.invalidateQueries({ queryKey: ["existing-response-today"] });
+    },
   });
 
   const handleStatusChange = (id: string, status: CommitmentStatus) => {
@@ -365,30 +407,57 @@ export default function MyStandup() {
     applyStatus(id, status);
   };
 
-  const applyStatus = (id: string, status: CommitmentStatus) => {
+  const applyStatus = (id: string, status: CommitmentStatus, extraReason?: string) => {
     setStatusOverrides((prev) => ({ ...prev, [id]: status }));
     if (status === "done" || status === "dropped") {
       setFadingIds((prev) => new Set(prev).add(id));
+    }
+    // When not in standup form mode, persist immediately
+    if (submitted || !scheduleInfo.isStandupDay || scheduleInfo.todayMode === "physical") {
+      updateCommitmentMutation.mutate({
+        id,
+        status,
+        blocked_reason: status === "blocked" ? extraReason : undefined,
+        resolution_note: status === "dropped" ? extraReason : undefined,
+      }, {
+        onSuccess: () => {
+          toast.success(`Item marked as ${status}`);
+        },
+      });
     }
   };
 
   const confirmBlocked = (id: string) => {
     setBlockedReasons((prev) => ({ ...prev, [id]: blockedReason }));
-    applyStatus(id, "blocked");
+    applyStatus(id, "blocked", blockedReason);
     setBlockedInputId(null);
   };
 
   const confirmDrop = () => {
     if (!dropDialogId) return;
-    applyStatus(dropDialogId, "dropped");
+    applyStatus(dropDialogId, "dropped", dropReason);
     setDropDialogId(null);
   };
 
   const addTodayCommitment = () => {
     if (!newFocusTitle.trim()) return;
-    setTodayCommitments((prev) => [...prev, { title: newFocusTitle.trim(), priority: newFocusPriority }]);
-    setNewFocusTitle("");
-    setNewFocusPriority("medium");
+    // When standup form is not active, save directly to DB
+    if (submitted || !scheduleInfo.isStandupDay || scheduleInfo.todayMode === "physical") {
+      addDirectCommitmentMutation.mutate(
+        { title: newFocusTitle.trim(), priority: newFocusPriority },
+        {
+          onSuccess: () => {
+            setNewFocusTitle("");
+            setNewFocusPriority("medium");
+            toast.success("Focus item added");
+          },
+        }
+      );
+    } else {
+      setTodayCommitments((prev) => [...prev, { title: newFocusTitle.trim(), priority: newFocusPriority }]);
+      setNewFocusTitle("");
+      setNewFocusPriority("medium");
+    }
   };
 
   const removeTodayCommitment = (idx: number) => {
@@ -688,6 +757,35 @@ export default function MyStandup() {
     setMood(null);
   };
 
+  // Compute schedule state (used for banners, not blocking)
+  const scheduleInfo = useMemo(() => {
+    if (!teamSchedule) return { isStandupDay: true, todayMode: "async" as string, nextDay: "" };
+    const dayMap: Record<number, string> = { 0: "sun", 1: "mon", 2: "tue", 3: "wed", 4: "thu", 5: "fri", 6: "sat" };
+    const tz = teamSchedule.standup_timezone || "UTC";
+    const nowInTz = new Date(new Date().toLocaleString("en-US", { timeZone: tz }));
+    const todayCode = dayMap[nowInTz.getDay()];
+    const standupDays = teamSchedule.standup_days || [];
+    const dayModes = (teamSchedule as any).standup_day_modes || {};
+    const todayMode = dayModes[todayCode] || "async";
+    const isStandupDay = standupDays.includes(todayCode);
+
+    let nextDay = "";
+    if (!isStandupDay) {
+      const dayOrder = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+      const todayIdx = dayOrder.indexOf(todayCode);
+      for (let i = 1; i <= 7; i++) {
+        const candidate = dayOrder[(todayIdx + i) % 7];
+        if (standupDays.includes(candidate)) {
+          nextDay = candidate.charAt(0).toUpperCase() + candidate.slice(1);
+          break;
+        }
+      }
+    }
+    return { isStandupDay, todayMode, nextDay };
+  }, [teamSchedule]);
+
+  const showStandupForm = scheduleInfo.isStandupDay && scheduleInfo.todayMode === "async" && !submitted && !isEditing;
+
   if (teamLoading || commitmentsLoading || existingLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -704,123 +802,6 @@ export default function MyStandup() {
     );
   }
 
-  // Check if today is a standup day
-  if (teamSchedule && !submitted) {
-    const dayMap: Record<number, string> = { 0: "sun", 1: "mon", 2: "tue", 3: "wed", 4: "thu", 5: "fri", 6: "sat" };
-    const tz = teamSchedule.standup_timezone || "UTC";
-    const nowInTz = new Date(new Date().toLocaleString("en-US", { timeZone: tz }));
-    const todayCode = dayMap[nowInTz.getDay()];
-    const standupDays = teamSchedule.standup_days || [];
-    const dayModes = (teamSchedule as any).standup_day_modes || {};
-    const todayMode = dayModes[todayCode] || "async";
-
-    if (!standupDays.includes(todayCode)) {
-      // Find next standup day
-      const dayOrder = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
-      const todayIdx = dayOrder.indexOf(todayCode);
-      let nextDay = "";
-      for (let i = 1; i <= 7; i++) {
-        const candidate = dayOrder[(todayIdx + i) % 7];
-        if (standupDays.includes(candidate)) {
-          nextDay = candidate.charAt(0).toUpperCase() + candidate.slice(1);
-          break;
-        }
-      }
-
-      return (
-        <div className="max-w-3xl mx-auto p-6 space-y-6">
-          <h1 className="text-2xl font-bold text-foreground">My Standup</h1>
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12 text-center space-y-3">
-              <CalendarOff className="h-10 w-10 text-muted-foreground/50" />
-              <h2 className="text-lg font-semibold text-foreground">No standup today</h2>
-              <p className="text-sm text-muted-foreground">
-                {nextDay ? `Next standup is on ${nextDay}.` : "No standup days configured."}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-      );
-    }
-
-    if (todayMode === "physical") {
-      return (
-        <div className="max-w-3xl mx-auto p-6 space-y-6">
-          <h1 className="text-2xl font-bold text-foreground">My Standup</h1>
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12 text-center space-y-4">
-              <Users className="h-10 w-10 text-primary/60" />
-              <h2 className="text-lg font-semibold text-foreground">Today is a live meeting standup</h2>
-              <p className="text-sm text-muted-foreground">
-                Your team has a physical standup scheduled. Use Meeting Mode to run it.
-              </p>
-              <Button onClick={() => navigate("/meeting")}>
-                Start Meeting
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      );
-    }
-  }
-
-  if (submitted && !isEditing) {
-    return (
-      <div className="max-w-3xl mx-auto p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-foreground">Standup Submitted ✅</h1>
-          <Button variant="outline" size="sm" onClick={startEditMode}>
-            <Edit2 className="h-4 w-4 mr-1" /> Edit
-          </Button>
-        </div>
-
-        <Card>
-          <CardContent className="p-4 space-y-4">
-            {previousCommitments.length > 0 && (
-              <div>
-                <h3 className="text-xs font-semibold text-muted-foreground mb-1">Resolved Items</h3>
-                <div className="space-y-1">
-                  {previousCommitments.map((c) => (
-                    <div key={c.id} className="flex items-center gap-2 text-sm">
-                      <Badge variant="outline" className="text-[10px]">{effectiveStatuses[c.id] || c.status}</Badge>
-                      <span className="text-foreground">{c.title}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div>
-              <h3 className="text-xs font-semibold text-muted-foreground mb-1">Today's Focus</h3>
-              <div className="space-y-1">
-                {todayCommitments.map((c, i) => (
-                  <div key={i} className="flex items-center gap-2 text-sm">
-                    <Badge variant="outline" className={`text-[10px] ${priorityColors[c.priority]}`}>{c.priority}</Badge>
-                    <span className="text-foreground">{c.title}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {blockersText && (
-              <div>
-                <h3 className="text-xs font-semibold text-destructive mb-1">Blockers</h3>
-                <p className="text-sm text-foreground/80 whitespace-pre-line">{blockersText}</p>
-              </div>
-            )}
-
-            {mood && (
-              <div>
-                <h3 className="text-xs font-semibold text-muted-foreground mb-1">Mood</h3>
-                <span className="text-lg">{moods.find((m) => m.value === mood)?.emoji} {moods.find((m) => m.value === mood)?.label}</span>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   return (
     <div className="max-w-3xl mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -833,14 +814,75 @@ export default function MyStandup() {
               Cancel
             </Button>
           )}
-          {!isEditing && !submitted && memberId && teamId && (
+          {submitted && !isEditing && (
+            <Button variant="outline" size="sm" onClick={startEditMode}>
+              <Edit2 className="h-4 w-4 mr-1" /> Edit Standup
+            </Button>
+          )}
+          {showStandupForm && memberId && teamId && (
             <SkipTodayButton memberId={memberId} teamId={teamId} />
           )}
         </div>
       </div>
 
-      {/* AI-Powered Focus Suggestions */}
-      {!isEditing && !submitted && aiSuggestions && aiSuggestions.length > 0 && (
+      {/* Info Banners */}
+      {!scheduleInfo.isStandupDay && (
+        <Card className="border-muted">
+          <CardContent className="flex items-center gap-3 py-4">
+            <CalendarOff className="h-5 w-5 text-muted-foreground shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-foreground">No standup scheduled today</p>
+              <p className="text-xs text-muted-foreground">
+                {scheduleInfo.nextDay ? `Next standup: ${scheduleInfo.nextDay}.` : "No standup days configured."}{" "}
+                You can still manage your commitments below.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {scheduleInfo.isStandupDay && scheduleInfo.todayMode === "physical" && (
+        <Card className="border-primary/30">
+          <CardContent className="flex items-center justify-between gap-3 py-4">
+            <div className="flex items-center gap-3">
+              <Users className="h-5 w-5 text-primary shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-foreground">Today is a live meeting standup</p>
+                <p className="text-xs text-muted-foreground">Use Meeting Mode to run it. You can still manage commitments below.</p>
+              </div>
+            </div>
+            <Button size="sm" onClick={() => navigate("/meeting")}>Start Meeting</Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {submitted && !isEditing && (
+        <Card className="border-primary/30 bg-primary/5">
+          <CardContent className="py-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-primary shrink-0" />
+              <p className="text-sm font-medium text-foreground">Standup submitted today</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              {mood && (
+                <div>
+                  <p className="text-xs text-muted-foreground">Mood</p>
+                  <span>{moods.find((m) => m.value === mood)?.emoji} {moods.find((m) => m.value === mood)?.label}</span>
+                </div>
+              )}
+              {blockersText && (
+                <div>
+                  <p className="text-xs text-destructive font-medium">Blockers</p>
+                  <p className="text-foreground/80 whitespace-pre-line">{blockersText}</p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* AI-Powered Focus Suggestions - only during standup form */}
+      {showStandupForm && aiSuggestions && aiSuggestions.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -881,7 +923,7 @@ export default function MyStandup() {
         </Card>
       )}
 
-      {!isEditing && !submitted && suggestionsLoading && (
+      {showStandupForm && suggestionsLoading && (
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -1014,161 +1056,159 @@ export default function MyStandup() {
         </Card>
       )}
 
-      {/* Section 2: Today's Focus */}
-      <Card className={`transition-opacity duration-300 ${!isEditing && !allResolved ? "opacity-50" : ""}`}>
+      {/* Add Focus Item - ALWAYS visible */}
+      <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
-            {!isEditing && !allResolved && <Lock className="h-4 w-4 text-muted-foreground" />}
-            Today's Focus
+            {showStandupForm && !allResolved && <Lock className="h-4 w-4 text-muted-foreground" />}
+            {showStandupForm ? "Today's Focus" : "Add Focus Item"}
           </CardTitle>
-          {!isEditing && !allResolved && (
+          {showStandupForm && !allResolved && (
             <p className="text-xs text-muted-foreground">
-              Resolve all previous commitments to unlock this section
+              Resolve all previous commitments to unlock adding items via standup
             </p>
           )}
         </CardHeader>
-        <CardContent className={`space-y-3 ${!isEditing && !allResolved ? "pointer-events-none" : ""}`}>
-          {(isEditing || allResolved) && (
-            <>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="What will you work on today?"
-                  value={newFocusTitle}
-                  onChange={(e) => setNewFocusTitle(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && addTodayCommitment()}
-                  className="flex-1"
-                />
-                <Select value={newFocusPriority} onValueChange={(v) => setNewFocusPriority(v as CommitmentPriority)}>
-                  <SelectTrigger className="w-28">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="high">High</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="low">Low</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button size="icon" onClick={addTodayCommitment} disabled={!newFocusTitle.trim()}>
-                  <Plus className="h-4 w-4" />
-                </Button>
-                {canImportFromClickUp && (
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    onClick={fetchClickUpTasks}
-                    disabled={loadingClickUp}
-                    title="Add from ClickUp"
-                  >
-                    {loadingClickUp ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <SquareKanban className="h-4 w-4" />
-                    )}
-                  </Button>
-                )}
-              </div>
-              {todayCommitments.map((c, i) => (
-                <div key={i} className="flex items-center gap-2 rounded-lg border p-2">
-                  {editingIdx === i ? (
-                    <Input
-                      value={editingText}
-                      onChange={(e) => setEditingText(e.target.value)}
-                      onBlur={saveEditing}
-                      onKeyDown={(e) => e.key === "Enter" && saveEditing()}
-                      className="flex-1 h-7 text-sm"
-                      autoFocus
-                    />
-                  ) : (
-                    <span
-                      className="flex-1 text-sm cursor-pointer hover:text-primary"
-                      onClick={() => startEditing(i)}
-                    >
-                      {c.title}
-                    </span>
-                  )}
-                  <Badge variant="outline" className={`text-[10px] ${priorityColors[c.priority]}`}>
-                    {c.priority}
-                  </Badge>
-                  <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => removeTodayCommitment(i)}>
-                    <X className="h-3 w-3" />
-                  </Button>
-                </div>
-              ))}
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Section 3: Blockers & Notes */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Blockers & Notes</CardTitle>
-        </CardHeader>
         <CardContent className="space-y-3">
-          <Textarea
-            placeholder="Any blockers? What's preventing you from making progress?"
-            value={blockersText}
-            onChange={(e) => setBlockersText(e.target.value)}
-            rows={3}
-          />
-          <Textarea
-            placeholder="Additional notes (optional)"
-            value={notesText}
-            onChange={(e) => setNotesText(e.target.value)}
-            rows={2}
-          />
-        </CardContent>
-      </Card>
-
-      {/* Section 4: Mood */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">How are you feeling?</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-3 flex-wrap">
-            {moods.map((m) => (
-              <button
-                key={m.value}
-                onClick={() => setMood(m.value)}
-                className={`flex flex-col items-center gap-1 rounded-xl border-2 p-3 transition-all ${
-                  mood === m.value
-                    ? "border-primary bg-primary/10 ring-2 ring-primary/30 scale-110"
-                    : "border-border hover:border-muted-foreground/30"
-                }`}
+          <div className={`flex gap-2 ${showStandupForm && !allResolved ? "opacity-50 pointer-events-none" : ""}`}>
+            <Input
+              placeholder="What will you work on?"
+              value={newFocusTitle}
+              onChange={(e) => setNewFocusTitle(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addTodayCommitment()}
+              className="flex-1"
+            />
+            <Select value={newFocusPriority} onValueChange={(v) => setNewFocusPriority(v as CommitmentPriority)}>
+              <SelectTrigger className="w-28">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="high">High</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="low">Low</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button size="icon" onClick={addTodayCommitment} disabled={!newFocusTitle.trim() || addDirectCommitmentMutation.isPending}>
+              {addDirectCommitmentMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            </Button>
+            {canImportFromClickUp && (
+              <Button
+                size="icon"
+                variant="outline"
+                onClick={fetchClickUpTasks}
+                disabled={loadingClickUp}
+                title="Add from ClickUp"
               >
-                <span className="text-2xl">{m.emoji}</span>
-                <span className="text-xs text-muted-foreground">{m.label}</span>
-              </button>
-            ))}
+                {loadingClickUp ? <Loader2 className="h-4 w-4 animate-spin" /> : <SquareKanban className="h-4 w-4" />}
+              </Button>
+            )}
           </div>
+          {/* Show pending standup items when in form mode */}
+          {(showStandupForm || isEditing) && todayCommitments.map((c, i) => (
+            <div key={i} className="flex items-center gap-2 rounded-lg border p-2">
+              {editingIdx === i ? (
+                <Input
+                  value={editingText}
+                  onChange={(e) => setEditingText(e.target.value)}
+                  onBlur={saveEditing}
+                  onKeyDown={(e) => e.key === "Enter" && saveEditing()}
+                  className="flex-1 h-7 text-sm"
+                  autoFocus
+                />
+              ) : (
+                <span
+                  className="flex-1 text-sm cursor-pointer hover:text-primary"
+                  onClick={() => startEditing(i)}
+                >
+                  {c.title}
+                </span>
+              )}
+              <Badge variant="outline" className={`text-[10px] ${priorityColors[c.priority]}`}>
+                {c.priority}
+              </Badge>
+              <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => removeTodayCommitment(i)}>
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          ))}
         </CardContent>
       </Card>
 
-      {/* AI Coach Review */}
-      {showCoach && (
-        <StandupCoachCard
-          suggestions={coachSuggestions}
-          overallTip={coachTip}
-          onApply={handleCoachApply}
-          onDismiss={handleCoachDismiss}
-          onApplyAll={handleCoachApplyAll}
-          onSubmitAnyway={() => { setShowCoach(false); handleSubmit(); }}
-          submitting={submitting}
-        />
-      )}
+      {/* Standup Form sections - only when active async standup day & not yet submitted */}
+      {(showStandupForm || isEditing) && (
+        <>
+          {/* Blockers & Notes */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Blockers & Notes</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Textarea
+                placeholder="Any blockers? What's preventing you from making progress?"
+                value={blockersText}
+                onChange={(e) => setBlockersText(e.target.value)}
+                rows={3}
+              />
+              <Textarea
+                placeholder="Additional notes (optional)"
+                value={notesText}
+                onChange={(e) => setNotesText(e.target.value)}
+                rows={2}
+              />
+            </CardContent>
+          </Card>
 
-      {/* Submit */}
-      {!showCoach && (
-        <Button
-          onClick={requestCoachReview}
-          disabled={submitting || coachLoading || (!isEditing && !allResolved)}
-          className="w-full"
-          size="lg"
-        >
-          {(submitting || coachLoading) ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-          {coachLoading ? "AI reviewing..." : isEditing ? "Update Standup" : "Submit Standup"}
-        </Button>
+          {/* Mood */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">How are you feeling?</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex gap-3 flex-wrap">
+                {moods.map((m) => (
+                  <button
+                    key={m.value}
+                    onClick={() => setMood(m.value)}
+                    className={`flex flex-col items-center gap-1 rounded-xl border-2 p-3 transition-all ${
+                      mood === m.value
+                        ? "border-primary bg-primary/10 ring-2 ring-primary/30 scale-110"
+                        : "border-border hover:border-muted-foreground/30"
+                    }`}
+                  >
+                    <span className="text-2xl">{m.emoji}</span>
+                    <span className="text-xs text-muted-foreground">{m.label}</span>
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* AI Coach Review */}
+          {showCoach && (
+            <StandupCoachCard
+              suggestions={coachSuggestions}
+              overallTip={coachTip}
+              onApply={handleCoachApply}
+              onDismiss={handleCoachDismiss}
+              onApplyAll={handleCoachApplyAll}
+              onSubmitAnyway={() => { setShowCoach(false); handleSubmit(); }}
+              submitting={submitting}
+            />
+          )}
+
+          {/* Submit */}
+          {!showCoach && (
+            <Button
+              onClick={requestCoachReview}
+              disabled={submitting || coachLoading || (!isEditing && !allResolved)}
+              className="w-full"
+              size="lg"
+            >
+              {(submitting || coachLoading) ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              {coachLoading ? "AI reviewing..." : isEditing ? "Update Standup" : "Submit Standup"}
+            </Button>
+          )}
+        </>
       )}
 
       {/* Drop confirmation dialog */}
