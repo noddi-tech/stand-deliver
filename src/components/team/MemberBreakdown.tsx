@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { User } from "lucide-react";
 import { MemberBadgeIcons } from "@/components/badges/MemberBadgeIcons";
 import { BadgeLegend } from "@/components/badges/BadgeLegend";
