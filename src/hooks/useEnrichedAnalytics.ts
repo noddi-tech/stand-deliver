@@ -18,6 +18,7 @@ export interface EnrichedMemberMetrics {
   memberId: string;
   memberName: string;
   codeImpactScore: number;
+  hasVIS: boolean;
   avgPRCycleTime: number | null; // hours
   reviewsGiven: number;
   reviewsReceived: number;
@@ -59,6 +60,19 @@ export function useEnrichedTeamMetrics(teamId: string | undefined) {
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
       const thirtyDaysAgo = subDays(new Date(), 30).toISOString();
+
+      // Fetch VIS impact scores from impact_classifications (last 30 days)
+      const { data: visScores } = await supabase
+        .from("impact_classifications")
+        .select("member_id, impact_score")
+        .eq("team_id", teamId!)
+        .gte("created_at", thirtyDaysAgo);
+
+      // Build VIS score map: member_id → total impact_score
+      const visMap = new Map<string, number>();
+      for (const row of visScores || []) {
+        visMap.set(row.member_id, (visMap.get(row.member_id) || 0) + Number(row.impact_score));
+      }
 
       // Fetch all enriched external activity for the team
       const { data: activities } = await supabase
@@ -142,10 +156,14 @@ export function useEnrichedTeamMetrics(teamId: string | undefined) {
           workTypes[wt] = (workTypes[wt] || 0) + 1;
         }
 
+        const visScore = visMap.get(memberId);
+        const hasVIS = visScore !== undefined && visScore > 0;
+
         members.push({
           memberId,
           memberName: name,
-          codeImpactScore: computeCodeImpact(totalAdditions, totalDeletions, totalFiles),
+          codeImpactScore: hasVIS ? Math.round(visScore) : computeCodeImpact(totalAdditions, totalDeletions, totalFiles),
+          hasVIS,
           avgPRCycleTime: cycleTimes.length > 0 ? Math.round(cycleTimes.reduce((a, b) => a + b, 0) / cycleTimes.length * 10) / 10 : null,
           reviewsGiven: reviewsGiven.length,
           reviewsReceived,
