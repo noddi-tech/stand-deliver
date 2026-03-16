@@ -64,14 +64,16 @@ export function useEnrichedTeamMetrics(teamId: string | undefined) {
       // Fetch VIS impact scores from impact_classifications (last 30 days)
       const { data: visScores } = await supabase
         .from("impact_classifications")
-        .select("member_id, impact_score")
+        .select("member_id, activity_id, impact_score")
         .eq("team_id", teamId!)
         .gte("created_at", thirtyDaysAgo);
 
-      // Build VIS score map: member_id → total impact_score
+      // Build per-member VIS totals AND a set of classified activity IDs
       const visMap = new Map<string, number>();
+      const classifiedActivityIds = new Set<string>();
       for (const row of visScores || []) {
         visMap.set(row.member_id, (visMap.get(row.member_id) || 0) + Number(row.impact_score));
+        classifiedActivityIds.add(row.activity_id);
       }
 
       // Fetch all enriched external activity for the team
@@ -156,13 +158,27 @@ export function useEnrichedTeamMetrics(teamId: string | undefined) {
           workTypes[wt] = (workTypes[wt] || 0) + 1;
         }
 
-        const visScore = visMap.get(memberId);
-        const hasVIS = visScore !== undefined && visScore > 0;
+        const visScore = visMap.get(memberId) || 0;
+        const hasVIS = visScore > 0;
+
+        // Per-activity blended score: VIS for classified activities + legacy for unclassified
+        let unclassifiedImpact = 0;
+        for (const c of commits) {
+          if (!classifiedActivityIds.has(c.id)) {
+            const meta = c.metadata as any;
+            unclassifiedImpact += computeCodeImpact(
+              meta?.additions || 0,
+              meta?.deletions || 0,
+              meta?.files_changed || 0
+            );
+          }
+        }
+        const blendedScore = Math.round(visScore + unclassifiedImpact);
 
         members.push({
           memberId,
           memberName: name,
-          codeImpactScore: hasVIS ? Math.round(visScore) : computeCodeImpact(totalAdditions, totalDeletions, totalFiles),
+          codeImpactScore: blendedScore,
           hasVIS,
           avgPRCycleTime: cycleTimes.length > 0 ? Math.round(cycleTimes.reduce((a, b) => a + b, 0) / cycleTimes.length * 10) / 10 : null,
           reviewsGiven: reviewsGiven.length,
