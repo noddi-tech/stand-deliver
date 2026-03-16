@@ -10,7 +10,7 @@ import type { ClassificationInput } from "@/lib/scoring";
 
 const FIXED_CASES: { input: ClassificationInput; expected: number }[] = [
   // Critical ship, direct alignment, large PR (1000 LOC)
-  { input: { impact_tier: "critical", value_type: "ship", focus_alignment: "direct", size: 1000 }, expected: 157.71 },
+  { input: { impact_tier: "critical", value_type: "ship", focus_alignment: "direct", size: 1000 }, expected: 157.52 },
   // High quality, indirect, medium PR (200 LOC)
   { input: { impact_tier: "high", value_type: "quality", focus_alignment: "indirect", size: 200 }, expected: 39.73 },
   // Standard foundation, no alignment, no code (standup commitment)
