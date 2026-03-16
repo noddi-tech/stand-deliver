@@ -47,7 +47,6 @@ export function useSkipStandup() {
         member_id: memberId,
         yesterday_text: "Skipped",
         submitted_via: "web",
-        mood: null,
       });
       if (error) throw error;
     },

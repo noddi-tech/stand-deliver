@@ -1132,30 +1132,6 @@ export default function MyStandup() {
             </CardContent>
           </Card>
 
-          {/* Mood */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">How are you feeling?</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex gap-3 flex-wrap">
-                {moods.map((m) => (
-                  <button
-                    key={m.value}
-                    onClick={() => setMood(m.value)}
-                    className={`flex flex-col items-center gap-1 rounded-xl border-2 p-3 transition-all ${
-                      mood === m.value
-                        ? "border-primary bg-primary/10 ring-2 ring-primary/30 scale-110"
-                        : "border-border hover:border-muted-foreground/30"
-                    }`}
-                  >
-                    <span className="text-2xl">{m.emoji}</span>
-                    <span className="text-xs text-muted-foreground">{m.label}</span>
-                  </button>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
 
           {/* AI Coach Review */}
           {showCoach && (

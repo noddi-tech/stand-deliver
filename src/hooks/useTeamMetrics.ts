@@ -129,7 +129,7 @@ export function useTodaySession(teamId: string | undefined, memberId: string | u
 
       if (!response) return { status: "pending" as const, sessionId: session.id };
       
-      const isSkipped = response.yesterday_text === "Skipped" && response.mood === null;
+      const isSkipped = response.yesterday_text === "Skipped";
       return isSkipped
         ? { status: "skipped" as const, sessionId: session.id }
         : { status: "submitted" as const, sessionId: session.id };

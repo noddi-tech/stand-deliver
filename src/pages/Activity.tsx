@@ -96,11 +96,11 @@ function useActivityFeed(teamId: string | undefined, days: number, sourceFilter:
 
           for (const r of respData || []) {
             const m = r.member as any;
-            const isSkip = r.yesterday_text === "Skipped" && !r.mood;
+            const isSkip = r.yesterday_text === "Skipped";
             items.push({
               id: r.id, type: "standup", source: "standup",
               activityType: isSkip ? "standup_skipped" : "standup_submitted",
-              title: isSkip ? "Skipped standup" : `Submitted standup ${r.mood ? moodEmoji[r.mood] || "" : ""}`,
+              title: isSkip ? "Skipped standup" : "Submitted standup",
               memberName: m?.profile?.full_name || null,
               memberAvatar: m?.profile?.avatar_url || null,
               memberId: r.member_id, timestamp: r.submitted_at,

@@ -216,11 +216,6 @@ export default function TeamFeed() {
                           {role}
                         </Badge>
                       )}
-                      {r.mood && (
-                        <span className="text-lg" title={r.mood}>
-                          {moodEmoji[r.mood] || ""}
-                        </span>
-                      )}
                       <span className="text-xs text-muted-foreground ml-auto">
                         {format(new Date(r.submitted_at), "h:mm a")}
                       </span>
