@@ -1,0 +1,1 @@
+ALTER TABLE public.teams ADD COLUMN standup_day_times jsonb NOT NULL DEFAULT '{}'::jsonb;

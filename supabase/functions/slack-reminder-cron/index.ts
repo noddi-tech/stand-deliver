@@ -19,7 +19,7 @@ Deno.serve(async (req) => {
     // Get all teams with Slack connected
     const { data: teams, error: teamsError } = await supabaseAdmin
       .from("teams")
-      .select("id, org_id, name, standup_time, standup_timezone, standup_days, slack_channel_id, standup_day_modes");
+      .select("id, org_id, name, standup_time, standup_timezone, standup_days, slack_channel_id, standup_day_modes, standup_day_times");
 
     if (teamsError) throw teamsError;
     if (!teams || teams.length === 0) {
@@ -51,8 +51,10 @@ Deno.serve(async (req) => {
       // Check if today is a standup day
       if (!team.standup_days.includes(teamDay)) continue;
 
-      // Parse standup_time (HH:MM:SS format)
-      const [hours, minutes] = (team.standup_time || "09:00:00").split(":").map(Number);
+      // Parse standup_time — use per-day override if available
+      const dayTimesMap = (team as any).standup_day_times || {};
+      const effectiveTime = dayTimesMap[teamDay] || team.standup_time || "09:00:00";
+      const [hours, minutes] = effectiveTime.split(":").map(Number);
       const teamHour = teamNow.getHours();
       const teamMinute = teamNow.getMinutes();
 

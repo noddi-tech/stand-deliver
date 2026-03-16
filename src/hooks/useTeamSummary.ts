@@ -19,7 +19,6 @@ export interface MemberStat {
   commitments: { total: number; done: number; carried: number; completionRate: number };
   activeBlockers: number;
   standup: { submitted: number; skipped: number; participationRate: number; totalSessions: number };
-  moods: string;
   externalActivity: { githubCommits: number; prs: number; clickupTasks: number };
 }
 

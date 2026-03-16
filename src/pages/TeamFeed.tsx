@@ -15,13 +15,6 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
 import { MemberBadgeIcons } from "@/components/badges/MemberBadgeIcons";
 
-const moodEmoji: Record<string, string> = {
-  great: "🚀",
-  good: "👍",
-  okay: "😐",
-  struggling: "😓",
-  rough: "😰",
-};
 
 type DateFilter = "today" | "week" | "all";
 
@@ -222,11 +215,6 @@ export default function TeamFeed() {
                         <Badge variant={role === "lead" ? "default" : "secondary"} className="text-[10px]">
                           {role}
                         </Badge>
-                      )}
-                      {r.mood && (
-                        <span className="text-lg" title={r.mood}>
-                          {moodEmoji[r.mood] || ""}
-                        </span>
                       )}
                       <span className="text-xs text-muted-foreground ml-auto">
                         {format(new Date(r.submitted_at), "h:mm a")}

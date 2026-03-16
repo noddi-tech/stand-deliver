@@ -34,15 +34,6 @@ import type { Database } from "@/integrations/supabase/types";
 
 type CommitmentStatus = Database["public"]["Enums"]["commitment_status"];
 type CommitmentPriority = Database["public"]["Enums"]["commitment_priority"];
-type MoodType = Database["public"]["Enums"]["mood_type"];
-
-const moods: { value: MoodType; emoji: string; label: string }[] = [
-  { value: "great", emoji: "🚀", label: "Great" },
-  { value: "good", emoji: "👍", label: "Good" },
-  { value: "okay", emoji: "😐", label: "Okay" },
-  { value: "struggling", emoji: "😓", label: "Struggling" },
-  { value: "rough", emoji: "😰", label: "Rough" },
-];
 
 const priorityColors: Record<CommitmentPriority, string> = {
   high: "text-destructive border-destructive/30",
@@ -87,7 +78,7 @@ export default function MyStandup() {
     queryFn: async () => {
       const { data } = await supabase
         .from("teams")
-        .select("standup_days, standup_timezone, standup_day_modes")
+        .select("standup_days, standup_timezone, standup_day_modes, standup_day_times")
         .eq("id", teamId!)
         .single();
       return data;
@@ -99,7 +90,7 @@ export default function MyStandup() {
   const [todayCommitments, setTodayCommitments] = useState<NewCommitment[]>([]);
   const [blockersText, setBlockersText] = useState("");
   const [notesText, setNotesText] = useState("");
-  const [mood, setMood] = useState<MoodType | null>(null);
+  
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -287,7 +278,6 @@ export default function MyStandup() {
       setSubmitted(true);
       setExistingResponseId(existingResponse.response.id);
       // Populate form state from DB for the summary view
-      setMood(existingResponse.response.mood);
       setBlockersText(existingResponse.response.blockers_text || "");
       setNotesText(existingResponse.response.notes || "");
       setTodayCommitments(
@@ -478,10 +468,6 @@ export default function MyStandup() {
   };
 
   const requestCoachReview = async () => {
-    if (!mood) {
-      toast.error("Please select your mood");
-      return;
-    }
     if (todayCommitments.length === 0) {
       toast.error("Add at least one focus item for today");
       return;
@@ -535,10 +521,6 @@ export default function MyStandup() {
 
   const handleSubmit = async () => {
     if (!memberId || !teamId) return;
-    if (!mood) {
-      toast.error("Please select your mood");
-      return;
-    }
     if (todayCommitments.length === 0) {
       toast.error("Add at least one focus item for today");
       return;
@@ -603,7 +585,6 @@ export default function MyStandup() {
       }
 
       const responseData = {
-        mood,
         today_text: todayCommitments.map((c) => c.title).join("\n"),
         yesterday_text: previousCommitments.map((c) => `${c.title} → ${effectiveStatuses[c.id]}`).join("\n"),
         blockers_text: blockersText || null,
@@ -712,7 +693,6 @@ export default function MyStandup() {
   const startEditMode = () => {
     if (!existingResponse) return;
     // Load existing data into form
-    setMood(existingResponse.response.mood);
     setBlockersText(existingResponse.response.blockers_text || "");
     setNotesText(existingResponse.response.notes || "");
     setTodayCommitments(
@@ -731,7 +711,7 @@ export default function MyStandup() {
     setSubmitted(true);
     // Restore from DB
     if (existingResponse) {
-      setMood(existingResponse.response.mood);
+      
       setBlockersText(existingResponse.response.blockers_text || "");
       setNotesText(existingResponse.response.notes || "");
       setTodayCommitments(
@@ -754,7 +734,7 @@ export default function MyStandup() {
     setTodayCommitments([]);
     setBlockersText("");
     setNotesText("");
-    setMood(null);
+    
   };
 
   // Compute schedule state (used for banners, not blocking)
@@ -864,12 +844,6 @@ export default function MyStandup() {
               <p className="text-sm font-medium text-foreground">Standup submitted today</p>
             </div>
             <div className="grid grid-cols-2 gap-3 text-sm">
-              {mood && (
-                <div>
-                  <p className="text-xs text-muted-foreground">Mood</p>
-                  <span>{moods.find((m) => m.value === mood)?.emoji} {moods.find((m) => m.value === mood)?.label}</span>
-                </div>
-              )}
               {blockersText && (
                 <div>
                   <p className="text-xs text-destructive font-medium">Blockers</p>
@@ -1158,30 +1132,6 @@ export default function MyStandup() {
             </CardContent>
           </Card>
 
-          {/* Mood */}
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">How are you feeling?</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex gap-3 flex-wrap">
-                {moods.map((m) => (
-                  <button
-                    key={m.value}
-                    onClick={() => setMood(m.value)}
-                    className={`flex flex-col items-center gap-1 rounded-xl border-2 p-3 transition-all ${
-                      mood === m.value
-                        ? "border-primary bg-primary/10 ring-2 ring-primary/30 scale-110"
-                        : "border-border hover:border-muted-foreground/30"
-                    }`}
-                  >
-                    <span className="text-2xl">{m.emoji}</span>
-                    <span className="text-xs text-muted-foreground">{m.label}</span>
-                  </button>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
 
           {/* AI Coach Review */}
           {showCoach && (

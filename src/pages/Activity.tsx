@@ -40,7 +40,7 @@ function useActivityFeed(teamId: string | undefined, days: number, sourceFilter:
       const since = subDays(new Date(), days).toISOString();
       const sinceDate = since.split("T")[0];
       const items: ActivityItem[] = [];
-      const moodEmoji: Record<string, string> = { great: "🚀", good: "👍", okay: "😐", struggling: "😓", rough: "😰" };
+      
 
       // Fetch external activity with pagination - get up to 1000 rows
       if (sourceFilter !== "standup") {
@@ -87,7 +87,7 @@ function useActivityFeed(teamId: string | undefined, days: number, sourceFilter:
         if (sessionIds.length > 0) {
           let respQuery = supabase
             .from("standup_responses")
-            .select("id, member_id, submitted_at, mood, yesterday_text, member:team_members!inner(id, user_id, profile:profiles!inner(full_name, avatar_url))")
+            .select("id, member_id, submitted_at, yesterday_text, member:team_members!inner(id, user_id, profile:profiles!inner(full_name, avatar_url))")
             .in("session_id", sessionIds)
             .order("submitted_at", { ascending: false })
             .limit(200);
@@ -96,11 +96,11 @@ function useActivityFeed(teamId: string | undefined, days: number, sourceFilter:
 
           for (const r of respData || []) {
             const m = r.member as any;
-            const isSkip = r.yesterday_text === "Skipped" && !r.mood;
+            const isSkip = r.yesterday_text === "Skipped";
             items.push({
               id: r.id, type: "standup", source: "standup",
               activityType: isSkip ? "standup_skipped" : "standup_submitted",
-              title: isSkip ? "Skipped standup" : `Submitted standup ${r.mood ? moodEmoji[r.mood] || "" : ""}`,
+              title: isSkip ? "Skipped standup" : "Submitted standup",
               memberName: m?.profile?.full_name || null,
               memberAvatar: m?.profile?.avatar_url || null,
               memberId: r.member_id, timestamp: r.submitted_at,

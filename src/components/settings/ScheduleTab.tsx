@@ -33,6 +33,7 @@ export function ScheduleTab() {
   const [timezone, setTimezone] = useState("UTC");
   const [timerSeconds, setTimerSeconds] = useState(120);
   const [dayModes, setDayModes] = useState<Record<string, string>>({});
+  const [dayTimes, setDayTimes] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!user) return;
@@ -49,7 +50,7 @@ export function ScheduleTab() {
 
       const { data: team } = await supabase
         .from("teams")
-        .select("id, standup_days, standup_time, standup_timezone, timer_seconds_per_person")
+        .select("id, standup_days, standup_time, standup_timezone, timer_seconds_per_person, standup_day_modes, standup_day_times")
         .eq("id", membership.team_id)
         .single();
 
@@ -60,6 +61,7 @@ export function ScheduleTab() {
         setTimezone(team.standup_timezone);
         setTimerSeconds(team.timer_seconds_per_person);
         setDayModes((team as any).standup_day_modes || {});
+        setDayTimes((team as any).standup_day_times || {});
       }
       setLoading(false);
     })();
@@ -74,6 +76,14 @@ export function ScheduleTab() {
   const handleSave = async () => {
     if (!teamId) return;
     setSaving(true);
+    // Clean dayTimes: remove entries for inactive days or empty values
+    const cleanDayTimes: Record<string, string> = {};
+    for (const [day, time] of Object.entries(dayTimes)) {
+      if (standupDays.includes(day) && time) {
+        cleanDayTimes[day] = time;
+      }
+    }
+
     const { error } = await supabase
       .from("teams")
       .update({
@@ -82,6 +92,7 @@ export function ScheduleTab() {
         standup_timezone: timezone,
         timer_seconds_per_person: timerSeconds,
         standup_day_modes: dayModes,
+        standup_day_times: cleanDayTimes,
       } as any)
       .eq("id", teamId);
 
@@ -128,32 +139,48 @@ export function ScheduleTab() {
                   {day.label}
                 </button>
                 {standupDays.includes(day.value) && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setDayModes((prev) => ({
-                        ...prev,
-                        [day.value]: prev[day.value] === "physical" ? "async" : "physical",
-                      }))
-                    }
-                    className={`text-[10px] font-medium px-2 py-0.5 rounded border transition-colors ${
-                      dayModes[day.value] === "physical"
-                        ? "bg-accent text-accent-foreground border-accent"
-                        : "bg-background text-muted-foreground border-input"
-                    }`}
-                  >
-                    {dayModes[day.value] === "physical" ? "Meeting" : "Async"}
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDayModes((prev) => ({
+                          ...prev,
+                          [day.value]: prev[day.value] === "physical" ? "async" : "physical",
+                        }))
+                      }
+                      className={`text-[10px] font-medium px-2 py-0.5 rounded border transition-colors ${
+                        dayModes[day.value] === "physical"
+                          ? "bg-accent text-accent-foreground border-accent"
+                          : "bg-background text-muted-foreground border-input"
+                      }`}
+                    >
+                      {dayModes[day.value] === "physical" ? "Meeting" : "Async"}
+                    </button>
+                    <Input
+                      type="time"
+                      value={dayTimes[day.value] || ""}
+                      onChange={(e) =>
+                        setDayTimes((prev) => ({
+                          ...prev,
+                          [day.value]: e.target.value,
+                        }))
+                      }
+                      placeholder={standupTime}
+                      className="w-24 h-7 text-xs text-center"
+                    />
+                  </>
                 )}
               </div>
             ))}
           </div>
-          <p className="text-xs text-muted-foreground">Click the label below each day to toggle between async (digital) and meeting (physical) mode.</p>
+          <p className="text-xs text-muted-foreground">
+            Set a per-day time below each day, or leave blank to use the default time.
+          </p>
         </div>
 
-        {/* Time */}
+        {/* Default Time */}
         <div className="space-y-2">
-          <Label htmlFor="standup-time">Standup Time</Label>
+          <Label htmlFor="standup-time">Default Standup Time</Label>
           <Input
             id="standup-time"
             type="time"
@@ -161,6 +188,7 @@ export function ScheduleTab() {
             onChange={(e) => setStandupTime(e.target.value)}
             className="w-40"
           />
+          <p className="text-xs text-muted-foreground">Used for days without a custom time set above.</p>
         </div>
 
         {/* Timezone */}

@@ -1149,6 +1149,7 @@ export type Database = {
           org_id: string
           slack_channel_id: string | null
           standup_day_modes: Json
+          standup_day_times: Json
           standup_days: string[]
           standup_time: string
           standup_timezone: string
@@ -1161,6 +1162,7 @@ export type Database = {
           org_id: string
           slack_channel_id?: string | null
           standup_day_modes?: Json
+          standup_day_times?: Json
           standup_days?: string[]
           standup_time?: string
           standup_timezone?: string
@@ -1173,6 +1175,7 @@ export type Database = {
           org_id?: string
           slack_channel_id?: string | null
           standup_day_modes?: Json
+          standup_day_times?: Json
           standup_days?: string[]
           standup_time?: string
           standup_timezone?: string
