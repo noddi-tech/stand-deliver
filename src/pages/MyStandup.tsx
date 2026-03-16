@@ -1043,161 +1043,159 @@ export default function MyStandup() {
         </Card>
       )}
 
-      {/* Section 2: Today's Focus */}
-      <Card className={`transition-opacity duration-300 ${!isEditing && !allResolved ? "opacity-50" : ""}`}>
+      {/* Add Focus Item - ALWAYS visible */}
+      <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
-            {!isEditing && !allResolved && <Lock className="h-4 w-4 text-muted-foreground" />}
-            Today's Focus
+            {showStandupForm && !allResolved && <Lock className="h-4 w-4 text-muted-foreground" />}
+            {showStandupForm ? "Today's Focus" : "Add Focus Item"}
           </CardTitle>
-          {!isEditing && !allResolved && (
+          {showStandupForm && !allResolved && (
             <p className="text-xs text-muted-foreground">
-              Resolve all previous commitments to unlock this section
+              Resolve all previous commitments to unlock adding items via standup
             </p>
           )}
         </CardHeader>
-        <CardContent className={`space-y-3 ${!isEditing && !allResolved ? "pointer-events-none" : ""}`}>
-          {(isEditing || allResolved) && (
-            <>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="What will you work on today?"
-                  value={newFocusTitle}
-                  onChange={(e) => setNewFocusTitle(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && addTodayCommitment()}
-                  className="flex-1"
-                />
-                <Select value={newFocusPriority} onValueChange={(v) => setNewFocusPriority(v as CommitmentPriority)}>
-                  <SelectTrigger className="w-28">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="high">High</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="low">Low</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button size="icon" onClick={addTodayCommitment} disabled={!newFocusTitle.trim()}>
-                  <Plus className="h-4 w-4" />
-                </Button>
-                {canImportFromClickUp && (
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    onClick={fetchClickUpTasks}
-                    disabled={loadingClickUp}
-                    title="Add from ClickUp"
-                  >
-                    {loadingClickUp ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <SquareKanban className="h-4 w-4" />
-                    )}
-                  </Button>
-                )}
-              </div>
-              {todayCommitments.map((c, i) => (
-                <div key={i} className="flex items-center gap-2 rounded-lg border p-2">
-                  {editingIdx === i ? (
-                    <Input
-                      value={editingText}
-                      onChange={(e) => setEditingText(e.target.value)}
-                      onBlur={saveEditing}
-                      onKeyDown={(e) => e.key === "Enter" && saveEditing()}
-                      className="flex-1 h-7 text-sm"
-                      autoFocus
-                    />
-                  ) : (
-                    <span
-                      className="flex-1 text-sm cursor-pointer hover:text-primary"
-                      onClick={() => startEditing(i)}
-                    >
-                      {c.title}
-                    </span>
-                  )}
-                  <Badge variant="outline" className={`text-[10px] ${priorityColors[c.priority]}`}>
-                    {c.priority}
-                  </Badge>
-                  <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => removeTodayCommitment(i)}>
-                    <X className="h-3 w-3" />
-                  </Button>
-                </div>
-              ))}
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Section 3: Blockers & Notes */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Blockers & Notes</CardTitle>
-        </CardHeader>
         <CardContent className="space-y-3">
-          <Textarea
-            placeholder="Any blockers? What's preventing you from making progress?"
-            value={blockersText}
-            onChange={(e) => setBlockersText(e.target.value)}
-            rows={3}
-          />
-          <Textarea
-            placeholder="Additional notes (optional)"
-            value={notesText}
-            onChange={(e) => setNotesText(e.target.value)}
-            rows={2}
-          />
-        </CardContent>
-      </Card>
-
-      {/* Section 4: Mood */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">How are you feeling?</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-3 flex-wrap">
-            {moods.map((m) => (
-              <button
-                key={m.value}
-                onClick={() => setMood(m.value)}
-                className={`flex flex-col items-center gap-1 rounded-xl border-2 p-3 transition-all ${
-                  mood === m.value
-                    ? "border-primary bg-primary/10 ring-2 ring-primary/30 scale-110"
-                    : "border-border hover:border-muted-foreground/30"
-                }`}
+          <div className={`flex gap-2 ${showStandupForm && !allResolved ? "opacity-50 pointer-events-none" : ""}`}>
+            <Input
+              placeholder="What will you work on?"
+              value={newFocusTitle}
+              onChange={(e) => setNewFocusTitle(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addTodayCommitment()}
+              className="flex-1"
+            />
+            <Select value={newFocusPriority} onValueChange={(v) => setNewFocusPriority(v as CommitmentPriority)}>
+              <SelectTrigger className="w-28">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="high">High</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="low">Low</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button size="icon" onClick={addTodayCommitment} disabled={!newFocusTitle.trim() || addDirectCommitmentMutation.isPending}>
+              {addDirectCommitmentMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            </Button>
+            {canImportFromClickUp && (
+              <Button
+                size="icon"
+                variant="outline"
+                onClick={fetchClickUpTasks}
+                disabled={loadingClickUp}
+                title="Add from ClickUp"
               >
-                <span className="text-2xl">{m.emoji}</span>
-                <span className="text-xs text-muted-foreground">{m.label}</span>
-              </button>
-            ))}
+                {loadingClickUp ? <Loader2 className="h-4 w-4 animate-spin" /> : <SquareKanban className="h-4 w-4" />}
+              </Button>
+            )}
           </div>
+          {/* Show pending standup items when in form mode */}
+          {(showStandupForm || isEditing) && todayCommitments.map((c, i) => (
+            <div key={i} className="flex items-center gap-2 rounded-lg border p-2">
+              {editingIdx === i ? (
+                <Input
+                  value={editingText}
+                  onChange={(e) => setEditingText(e.target.value)}
+                  onBlur={saveEditing}
+                  onKeyDown={(e) => e.key === "Enter" && saveEditing()}
+                  className="flex-1 h-7 text-sm"
+                  autoFocus
+                />
+              ) : (
+                <span
+                  className="flex-1 text-sm cursor-pointer hover:text-primary"
+                  onClick={() => startEditing(i)}
+                >
+                  {c.title}
+                </span>
+              )}
+              <Badge variant="outline" className={`text-[10px] ${priorityColors[c.priority]}`}>
+                {c.priority}
+              </Badge>
+              <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => removeTodayCommitment(i)}>
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          ))}
         </CardContent>
       </Card>
 
-      {/* AI Coach Review */}
-      {showCoach && (
-        <StandupCoachCard
-          suggestions={coachSuggestions}
-          overallTip={coachTip}
-          onApply={handleCoachApply}
-          onDismiss={handleCoachDismiss}
-          onApplyAll={handleCoachApplyAll}
-          onSubmitAnyway={() => { setShowCoach(false); handleSubmit(); }}
-          submitting={submitting}
-        />
-      )}
+      {/* Standup Form sections - only when active async standup day & not yet submitted */}
+      {(showStandupForm || isEditing) && (
+        <>
+          {/* Blockers & Notes */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Blockers & Notes</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Textarea
+                placeholder="Any blockers? What's preventing you from making progress?"
+                value={blockersText}
+                onChange={(e) => setBlockersText(e.target.value)}
+                rows={3}
+              />
+              <Textarea
+                placeholder="Additional notes (optional)"
+                value={notesText}
+                onChange={(e) => setNotesText(e.target.value)}
+                rows={2}
+              />
+            </CardContent>
+          </Card>
 
-      {/* Submit */}
-      {!showCoach && (
-        <Button
-          onClick={requestCoachReview}
-          disabled={submitting || coachLoading || (!isEditing && !allResolved)}
-          className="w-full"
-          size="lg"
-        >
-          {(submitting || coachLoading) ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-          {coachLoading ? "AI reviewing..." : isEditing ? "Update Standup" : "Submit Standup"}
-        </Button>
+          {/* Mood */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">How are you feeling?</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex gap-3 flex-wrap">
+                {moods.map((m) => (
+                  <button
+                    key={m.value}
+                    onClick={() => setMood(m.value)}
+                    className={`flex flex-col items-center gap-1 rounded-xl border-2 p-3 transition-all ${
+                      mood === m.value
+                        ? "border-primary bg-primary/10 ring-2 ring-primary/30 scale-110"
+                        : "border-border hover:border-muted-foreground/30"
+                    }`}
+                  >
+                    <span className="text-2xl">{m.emoji}</span>
+                    <span className="text-xs text-muted-foreground">{m.label}</span>
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* AI Coach Review */}
+          {showCoach && (
+            <StandupCoachCard
+              suggestions={coachSuggestions}
+              overallTip={coachTip}
+              onApply={handleCoachApply}
+              onDismiss={handleCoachDismiss}
+              onApplyAll={handleCoachApplyAll}
+              onSubmitAnyway={() => { setShowCoach(false); handleSubmit(); }}
+              submitting={submitting}
+            />
+          )}
+
+          {/* Submit */}
+          {!showCoach && (
+            <Button
+              onClick={requestCoachReview}
+              disabled={submitting || coachLoading || (!isEditing && !allResolved)}
+              className="w-full"
+              size="lg"
+            >
+              {(submitting || coachLoading) ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              {coachLoading ? "AI reviewing..." : isEditing ? "Update Standup" : "Submit Standup"}
+            </Button>
+          )}
+        </>
       )}
 
       {/* Drop confirmation dialog */}
