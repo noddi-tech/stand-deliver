@@ -19,7 +19,7 @@ Deno.serve(async (req) => {
     // Get all teams with Slack connected
     const { data: teams, error: teamsError } = await supabaseAdmin
       .from("teams")
-      .select("id, org_id, name, standup_time, standup_timezone, standup_days, slack_channel_id, standup_day_modes");
+      .select("id, org_id, name, standup_time, standup_timezone, standup_days, slack_channel_id, standup_day_modes, standup_day_times");
 
     if (teamsError) throw teamsError;
     if (!teams || teams.length === 0) {
