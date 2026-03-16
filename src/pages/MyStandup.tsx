@@ -693,7 +693,6 @@ export default function MyStandup() {
   const startEditMode = () => {
     if (!existingResponse) return;
     // Load existing data into form
-    setMood(existingResponse.response.mood);
     setBlockersText(existingResponse.response.blockers_text || "");
     setNotesText(existingResponse.response.notes || "");
     setTodayCommitments(
