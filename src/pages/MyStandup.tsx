@@ -407,22 +407,35 @@ export default function MyStandup() {
     applyStatus(id, status);
   };
 
-  const applyStatus = (id: string, status: CommitmentStatus) => {
+  const applyStatus = (id: string, status: CommitmentStatus, extraReason?: string) => {
     setStatusOverrides((prev) => ({ ...prev, [id]: status }));
     if (status === "done" || status === "dropped") {
       setFadingIds((prev) => new Set(prev).add(id));
+    }
+    // When not in standup form mode, persist immediately
+    if (submitted || !scheduleInfo.isStandupDay || scheduleInfo.todayMode === "physical") {
+      updateCommitmentMutation.mutate({
+        id,
+        status,
+        blocked_reason: status === "blocked" ? extraReason : undefined,
+        resolution_note: status === "dropped" ? extraReason : undefined,
+      }, {
+        onSuccess: () => {
+          toast.success(`Item marked as ${status}`);
+        },
+      });
     }
   };
 
   const confirmBlocked = (id: string) => {
     setBlockedReasons((prev) => ({ ...prev, [id]: blockedReason }));
-    applyStatus(id, "blocked");
+    applyStatus(id, "blocked", blockedReason);
     setBlockedInputId(null);
   };
 
   const confirmDrop = () => {
     if (!dropDialogId) return;
-    applyStatus(dropDialogId, "dropped");
+    applyStatus(dropDialogId, "dropped", dropReason);
     setDropDialogId(null);
   };
 
