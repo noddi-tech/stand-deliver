@@ -844,12 +844,6 @@ export default function MyStandup() {
               <p className="text-sm font-medium text-foreground">Standup submitted today</p>
             </div>
             <div className="grid grid-cols-2 gap-3 text-sm">
-              {mood && (
-                <div>
-                  <p className="text-xs text-muted-foreground">Mood</p>
-                  <span>{moods.find((m) => m.value === mood)?.emoji} {moods.find((m) => m.value === mood)?.label}</span>
-                </div>
-              )}
               {blockersText && (
                 <div>
                   <p className="text-xs text-destructive font-medium">Blockers</p>
