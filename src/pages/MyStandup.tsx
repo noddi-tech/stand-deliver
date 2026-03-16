@@ -760,8 +760,9 @@ export default function MyStandup() {
     );
   }
 
-  // Check if today is a standup day
-  if (teamSchedule && !submitted) {
+  // Compute schedule state (used for banners, not blocking)
+  const scheduleInfo = useMemo(() => {
+    if (!teamSchedule) return { isStandupDay: true, todayMode: "async" as string, nextDay: "" };
     const dayMap: Record<number, string> = { 0: "sun", 1: "mon", 2: "tue", 3: "wed", 4: "thu", 5: "fri", 6: "sat" };
     const tz = teamSchedule.standup_timezone || "UTC";
     const nowInTz = new Date(new Date().toLocaleString("en-US", { timeZone: tz }));
@@ -769,12 +770,12 @@ export default function MyStandup() {
     const standupDays = teamSchedule.standup_days || [];
     const dayModes = (teamSchedule as any).standup_day_modes || {};
     const todayMode = dayModes[todayCode] || "async";
+    const isStandupDay = standupDays.includes(todayCode);
 
-    if (!standupDays.includes(todayCode)) {
-      // Find next standup day
+    let nextDay = "";
+    if (!isStandupDay) {
       const dayOrder = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
       const todayIdx = dayOrder.indexOf(todayCode);
-      let nextDay = "";
       for (let i = 1; i <= 7; i++) {
         const candidate = dayOrder[(todayIdx + i) % 7];
         if (standupDays.includes(candidate)) {
@@ -782,100 +783,11 @@ export default function MyStandup() {
           break;
         }
       }
-
-      return (
-        <div className="max-w-3xl mx-auto p-6 space-y-6">
-          <h1 className="text-2xl font-bold text-foreground">My Standup</h1>
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12 text-center space-y-3">
-              <CalendarOff className="h-10 w-10 text-muted-foreground/50" />
-              <h2 className="text-lg font-semibold text-foreground">No standup today</h2>
-              <p className="text-sm text-muted-foreground">
-                {nextDay ? `Next standup is on ${nextDay}.` : "No standup days configured."}
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-      );
     }
+    return { isStandupDay, todayMode, nextDay };
+  }, [teamSchedule]);
 
-    if (todayMode === "physical") {
-      return (
-        <div className="max-w-3xl mx-auto p-6 space-y-6">
-          <h1 className="text-2xl font-bold text-foreground">My Standup</h1>
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12 text-center space-y-4">
-              <Users className="h-10 w-10 text-primary/60" />
-              <h2 className="text-lg font-semibold text-foreground">Today is a live meeting standup</h2>
-              <p className="text-sm text-muted-foreground">
-                Your team has a physical standup scheduled. Use Meeting Mode to run it.
-              </p>
-              <Button onClick={() => navigate("/meeting")}>
-                Start Meeting
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      );
-    }
-  }
-
-  if (submitted && !isEditing) {
-    return (
-      <div className="max-w-3xl mx-auto p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-foreground">Standup Submitted ✅</h1>
-          <Button variant="outline" size="sm" onClick={startEditMode}>
-            <Edit2 className="h-4 w-4 mr-1" /> Edit
-          </Button>
-        </div>
-
-        <Card>
-          <CardContent className="p-4 space-y-4">
-            {previousCommitments.length > 0 && (
-              <div>
-                <h3 className="text-xs font-semibold text-muted-foreground mb-1">Resolved Items</h3>
-                <div className="space-y-1">
-                  {previousCommitments.map((c) => (
-                    <div key={c.id} className="flex items-center gap-2 text-sm">
-                      <Badge variant="outline" className="text-[10px]">{effectiveStatuses[c.id] || c.status}</Badge>
-                      <span className="text-foreground">{c.title}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div>
-              <h3 className="text-xs font-semibold text-muted-foreground mb-1">Today's Focus</h3>
-              <div className="space-y-1">
-                {todayCommitments.map((c, i) => (
-                  <div key={i} className="flex items-center gap-2 text-sm">
-                    <Badge variant="outline" className={`text-[10px] ${priorityColors[c.priority]}`}>{c.priority}</Badge>
-                    <span className="text-foreground">{c.title}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {blockersText && (
-              <div>
-                <h3 className="text-xs font-semibold text-destructive mb-1">Blockers</h3>
-                <p className="text-sm text-foreground/80 whitespace-pre-line">{blockersText}</p>
-              </div>
-            )}
-
-            {mood && (
-              <div>
-                <h3 className="text-xs font-semibold text-muted-foreground mb-1">Mood</h3>
-                <span className="text-lg">{moods.find((m) => m.value === mood)?.emoji} {moods.find((m) => m.value === mood)?.label}</span>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  const showStandupForm = scheduleInfo.isStandupDay && scheduleInfo.todayMode === "async" && !submitted && !isEditing;
 
   return (
     <div className="max-w-3xl mx-auto p-6 space-y-6">
