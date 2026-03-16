@@ -15,13 +15,6 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
 import { MemberBadgeIcons } from "@/components/badges/MemberBadgeIcons";
 
-const moodEmoji: Record<string, string> = {
-  great: "🚀",
-  good: "👍",
-  okay: "😐",
-  struggling: "😓",
-  rough: "😰",
-};
 
 type DateFilter = "today" | "week" | "all";
 
