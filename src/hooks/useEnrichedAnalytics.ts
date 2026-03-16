@@ -18,6 +18,7 @@ export interface EnrichedMemberMetrics {
   memberId: string;
   memberName: string;
   codeImpactScore: number;
+  hasVIS: boolean;
   avgPRCycleTime: number | null; // hours
   reviewsGiven: number;
   reviewsReceived: number;
