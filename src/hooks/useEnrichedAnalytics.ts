@@ -156,10 +156,14 @@ export function useEnrichedTeamMetrics(teamId: string | undefined) {
           workTypes[wt] = (workTypes[wt] || 0) + 1;
         }
 
+        const visScore = visMap.get(memberId);
+        const hasVIS = visScore !== undefined && visScore > 0;
+
         members.push({
           memberId,
           memberName: name,
-          codeImpactScore: computeCodeImpact(totalAdditions, totalDeletions, totalFiles),
+          codeImpactScore: hasVIS ? Math.round(visScore) : computeCodeImpact(totalAdditions, totalDeletions, totalFiles),
+          hasVIS,
           avgPRCycleTime: cycleTimes.length > 0 ? Math.round(cycleTimes.reduce((a, b) => a + b, 0) / cycleTimes.length * 10) / 10 : null,
           reviewsGiven: reviewsGiven.length,
           reviewsReceived,
