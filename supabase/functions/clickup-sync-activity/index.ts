@@ -148,54 +148,6 @@ Deno.serve(async (req) => {
             }
           }
 
-          // ─── VIS CLASSIFY: Immediate classification for ClickUp items ───
-          const classifyItems = tasks.map((task: any) => ({
-            id: task.id, // external_id used as activity_id for ClickUp
-            source_type: "external_activity" as const,
-            source: "clickup",
-            activity_type: statusName?.includes("complete") || statusName?.includes("done") ? "task_completed" : "task_updated",
-            title: task.name,
-            metadata: { status: task.status?.status, list: task.list?.name, priority: task.priority?.priority },
-            member_id: memberRecords[0]?.id,
-          })).filter((item: any) => item.member_id);
-
-          if (classifyItems.length > 0) {
-            try {
-              // Find actual external_activity IDs for these items
-              const externalIds = classifyItems.map((i: any) => i.id);
-              const { data: activityRows } = await supabaseAdmin
-                .from("external_activity")
-                .select("id, external_id")
-                .eq("team_id", memberRecords[0].team_id)
-                .eq("source", "clickup")
-                .in("external_id", externalIds);
-
-              if (activityRows && activityRows.length > 0) {
-                const mappedItems = activityRows.map((row: any) => {
-                  const orig = classifyItems.find((i: any) => i.id === row.external_id);
-                  return orig ? { ...orig, id: row.id } : null;
-                }).filter(Boolean);
-
-                if (mappedItems.length > 0) {
-                  await fetch(
-                    `${Deno.env.get("SUPABASE_URL")}/functions/v1/ai-classify-contributions`,
-                    {
-                      method: "POST",
-                      headers: {
-                        Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
-                        "Content-Type": "application/json",
-                      },
-                      body: JSON.stringify({ team_id: memberRecords[0].team_id, items: mappedItems }),
-                    }
-                  );
-                  console.log(`VIS: classified ${mappedItems.length} ClickUp items`);
-                }
-              }
-            } catch (visErr) {
-              console.error("VIS ClickUp classification error:", visErr);
-            }
-          }
-
           results.push({
             org_id: install.org_id,
             user: mapping.clickup_display_name,
@@ -242,6 +194,52 @@ Deno.serve(async (req) => {
         );
       } catch (e) {
         console.error(`Badge detection failed for team ${tid}:`, e);
+      }
+    }
+
+    // ─── VIS CLASSIFY: Batch classification for all ClickUp activity ───
+    for (const tid of teamsWithActivity) {
+      try {
+        const { data: recentActivity } = await supabaseAdmin
+          .from("external_activity")
+          .select("id, activity_type, title, member_id, metadata, source")
+          .eq("team_id", tid)
+          .eq("source", "clickup")
+          .gte("created_at", new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString());
+
+        if (!recentActivity || recentActivity.length === 0) continue;
+
+        const toClassify = recentActivity.map((a) => ({
+          id: a.id,
+          source_type: "external_activity" as const,
+          source: a.source,
+          activity_type: a.activity_type,
+          title: a.title,
+          metadata: a.metadata as Record<string, any> | undefined,
+          member_id: a.member_id,
+        }));
+
+        for (let b = 0; b < toClassify.length; b += 20) {
+          const batch = toClassify.slice(b, b + 20);
+          try {
+            await fetch(
+              `${Deno.env.get("SUPABASE_URL")}/functions/v1/ai-classify-contributions`,
+              {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ team_id: tid, items: batch }),
+              }
+            );
+            console.log(`VIS: classified ${batch.length} ClickUp items for team ${tid}`);
+          } catch (batchErr) {
+            console.error(`VIS batch classification error for team ${tid}:`, batchErr);
+          }
+        }
+      } catch (visErr) {
+        console.error(`VIS ClickUp classification error for team ${tid}:`, visErr);
       }
     }
 
