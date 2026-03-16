@@ -428,9 +428,23 @@ export default function MyStandup() {
 
   const addTodayCommitment = () => {
     if (!newFocusTitle.trim()) return;
-    setTodayCommitments((prev) => [...prev, { title: newFocusTitle.trim(), priority: newFocusPriority }]);
-    setNewFocusTitle("");
-    setNewFocusPriority("medium");
+    // When standup form is not active, save directly to DB
+    if (submitted || !scheduleInfo.isStandupDay || scheduleInfo.todayMode === "physical") {
+      addDirectCommitmentMutation.mutate(
+        { title: newFocusTitle.trim(), priority: newFocusPriority },
+        {
+          onSuccess: () => {
+            setNewFocusTitle("");
+            setNewFocusPriority("medium");
+            toast.success("Focus item added");
+          },
+        }
+      );
+    } else {
+      setTodayCommitments((prev) => [...prev, { title: newFocusTitle.trim(), priority: newFocusPriority }]);
+      setNewFocusTitle("");
+      setNewFocusPriority("medium");
+    }
   };
 
   const removeTodayCommitment = (idx: number) => {
