@@ -92,3 +92,6 @@ verify_jwt = false
 
 [functions.ai-classify-contributions]
 verify_jwt = false
+
+[functions.compute-weekly-vis]
+verify_jwt = false
