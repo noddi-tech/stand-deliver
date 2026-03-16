@@ -145,7 +145,7 @@ export function MemberBreakdown({
                       <p className="text-lg font-bold text-foreground">
                         {em?.codeImpactScore ?? ((m.externalActivity?.githubCommits ?? 0) + (m.externalActivity?.prs ?? 0) + (m.externalActivity?.clickupTasks ?? 0))}
                       </p>
-                      <p className="text-[10px] text-muted-foreground">{em ? "Impact" : "Activity"}</p>
+                      <p className="text-[10px] text-muted-foreground">{em?.hasVIS ? "VIS" : em ? "Impact" : "Activity"}</p>
                     </div>
                   </div>
 

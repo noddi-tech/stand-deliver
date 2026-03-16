@@ -60,6 +60,19 @@ export function useEnrichedTeamMetrics(teamId: string | undefined) {
     queryFn: async () => {
       const thirtyDaysAgo = subDays(new Date(), 30).toISOString();
 
+      // Fetch VIS impact scores from impact_classifications (last 30 days)
+      const { data: visScores } = await supabase
+        .from("impact_classifications")
+        .select("member_id, impact_score")
+        .eq("team_id", teamId!)
+        .gte("created_at", thirtyDaysAgo);
+
+      // Build VIS score map: member_id → total impact_score
+      const visMap = new Map<string, number>();
+      for (const row of visScores || []) {
+        visMap.set(row.member_id, (visMap.get(row.member_id) || 0) + Number(row.impact_score));
+      }
+
       // Fetch all enriched external activity for the team
       const { data: activities } = await supabase
         .from("external_activity")
