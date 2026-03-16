@@ -90,7 +90,7 @@ export default function MyStandup() {
   const [todayCommitments, setTodayCommitments] = useState<NewCommitment[]>([]);
   const [blockersText, setBlockersText] = useState("");
   const [notesText, setNotesText] = useState("");
-  const [mood, setMood] = useState<MoodType | null>(null);
+  
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
