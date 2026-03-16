@@ -27,6 +27,7 @@ interface MemberBreakdownProps {
     memberId: string;
     memberName: string;
     codeImpactScore: number;
+    hasVIS: boolean;
     reviewsGiven: number;
     avgPRCycleTime: number | null;
   }>;
