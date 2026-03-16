@@ -109,8 +109,12 @@ export function useAttentionItems(teamId: string | undefined) {
         }
       }
 
+      // Deduplicate: exclude members already in missingStandups from staleMembers
+      const missingSet = new Set(missingStandups.map((m) => m.id));
+
       const staleMembers: AttentionMember[] = allMembers
         .filter((m) => {
+          if (missingSet.has(m.id)) return false; // already shown as missing today
           const last = latestByMember.get(m.id);
           if (!last) return true; // never submitted
           return differenceInCalendarDays(new Date(), new Date(last)) >= 3;
