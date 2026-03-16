@@ -40,7 +40,7 @@ function useActivityFeed(teamId: string | undefined, days: number, sourceFilter:
       const since = subDays(new Date(), days).toISOString();
       const sinceDate = since.split("T")[0];
       const items: ActivityItem[] = [];
-      const moodEmoji: Record<string, string> = { great: "🚀", good: "👍", okay: "😐", struggling: "😓", rough: "😰" };
+      
 
       // Fetch external activity with pagination - get up to 1000 rows
       if (sourceFilter !== "standup") {
