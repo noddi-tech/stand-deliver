@@ -78,7 +78,7 @@ export default function MyStandup() {
     queryFn: async () => {
       const { data } = await supabase
         .from("teams")
-        .select("standup_days, standup_timezone, standup_day_modes")
+        .select("standup_days, standup_timezone, standup_day_modes, standup_day_times")
         .eq("id", teamId!)
         .single();
       return data;
