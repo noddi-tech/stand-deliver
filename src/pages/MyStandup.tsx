@@ -711,7 +711,7 @@ export default function MyStandup() {
     setSubmitted(true);
     // Restore from DB
     if (existingResponse) {
-      setMood(existingResponse.response.mood);
+      
       setBlockersText(existingResponse.response.blockers_text || "");
       setNotesText(existingResponse.response.notes || "");
       setTodayCommitments(
