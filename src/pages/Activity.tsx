@@ -87,7 +87,7 @@ function useActivityFeed(teamId: string | undefined, days: number, sourceFilter:
         if (sessionIds.length > 0) {
           let respQuery = supabase
             .from("standup_responses")
-            .select("id, member_id, submitted_at, mood, yesterday_text, member:team_members!inner(id, user_id, profile:profiles!inner(full_name, avatar_url))")
+            .select("id, member_id, submitted_at, yesterday_text, member:team_members!inner(id, user_id, profile:profiles!inner(full_name, avatar_url))")
             .in("session_id", sessionIds)
             .order("submitted_at", { ascending: false })
             .limit(200);
