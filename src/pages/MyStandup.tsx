@@ -691,7 +691,8 @@ export default function MyStandup() {
             })
             .then(({ error: classErr }) => {
               if (classErr) console.error("VIS standup classification failed:", classErr);
-            });
+            })
+            .catch(err => console.warn('[VIS] standup classification failed:', err));
         }
       }
 
