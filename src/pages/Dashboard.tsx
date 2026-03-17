@@ -7,6 +7,7 @@ import { useRecentActivity } from "@/hooks/useRecentActivity";
 import { useSkipStandup } from "@/hooks/useSkipStandup";
 import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
 import { useMemberBadgeCounts } from "@/hooks/useMemberBadgeCounts";
+import { type BreakdownPeriod, PERIOD_DAYS } from "@/components/team/MemberBreakdown";
 import { useTeamMomentum } from "@/hooks/useTeamMomentum";
 import { MemberBreakdown } from "@/components/team/MemberBreakdown";
 import { useTeamFocusItems, useContributionClassification } from "@/hooks/useTeamFocus";
@@ -63,7 +64,8 @@ export default function Dashboard() {
   const skipMutation = useSkipStandup();
   const { data: teamBadges } = useTeamBadges(teamId);
   const badgeLookup = useBadgeLookup();
-  const { data: badgeData } = useMemberBadgeCounts(teamId);
+  const [breakdownPeriod, setBreakdownPeriod] = useState<BreakdownPeriod>("week");
+  const { data: badgeData } = useMemberBadgeCounts(teamId, PERIOD_DAYS[breakdownPeriod]);
   const { data: summaryData, isLoading: summaryLoading } = useTeamSummary(teamId);
   const { data: enriched } = useEnrichedTeamMetrics(teamId);
   const { data: focusItems } = useTeamFocusItems(teamId);
@@ -193,6 +195,8 @@ export default function Dashboard() {
           badgeCounts={badgeData?.counts}
           badgeCountPct={badgeData?.countPct}
           badgeImpactPct={badgeData?.impactPct}
+          period={breakdownPeriod}
+          onPeriodChange={setBreakdownPeriod}
           loading={summaryLoading}
         />
       </section>

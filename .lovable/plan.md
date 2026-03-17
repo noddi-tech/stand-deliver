@@ -1,43 +1,75 @@
 
 
-# Fix VIS Consistency Across All Views + Add Time Filter to Member Breakdown
+# Integrate Activity Badges into VIS System + Update VIS Explained
 
-## Problem
+## Concept
 
-Three different numbers shown for the same person:
-- **Member Breakdown**: Joachim = **54** (log-scale normalized impact from `useEnrichedTeamMetrics`)
-- **Team Insights awards**: Joachim = **79**/100 (linear normalized impact from `useWeeklyAwards`)
-- **Weekly Digest awards**: Anders = **1597** (old frozen JSONB in DB — never refreshed after edge function fix)
+Activity badges already classify *what type* of work was done (🐛 Bug Fix, 🚀 Feature, etc.). Integrating them into VIS makes the score more transparent: instead of just seeing "Impact: 72", you see *where* that impact came from — "40% from Features, 30% from Bug Fixes, 20% from Reviews." This gives actionable insight into who fixes what, who ships what, and whether that aligns with team priorities.
 
-Root cause: Three different normalization methods are used across the codebase:
-1. `useEnrichedTeamMetrics` (Member Breakdown): **log-scale** — `log10(raw+1) / log10(median+1) * 50`, clamped 5-100
-2. `useWeeklyAwards` (Team Insights): **linear** — `raw / median * 50`, clamped 0-100
-3. `ai-weekly-digest` edge function: same linear normalization (recently fixed but DB has stale row)
+## 1. Enrich `compute-weekly-vis` with Badge Distribution
 
-## Fix: Unify on log-scale normalization and label as "VIS"
+**`supabase/functions/compute-weekly-vis/index.ts`**
 
-The log-scale method is better because it compresses extreme ranges — a member with 5x the median doesn't get capped at 100 while everyone else clusters near 50.
+After fetching `impact_classifications` (line 65), also fetch `activity_badges` for the same week/team. Join badge data to classifications by `activity_id` to build a per-member breakdown: `Record<string, number>` mapping badge_key to summed impact_score.
 
-### Changes
+Add to the existing `breakdown` jsonb (line 154):
+```ts
+breakdown: {
+  ...existingFields,
+  badgeDistribution: { feature: 45.2, bugfix: 22.1, refactor: 8.0, ... },
+  badgeImpactPct: { feature: 40, bugfix: 30, refactor: 10, ... },
+}
+```
+
+No schema migration needed — `breakdown` is already a `jsonb` column.
+
+## 2. Enrich `useWeeklyVIS` Client Hook
+
+**`src/hooks/useWeeklyVIS.ts`**
+
+- Add `badgeDistribution?: Record<string, number>` to `VISBreakdown` interface
+- For canonical (past) weeks: read from `breakdown.badgeDistribution`
+- For current week estimate: fetch `activity_badges` for the week alongside `impact_classifications`, join by `activity_id`, aggregate badge_key → impact_score sums
+
+## 3. Show Badge-Impact Distribution in Dashboard/MyAnalytics
+
+**New component: `src/components/analytics/BadgeImpactBreakdown.tsx`**
+
+A compact horizontal stacked bar or pill row showing what % of a member's impact came from each badge type. Uses `ALL_BADGES` for emoji lookup. Example rendering:
+
+```
+Impact sources: 🚀 40%  🐛 30%  🔧 15%  🔀 10%  🧹 5%
+```
+
+Wire into:
+- **Dashboard.tsx**: Show below VIS score in MemberBreakdown cards (via the `badgeCounts` prop or a new `badgeImpact` prop)
+- **MyAnalytics.tsx**: Add a "Where Your Impact Comes From" card using `useWeeklyVIS` badge distribution data
+
+## 4. Update VIS Explained Page
+
+**`src/pages/VISExplained.tsx`**
+
+Add two new sections:
+
+### "Activity Badges" section (after "Impact tiers")
+- Explain that every contribution is automatically tagged with an activity badge (🐛 Bug Fix, 🚀 Feature, 🔧 Refactor, etc.)
+- 4-layer priority: Manual > Deterministic rules > AI classification > Source defaults
+- Badges map to value types but are more granular — they show *what kind* of work within each tier
+- Include a subset grid of the most common badges with emoji + label
+
+### "Where Your Impact Comes From" section (after Activity Badges)
+- Explain that VIS now tracks which badge types contributed to your Impact score
+- "If 60% of your impact came from Bug Fixes and only 10% from Features, that's a signal — are you in a stabilization phase, or is new feature work getting stuck?"
+- Clarify this is informational, not a penalty — all badge types contribute equally to the score formula
+
+## Files Summary
 
 | File | Change |
 |---|---|
-| `src/hooks/useWeeklyAwards.ts` | Replace linear normalization (`raw / median * 50`) with log-scale (`log10(raw+1) / log10(median+1) * 50`, floor 5). Change stat label to `VIS: X/100`. |
-| `supabase/functions/ai-weekly-digest/index.ts` | Same: replace `normalizeImpactScores` with log-scale. Change stat label to `VIS: X/100`. |
-| `src/pages/WeeklyDigest.tsx` | Fix `startOfWeek` consistency — `getCurrentWeekStart()` uses `weekStartsOn: 1` (Monday) but `useWeeklyAwards` uses default (Sunday). Align both to Monday so live data overrides frozen data for current week. |
-
-### Time filter for Member Breakdown
-
-Add a period selector (This Week / This Month / This Quarter / This Year) to the Member Breakdown card. Default: "This Week".
-
-| File | Change |
-|---|---|
-| `src/components/team/MemberBreakdown.tsx` | Add period selector UI (pill buttons). Pass `period` to parent via callback or manage locally. |
-| `src/hooks/useEnrichedAnalytics.ts` | Accept optional `daysBack` parameter (default 7). Use it instead of hardcoded 30. |
-| `src/hooks/useMemberBadgeCounts.ts` | Accept optional `daysBack` parameter (default 7). |
-| `src/hooks/useTeamSummary.ts` | Already has `period` param — wire it through. |
-| `src/pages/Dashboard.tsx` | Pass period state to `MemberBreakdown` and dependent hooks. |
-| `src/pages/Analytics.tsx` | Same. |
-
-Period mapping: This Week = 7, This Month = 30, This Quarter = 90, This Year = 365.
+| `supabase/functions/compute-weekly-vis/index.ts` | Fetch activity_badges, compute badge distribution, include in breakdown jsonb |
+| `src/hooks/useWeeklyVIS.ts` | Add `badgeDistribution` to VISBreakdown, compute in estimate path |
+| `src/components/analytics/BadgeImpactBreakdown.tsx` | Create — badge-impact pill/bar visualization |
+| `src/pages/MyAnalytics.tsx` | Add "Where Your Impact Comes From" card |
+| `src/pages/Dashboard.tsx` | Wire badge impact data to MemberBreakdown |
+| `src/pages/VISExplained.tsx` | Add "Activity Badges" and "Impact Sources" sections |
 

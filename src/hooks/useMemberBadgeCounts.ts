@@ -5,21 +5,21 @@ export type MemberBadgeCounts = Record<string, Record<string, number>>;
 export type MemberBadgeCountPct = Record<string, Record<string, number>>;
 export type MemberBadgeImpactPct = Record<string, Record<string, number>>;
 
-export function useMemberBadgeCounts(teamId?: string) {
+export function useMemberBadgeCounts(teamId?: string, daysBack = 7) {
   return useQuery({
-    queryKey: ["member-badge-counts", teamId],
+    queryKey: ["member-badge-counts", teamId, daysBack],
     enabled: !!teamId,
     staleTime: 60_000,
     queryFn: async (): Promise<{ counts: MemberBadgeCounts; countPct: MemberBadgeCountPct; impactPct: MemberBadgeImpactPct }> => {
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - daysBack);
 
       // Get recent external_activity for this team
       const { data: activities } = await supabase
         .from("external_activity")
         .select("id, member_id")
         .eq("team_id", teamId!)
-        .gte("occurred_at", sevenDaysAgo.toISOString());
+        .gte("occurred_at", cutoff.toISOString());
 
       if (!activities?.length) return { counts: {}, countPct: {}, impactPct: {} };
 

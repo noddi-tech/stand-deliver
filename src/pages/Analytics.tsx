@@ -1,4 +1,4 @@
-
+import { useState } from "react";
 import { AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Activity, AlertTriangle, ArrowDownRight, TrendingUp, BarChart3, Sparkles, Loader2, RefreshCw, GitPullRequest, Clock, Eye, TrendingDown, Minus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +15,7 @@ import { useTeamSummary } from "@/hooks/useTeamSummary";
 import { useEnrichedTeamMetrics } from "@/hooks/useEnrichedAnalytics";
 import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
 import { useMemberBadgeCounts } from "@/hooks/useMemberBadgeCounts";
+import { type BreakdownPeriod, PERIOD_DAYS } from "@/components/team/MemberBreakdown";
 import { useTeamMomentum } from "@/hooks/useTeamMomentum";
 import { MemberBreakdown } from "@/components/team/MemberBreakdown";
 import { useTeamFocusItems, useContributionClassification } from "@/hooks/useTeamFocus";
@@ -36,7 +37,8 @@ export default function Analytics() {
   const { data: momentum } = useTeamMomentum(teamId);
   const { data: teamBadges } = useTeamBadges(teamId);
   const badgeLookup = useBadgeLookup();
-  const { data: badgeData } = useMemberBadgeCounts(teamId);
+  const [breakdownPeriod, setBreakdownPeriod] = useState<BreakdownPeriod>("week");
+  const { data: badgeData } = useMemberBadgeCounts(teamId, PERIOD_DAYS[breakdownPeriod]);
   const { data: focusItems } = useTeamFocusItems(teamId);
   const { data: classification, isLoading: classificationLoading, refetch: refetchClassification } = useContributionClassification(teamId, (focusItems?.length ?? 0) > 0);
   const loading = teamLoading || isLoading;
@@ -184,9 +186,11 @@ export default function Analytics() {
         badgeCountPct={badgeData?.countPct}
         badgeImpactPct={badgeData?.impactPct}
         loading={summaryLoading}
+        period={breakdownPeriod}
+        onPeriodChange={setBreakdownPeriod}
       />
 
-      
+
       {enriched && (enriched.prCycleTimeTrend.some(w => w.avgHours > 0) || enriched.teamTotalReviews > 0) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>

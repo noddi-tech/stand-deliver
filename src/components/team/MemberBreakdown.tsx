@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +22,10 @@ const SENTIMENT_CONFIG: Record<string, { label: string; className: string }> = {
   needs_attention: { label: "Needs check-in", className: "bg-amber-500/10 text-amber-600 border-amber-500/20" },
 };
 
+export type BreakdownPeriod = "week" | "month" | "quarter" | "year";
+export const PERIOD_DAYS: Record<BreakdownPeriod, number> = { week: 7, month: 30, quarter: 90, year: 365 };
+const PERIOD_LABELS: Record<BreakdownPeriod, string> = { week: "This Week", month: "This Month", quarter: "This Quarter", year: "This Year" };
+
 interface MemberBreakdownProps {
   memberStats: MemberStat[];
   highlights?: MemberHighlight[];
@@ -41,6 +45,8 @@ interface MemberBreakdownProps {
   badgeCountPct?: MemberBadgeCountPct;
   badgeImpactPct?: MemberBadgeImpactPct;
   loading?: boolean;
+  period?: BreakdownPeriod;
+  onPeriodChange?: (period: BreakdownPeriod) => void;
 }
 
 export function MemberBreakdown({
@@ -55,6 +61,8 @@ export function MemberBreakdown({
   badgeCountPct,
   badgeImpactPct,
   loading,
+  period = "week",
+  onPeriodChange,
 }: MemberBreakdownProps) {
   const [showAll, setShowAll] = useState(false);
   const display = showAll ? memberStats : memberStats.slice(0, 6);
@@ -111,13 +119,25 @@ export function MemberBreakdown({
           <CardTitle className="text-base flex items-center gap-2">
             <User className="h-4 w-4 text-muted-foreground" />
             Member Breakdown
-            <Badge variant="secondary" className="text-[10px] font-normal">This week</Badge>
           </CardTitle>
-          {memberStats.length > 6 && (
-            <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => setShowAll(!showAll)}>
-              {showAll ? "Show less" : `Show all (${memberStats.length})`}
-            </Button>
-          )}
+          <div className="flex items-center gap-1">
+            {(Object.keys(PERIOD_LABELS) as BreakdownPeriod[]).map((p) => (
+              <Button
+                key={p}
+                variant={period === p ? "secondary" : "ghost"}
+                size="sm"
+                className="text-xs h-7 px-2.5"
+                onClick={() => onPeriodChange?.(p)}
+              >
+                {PERIOD_LABELS[p]}
+              </Button>
+            ))}
+            {memberStats.length > 6 && (
+              <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => setShowAll(!showAll)}>
+                {showAll ? "Show less" : `Show all (${memberStats.length})`}
+              </Button>
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent>
