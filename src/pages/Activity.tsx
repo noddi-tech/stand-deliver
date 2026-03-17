@@ -237,7 +237,6 @@ export default function Activity() {
           <p className="text-[11px] text-muted-foreground/70">Badges last synced {formatDistanceToNow(new Date(lastSync), { addSuffix: true })}</p>
         )}
       </div>
-        )}
 
       {/* Summary counters */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
