@@ -190,7 +190,8 @@ export default function Dashboard() {
           enrichedMembers={enriched?.members}
           classification={classification}
           focusItems={focusItems}
-          badgeCounts={badgeCounts}
+          badgeCounts={badgeData?.counts}
+          badgeImpactPct={badgeData?.impactPct}
           loading={summaryLoading}
         />
       </section>

@@ -239,7 +239,7 @@ export default function Analytics() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {loading && enrichedLoading ? <Skeleton className="h-64 w-full" /> : enriched && enriched.workTypeDist.some(w => (w.feature || 0) + (w.bugfix || 0) + (w.refactor || 0) + (w.chore || 0) + (w.infra || 0) > 0) ? (
+          {loading && enrichedLoading ? <Skeleton className="h-64 w-full" /> : enriched && enriched.workTypeDist.some(w => (Number(w.feature) || 0) + (Number(w.bugfix) || 0) + (Number(w.refactor) || 0) + (Number(w.chore) || 0) + (Number(w.infra) || 0) > 0) ? (
             <ResponsiveContainer width="100%" height={260}>
               <AreaChart data={enriched.workTypeDist}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
