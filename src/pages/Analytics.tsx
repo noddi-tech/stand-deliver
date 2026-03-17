@@ -37,7 +37,8 @@ export default function Analytics() {
   const { data: momentum } = useTeamMomentum(teamId);
   const { data: teamBadges } = useTeamBadges(teamId);
   const badgeLookup = useBadgeLookup();
-  const { data: badgeData } = useMemberBadgeCounts(teamId);
+  const [breakdownPeriod, setBreakdownPeriod] = useState<BreakdownPeriod>("week");
+  const { data: badgeData } = useMemberBadgeCounts(teamId, PERIOD_DAYS[breakdownPeriod]);
   const { data: focusItems } = useTeamFocusItems(teamId);
   const { data: classification, isLoading: classificationLoading, refetch: refetchClassification } = useContributionClassification(teamId, (focusItems?.length ?? 0) > 0);
   const loading = teamLoading || isLoading;
