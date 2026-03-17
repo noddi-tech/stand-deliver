@@ -114,6 +114,16 @@ Deno.serve(async (req) => {
                   },
                   { onConflict: "team_id,member_id,external_id,activity_type,source" }
                 );
+                // Badge resolution for ClickUp tasks
+                const insertedId = (await supabaseAdmin.from("external_activity").select("id").eq("team_id", member.team_id).eq("member_id", member.id).eq("external_id", task.id).eq("source", "clickup").maybeSingle()).data?.id;
+                if (insertedId) {
+                  await upsertBadge(supabaseAdmin, {
+                    id: insertedId,
+                    source: "clickup", activity_type: activityType, title: task.name,
+                    source_type: "external_activity",
+                    metadata: { list_name: task.list?.name, tags: task.tags?.map((t: any) => t.name) || [] },
+                  }, member.team_id);
+                }
               } catch (e) {
                 console.error("Insert error:", e);
               }

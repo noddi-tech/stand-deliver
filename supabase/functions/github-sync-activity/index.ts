@@ -880,6 +880,13 @@ Deno.serve(async (req) => {
                     },
                     { onConflict: "team_id,member_id,external_id,activity_type,source" }
                   );
+                  // Badge resolution for reviews
+                  await upsertBadge(supabaseAdmin, {
+                    id: (await supabaseAdmin.from("external_activity").select("id").eq("team_id", reviewerMember.team_id).eq("member_id", reviewerMember.id).eq("external_id", `review-${item.id}-${review.user}-${review.submitted_at}`).eq("source", "github").eq("activity_type", "pr_review").maybeSingle()).data?.id,
+                    source: "github", activity_type: "pr_review", title: `Reviewed: ${item.title}`,
+                    source_type: "external_activity",
+                    metadata: { review_comments: detail?.review_comments || 0 },
+                  }, reviewerMember.team_id);
                 } catch { /* dedup */ }
               }
             }
