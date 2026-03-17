@@ -61,6 +61,8 @@ export function MemberBreakdown({
   badgeCountPct,
   badgeImpactPct,
   loading,
+  period = "week",
+  onPeriodChange,
 }: MemberBreakdownProps) {
   const [showAll, setShowAll] = useState(false);
   const display = showAll ? memberStats : memberStats.slice(0, 6);
