@@ -20,6 +20,7 @@ import MyAnalytics from "@/pages/MyAnalytics";
 import TeamInsights from "@/pages/TeamInsights";
 import WeeklyDigest from "@/pages/WeeklyDigest";
 import Activity from "@/pages/Activity";
+import VISExplained from "@/pages/VISExplained";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -61,6 +62,7 @@ const App = () => (
                 <Route path="/team-insights" element={<TeamInsights />} />
                 <Route path="/weekly-digest" element={<WeeklyDigest />} />
                 <Route path="/settings" element={<Settings />} />
+                <Route path="/vis-explained" element={<VISExplained />} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>

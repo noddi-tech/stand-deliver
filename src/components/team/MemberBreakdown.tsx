@@ -154,8 +154,9 @@ export function MemberBreakdown({
                               <TooltipTrigger asChild>
                                 <span className="cursor-help border-b border-dotted border-muted-foreground/50">VIS</span>
                               </TooltipTrigger>
-                              <TooltipContent side="bottom" className="max-w-[200px] text-xs">
-                                Value Impact Score — measures what your work accomplishes, not just code volume
+                              <TooltipContent side="bottom" className="max-w-[220px] text-xs">
+                                <p>Value Impact Score — measures what your work accomplishes, not just code volume.</p>
+                                <a href="/vis-explained" className="text-primary underline mt-1 inline-block">Learn more</a>
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
