@@ -186,7 +186,7 @@ export function MemberBreakdown({
                   {/* Impact-weighted badge distribution */}
                   {(() => {
                     const memberId = em?.memberId;
-                    const pct = memberId && badgeImpactPct?.[memberId];
+                    const pct = memberId && (badgeCountPct?.[memberId] || badgeImpactPct?.[memberId]);
                     if (pct && Object.keys(pct).length > 0) {
                       return <BadgeImpactBreakdown badgeImpactPct={pct} compact />;
                     }
