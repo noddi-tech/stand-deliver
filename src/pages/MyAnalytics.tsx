@@ -6,7 +6,7 @@ import { Lightbulb, GitPullRequest, Eye, Code2, Target, PieChart } from "lucide-
 import { useUserTeam, useMyAnalytics } from "@/hooks/useAnalytics";
 import { usePersonalEnrichedMetrics } from "@/hooks/useEnrichedAnalytics";
 import { BadgeShowcase } from "@/components/badges/BadgeShowcase";
-import { useWeeklyVIS } from "@/hooks/useWeeklyVIS";
+import { useMemberBadgeCounts } from "@/hooks/useMemberBadgeCounts";
 import { BadgeImpactBreakdown } from "@/components/analytics/BadgeImpactBreakdown";
 
 export default function MyAnalytics() {
@@ -15,7 +15,8 @@ export default function MyAnalytics() {
   const teamId = teamData?.team_id;
   const { data, isLoading } = useMyAnalytics(memberId);
   const { data: enriched, isLoading: enrichedLoading } = usePersonalEnrichedMetrics(memberId, teamId);
-  const { data: visData } = useWeeklyVIS(memberId, teamId);
+  const { data: badgeData } = useMemberBadgeCounts(teamId);
+  const myBadgeImpactPct = memberId && badgeData?.impactPct?.[memberId];
   const loading = teamLoading || isLoading;
 
   const tooltipStyle = { backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, color: "hsl(var(--foreground))" };
@@ -37,18 +38,18 @@ export default function MyAnalytics() {
       <BadgeShowcase memberId={memberId} teamId={teamId} />
 
       {/* Where Your Impact Comes From */}
-      {visData?.breakdown?.badgeImpactPct && Object.keys(visData.breakdown.badgeImpactPct).length > 0 && (
+      {myBadgeImpactPct && Object.keys(myBadgeImpactPct).length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <PieChart className="h-4 w-4 text-muted-foreground" /> Where Your Impact Comes From
             </CardTitle>
             <p className="text-xs text-muted-foreground">
-              Breakdown of your VIS impact score by activity type{visData.isEstimate ? " (mid-week estimate)" : ""}
+              Breakdown of your impact score by activity type (last 7 days)
             </p>
           </CardHeader>
           <CardContent>
-            <BadgeImpactBreakdown badgeImpactPct={visData.breakdown.badgeImpactPct} />
+            <BadgeImpactBreakdown badgeImpactPct={myBadgeImpactPct} />
           </CardContent>
         </Card>
       )}

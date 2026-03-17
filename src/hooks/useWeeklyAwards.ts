@@ -106,10 +106,23 @@ export function useWeeklyAwards(teamId: string | undefined) {
           else if (item.activity_type === "pr_merged") stats.prsMerged++;
         }
 
-        // Apply VIS scores — no legacy fallback
+        // Apply VIS scores — normalize raw impact to 0-100 using team median
+        const rawScores = Array.from(weekVisMap.values()).filter(v => v > 0).sort((a, b) => a - b);
+        let teamMedian = 1;
+        if (rawScores.length > 0) {
+          const mid = Math.floor(rawScores.length / 2);
+          teamMedian = rawScores.length % 2 === 1
+            ? rawScores[mid]
+            : (rawScores[mid - 1] + rawScores[mid]) / 2;
+          if (teamMedian === 0) teamMedian = 1;
+        }
+
         for (const [id, stats] of memberMap) {
-          const visScore = weekVisMap.get(id);
-          stats.impactScore = visScore !== undefined && visScore > 0 ? Math.round(visScore) : 0;
+          const rawScore = weekVisMap.get(id);
+          // Normalize to 0-100 scale: median maps to 50
+          stats.impactScore = rawScore !== undefined && rawScore > 0
+            ? Math.round(Math.min(100, (rawScore / teamMedian) * 50))
+            : 0;
         }
 
         // Add commitment completions
@@ -146,8 +159,8 @@ export function useWeeklyAwards(teamId: string | undefined) {
             title: "MVP",
             memberName: mvp.name,
             memberId: mvp.memberId,
-            description: "Highest composite of VIS impact, reviews, and commitments completed",
-            stat: `VIS: ${mvp.impactScore} · Reviews: ${mvp.reviewsGiven} · Done: ${mvp.commitmentsCompleted}`,
+            description: "Highest composite of normalized impact, reviews, and commitments completed",
+            stat: `Impact: ${mvp.impactScore}/100 · Reviews: ${mvp.reviewsGiven} · Done: ${mvp.commitmentsCompleted}`,
           });
         }
 
