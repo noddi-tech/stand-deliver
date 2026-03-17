@@ -1320,7 +1320,34 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      unclassified_activities: {
+        Row: {
+          activity_type: string | null
+          id: string | null
+          member_id: string | null
+          metadata: Json | null
+          occurred_at: string | null
+          source: string | null
+          team_id: string | null
+          title: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "external_activity_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "team_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "external_activity_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       carry_forward_commitments:

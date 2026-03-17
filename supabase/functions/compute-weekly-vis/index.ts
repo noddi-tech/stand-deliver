@@ -16,12 +16,18 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    // Compute week boundaries (last complete week: Mon-Sun)
+    // Compute week boundaries (last COMPLETE week: Mon 00:00 → Sun 23:59)
+    // If today is Sunday, we still want the PREVIOUS week (not the current one
+    // which hasn't finished yet), so we always go back at least 1 day first.
     const now = new Date();
-    const dayOfWeek = now.getUTCDay(); // 0=Sun
+    const yesterday = new Date(now);
+    yesterday.setUTCDate(now.getUTCDate() - 1); // ensures we never score the current day
+
+    const dayOfWeek = yesterday.getUTCDay(); // 0=Sun
     const daysToLastSunday = dayOfWeek === 0 ? 0 : dayOfWeek;
-    const lastSunday = new Date(now);
-    lastSunday.setUTCDate(now.getUTCDate() - daysToLastSunday);
+
+    const lastSunday = new Date(yesterday);
+    lastSunday.setUTCDate(yesterday.getUTCDate() - daysToLastSunday);
     lastSunday.setUTCHours(23, 59, 59, 999);
 
     const lastMonday = new Date(lastSunday);

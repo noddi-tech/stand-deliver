@@ -49,3 +49,68 @@ describe("computeVISTotal", () => {
     expect(computeVISTotal({ normalizedImpact: -50, deliveryScore: -50, multiplierScore: -50, focusRatio: -50 })).toBe(0);
   });
 });
+
+describe("computeImpactScore - behavioral", () => {
+  it("critical 12-line fix scores higher than low 10000-line chore", () => {
+    const criticalFix = computeImpactScore({
+      impact_tier: "critical",
+      value_type: "quality",
+      focus_alignment: "direct",
+      size: 12,
+    });
+    const largeChore = computeImpactScore({
+      impact_tier: "low",
+      value_type: "foundation",
+      focus_alignment: "none",
+      size: 10000,
+    });
+    expect(criticalFix).toBeGreaterThan(largeChore * 5);
+  });
+
+  it("non-code item (size=0) uses sizeFactor 1.0", () => {
+    const score = computeImpactScore({
+      impact_tier: "high",
+      value_type: "growth",
+      focus_alignment: "none",
+      size: 0,
+    });
+    // 25 * 1.5 * 1.0 * 1.0 = 37.5
+    expect(score).toBe(37.5);
+  });
+
+  it("falls back to defaults for unknown enum values", () => {
+    const score = computeImpactScore({
+      impact_tier: "unknown" as any,
+      value_type: "unknown" as any,
+      focus_alignment: "unknown" as any,
+      size: 100,
+    });
+    // 10 * 1.0 * 1.0 * (log10(101)/2 ≈ 1.002) ≈ 10.02
+    expect(score).toBeGreaterThan(9);
+    expect(score).toBeLessThan(11);
+  });
+});
+
+describe("computeVISTotal - behavioral", () => {
+  it("equal components at 50 produce score of 50", () => {
+    expect(
+      computeVISTotal({
+        normalizedImpact: 50,
+        deliveryScore: 50,
+        multiplierScore: 50,
+        focusRatio: 50,
+      })
+    ).toBe(50);
+  });
+
+  it("weights sum to 1.0 (all at 100 → 100)", () => {
+    expect(
+      computeVISTotal({
+        normalizedImpact: 100,
+        deliveryScore: 100,
+        multiplierScore: 100,
+        focusRatio: 100,
+      })
+    ).toBe(100);
+  });
+});
