@@ -40,7 +40,7 @@ const COMPONENTS = [
     weight: "40%",
     question: "What did your work actually do for the product?",
     description:
-      "Every contribution — commits, PRs, tasks, standup commitments — is automatically classified by AI into one of four tiers. Each item also gets a value type and a focus alignment tag. The AI classifies the outcome, not the method — work shipped via Lovable, v0, or Cursor is scored the same as hand-written code. Your individual scores are summed then compared to the team median. A score of 50 means you're at the team average.",
+      "Every contribution — commits, PRs, tasks, standup commitments — is automatically classified by AI into one of four tiers. Each item also gets a value type and a focus alignment tag. The AI classifies the outcome, not the method — work shipped via Lovable, v0, or Cursor is scored the same as hand-written code. Your individual scores are summed, then log-compressed and normalized against the team median. The median maps to 50, with a floor of 5 for any active contributor — so you'll never see a 0 if you shipped real work. The log scale means a 10x difference in raw output shows up as a modest score gap, not a 10x score gap. This keeps scores meaningful even on small teams.",
     accent: "border-l-primary",
   },
   {
