@@ -1,8 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, Zap, CheckCircle, Users, Target, Info } from "lucide-react";
+import { ArrowLeft, Zap, CheckCircle, Users, Target, Info, Tag, BarChart3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
+import { ALL_BADGES } from "@/lib/activity-badges";
 
 const TIER_DATA = [
   {
@@ -180,6 +181,71 @@ export default function VISExplained() {
             </Card>
           ))}
         </div>
+      </section>
+
+      {/* Activity Badges */}
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+          <Tag className="h-5 w-5 text-muted-foreground" />
+          Activity Badges
+        </h2>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          Every contribution is automatically tagged with an <span className="font-medium text-foreground">activity badge</span> that
+          describes <em>what kind</em> of work it was. Badges are more granular than impact tiers — they tell you whether a
+          "High" contribution was a new feature, a security fix, or a performance optimization.
+        </p>
+        <Card className="border">
+          <CardContent className="p-4 space-y-3">
+            <p className="text-sm font-medium text-foreground">How badges are assigned</p>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              Badges use a 4-layer priority chain. Higher-confidence sources always win:
+            </p>
+            <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
+              <li><span className="font-medium text-foreground">Manual override</span> — you pick the badge yourself (confidence: 1.0)</li>
+              <li><span className="font-medium text-foreground">Deterministic rules</span> — commit prefixes, GitHub labels, ClickUp tags (0.9)</li>
+              <li><span className="font-medium text-foreground">AI classification</span> — LLM analyzes the title and context (0.7)</li>
+              <li><span className="font-medium text-foreground">Source defaults</span> — fallback based on activity type (0.3)</li>
+            </ol>
+          </CardContent>
+        </Card>
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+          {["feature", "bugfix", "refactor", "infra", "test", "security", "perf", "docs", "review", "hotfix", "unblock", "chore"].map((key) => {
+            const badge = ALL_BADGES[key];
+            if (!badge) return null;
+            return (
+              <div key={key} className="flex items-center gap-1.5 p-2 rounded-lg border bg-card text-sm">
+                <span className="text-base">{badge.emoji}</span>
+                <span className="text-xs text-muted-foreground">{badge.label}</span>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* Where Your Impact Comes From */}
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
+          <BarChart3 className="h-5 w-5 text-muted-foreground" />
+          Where Your Impact Comes From
+        </h2>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          VIS tracks which badge types contributed to your Impact score each week. Instead of just seeing "Impact: 72,"
+          you can see <span className="font-medium text-foreground">where</span> that 72 came from — "40% Features, 30% Bug Fixes, 20% Reviews."
+        </p>
+        <Card className="border">
+          <CardContent className="p-4 space-y-2">
+            <p className="text-sm font-medium text-foreground">This is a lens, not a penalty</p>
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              All badge types contribute equally to the score formula. A week of 100% Bug Fixes scores
+              the same as 100% Features — the tiers and value types determine the score, not the badge.
+              The distribution is informational: it helps you spot patterns.
+            </p>
+            <p className="text-sm text-muted-foreground leading-relaxed italic">
+              "If 60% of your impact came from Bug Fixes and only 10% from Features, that's a signal —
+              are you in a stabilization phase, or is new feature work getting stuck?"
+            </p>
+          </CardContent>
+        </Card>
       </section>
 
       {/* What VIS is NOT */}
