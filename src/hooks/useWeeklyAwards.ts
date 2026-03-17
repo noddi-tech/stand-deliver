@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { subDays, startOfWeek, differenceInHours } from "date-fns";
+import { subDays, startOfWeek } from "date-fns";
 
 export interface WeeklyAward {
   type: "mvp" | "unsung_hero" | "momentum";
@@ -12,25 +12,8 @@ export interface WeeklyAward {
   stat: string;
 }
 
-export interface DORAMetrics {
-  avgPRCycleTime: number | null;
-  prMergeRate: number; // PRs merged per week
-  changeFailureRate: number; // reverted/dropped PRs %
-  reviewTurnaround: number | null;
-  weekOverWeekTrends: {
-    cycleTime: "up" | "down" | "flat";
-    mergeRate: "up" | "down" | "flat";
-    reviews: "up" | "down" | "flat";
-  };
-}
-
-function trend(current: number, previous: number): "up" | "down" | "flat" {
-  if (previous === 0) return current > 0 ? "up" : "flat";
-  const change = (current - previous) / previous;
-  if (change > 0.1) return "up";
-  if (change < -0.1) return "down";
-  return "flat";
-}
+// Re-export DORAMetrics type for backward compat (now lives in useTeamMomentum)
+export type { TeamMomentum as DORAMetrics } from "./useTeamMomentum";
 
 export function useWeeklyAwards(teamId: string | undefined) {
   return useQuery({
@@ -43,7 +26,6 @@ export function useWeeklyAwards(teamId: string | undefined) {
       const lastWeekStart = startOfWeek(subDays(now, 7));
       const twoWeeksAgo = subDays(now, 14).toISOString();
 
-      // Fetch 2 weeks of GitHub activity
       const { data: activities } = await supabase
         .from("external_activity")
         .select("id, activity_type, member_id, occurred_at, metadata, member:team_members!inner(id, user_id, profile:profiles!inner(full_name))")
@@ -53,14 +35,13 @@ export function useWeeklyAwards(teamId: string | undefined) {
         .order("occurred_at", { ascending: false })
         .limit(1000);
 
-      // Fetch commitments for the period
       const { data: commitments } = await supabase
         .from("commitments")
         .select("id, status, member_id, created_at, resolved_at, carry_count")
         .eq("team_id", teamId!)
         .gte("created_at", twoWeeksAgo);
 
-      // Fetch VIS impact classifications for the period
+      // Fetch VIS impact classifications
       const { data: classifications } = await supabase
         .from("impact_classifications")
         .select("member_id, impact_score, created_at")
@@ -71,8 +52,8 @@ export function useWeeklyAwards(teamId: string | undefined) {
       const allCommitments = commitments || [];
       const allClassifications = classifications || [];
 
-      // Build per-member VIS score map per week
-      const visScoreMap = new Map<string, Map<string, number>>(); // weekKey -> memberId -> totalScore
+      // Build VIS score map per week
+      const visScoreMap = new Map<string, Map<string, number>>();
       for (const c of allClassifications) {
         const d = new Date(c.created_at);
         const weekKey = d >= thisWeekStart ? "this" : (d >= lastWeekStart ? "last" : "skip");
@@ -82,14 +63,12 @@ export function useWeeklyAwards(teamId: string | undefined) {
         weekMap.set(c.member_id, (weekMap.get(c.member_id) || 0) + Number(c.impact_score));
       }
 
-      // Split into this week vs last week
       const thisWeekItems = items.filter(i => new Date(i.occurred_at) >= thisWeekStart);
       const lastWeekItems = items.filter(i => {
         const d = new Date(i.occurred_at);
         return d >= lastWeekStart && d < thisWeekStart;
       });
 
-      // Per-member stats for this week
       interface MemberStats {
         name: string;
         memberId: string;
@@ -97,7 +76,6 @@ export function useWeeklyAwards(teamId: string | undefined) {
         reviewsGiven: number;
         prsOpened: number;
         prsMerged: number;
-        avgCycleTime: number | null;
         commitCount: number;
         commitmentsCompleted: number;
       }
@@ -117,33 +95,21 @@ export function useWeeklyAwards(teamId: string | undefined) {
               reviewsGiven: 0,
               prsOpened: 0,
               prsMerged: 0,
-              avgCycleTime: null,
               commitCount: 0,
               commitmentsCompleted: 0,
             });
           }
           const stats = memberMap.get(id)!;
-
-          if (item.activity_type === "commit") {
-            stats.commitCount++;
-          } else if (item.activity_type === "pr_review") {
-            stats.reviewsGiven++;
-          } else if (item.activity_type === "pr_opened") {
-            stats.prsOpened++;
-          } else if (item.activity_type === "pr_merged") {
-            stats.prsMerged++;
-          }
+          if (item.activity_type === "commit") stats.commitCount++;
+          else if (item.activity_type === "pr_review") stats.reviewsGiven++;
+          else if (item.activity_type === "pr_opened") stats.prsOpened++;
+          else if (item.activity_type === "pr_merged") stats.prsMerged++;
         }
 
-        // Apply VIS scores; fall back to commit count heuristic for unclassified members
+        // Apply VIS scores — no legacy fallback
         for (const [id, stats] of memberMap) {
           const visScore = weekVisMap.get(id);
-          if (visScore !== undefined && visScore > 0) {
-            stats.impactScore = Math.round(visScore);
-          } else {
-            // Fallback: simple commit-based estimate for members without classifications
-            stats.impactScore = stats.commitCount * 10;
-          }
+          stats.impactScore = visScore !== undefined && visScore > 0 ? Math.round(visScore) : 0;
         }
 
         // Add commitment completions
@@ -166,7 +132,7 @@ export function useWeeklyAwards(teamId: string | undefined) {
       const thisWeekMembers = Array.from(thisWeekMap.values()).filter(m => m.commitCount + m.reviewsGiven + m.commitmentsCompleted > 0);
 
       if (thisWeekMembers.length > 0) {
-        // MVP: highest composite of impact + reviews + completions
+        // MVP
         const mvp = thisWeekMembers.reduce((best, m) => {
           const score = m.impactScore + m.reviewsGiven * 20 + m.commitmentsCompleted * 15;
           const bestScore = best.impactScore + best.reviewsGiven * 20 + best.commitmentsCompleted * 15;
@@ -180,12 +146,12 @@ export function useWeeklyAwards(teamId: string | undefined) {
             title: "MVP",
             memberName: mvp.name,
             memberId: mvp.memberId,
-            description: "Highest composite of code impact, reviews, and commitments completed",
-            stat: `Impact: ${mvp.impactScore} · Reviews: ${mvp.reviewsGiven} · Done: ${mvp.commitmentsCompleted}`,
+            description: "Highest composite of VIS impact, reviews, and commitments completed",
+            stat: `VIS: ${mvp.impactScore} · Reviews: ${mvp.reviewsGiven} · Done: ${mvp.commitmentsCompleted}`,
           });
         }
 
-        // Unsung Hero: most reviews given relative to own PRs
+        // Unsung Hero
         const hero = thisWeekMembers
           .filter(m => m.reviewsGiven >= 2)
           .reduce<MemberStats | null>((best, m) => {
@@ -205,7 +171,7 @@ export function useWeeklyAwards(teamId: string | undefined) {
           });
         }
 
-        // Momentum: biggest week-over-week improvement
+        // Momentum
         let bestImprovement = 0;
         let momentumMember: MemberStats | null = null;
         for (const m of thisWeekMembers) {
@@ -231,56 +197,7 @@ export function useWeeklyAwards(teamId: string | undefined) {
         }
       }
 
-      // DORA-style metrics
-      const thisWeekPRsMerged = thisWeekItems.filter(i => i.activity_type === "pr_merged");
-      const lastWeekPRsMerged = lastWeekItems.filter(i => i.activity_type === "pr_merged");
-      const thisWeekReviews = thisWeekItems.filter(i => i.activity_type === "pr_review").length;
-      const lastWeekReviews = lastWeekItems.filter(i => i.activity_type === "pr_review").length;
-
-      // Cycle times
-      function avgCycleTime(prs: typeof items): number | null {
-        const times: number[] = [];
-        for (const pr of prs) {
-          const meta = pr.metadata as any;
-          if (meta?.created_at && meta?.merged_at) {
-            const hours = differenceInHours(new Date(meta.merged_at), new Date(meta.created_at));
-            if (hours >= 0 && hours < 720) times.push(hours);
-          }
-        }
-        return times.length > 0 ? Math.round(times.reduce((a, b) => a + b, 0) / times.length * 10) / 10 : null;
-      }
-
-      // Review turnaround
-      function avgReviewTime(prs: typeof items): number | null {
-        const times: number[] = [];
-        for (const pr of prs.filter(i => i.activity_type === "pr_opened")) {
-          const meta = pr.metadata as any;
-          if (meta?.created_at && meta?.first_review_at) {
-            const hours = differenceInHours(new Date(meta.first_review_at), new Date(meta.created_at));
-            if (hours >= 0 && hours < 720) times.push(hours);
-          }
-        }
-        return times.length > 0 ? Math.round(times.reduce((a, b) => a + b, 0) / times.length * 10) / 10 : null;
-      }
-
-      const thisWeekCycle = avgCycleTime(thisWeekPRsMerged);
-      const lastWeekCycle = avgCycleTime(lastWeekPRsMerged);
-
-      const doraMetrics: DORAMetrics = {
-        avgPRCycleTime: thisWeekCycle,
-        prMergeRate: thisWeekPRsMerged.length,
-        changeFailureRate: 0, // Would need revert detection
-        reviewTurnaround: avgReviewTime(thisWeekItems),
-        weekOverWeekTrends: {
-          cycleTime: thisWeekCycle !== null && lastWeekCycle !== null
-            ? trend(lastWeekCycle, thisWeekCycle) // lower is better, so flip
-            : "flat",
-          mergeRate: trend(thisWeekPRsMerged.length, lastWeekPRsMerged.length),
-          reviews: trend(thisWeekReviews, lastWeekReviews),
-        },
-      };
-
-      return { awards, doraMetrics };
+      return { awards };
     },
   });
 }
