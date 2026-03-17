@@ -1,75 +1,49 @@
 
 
-# Integrate Activity Badges into VIS System + Update VIS Explained
+# Fix VIS Score Mismatch & Badge Inconsistency
 
-## Concept
+## Bug 1: Awards show "VIS: 532" while MemberBreakdown shows "54"
 
-Activity badges already classify *what type* of work was done (🐛 Bug Fix, 🚀 Feature, etc.). Integrating them into VIS makes the score more transparent: instead of just seeing "Impact: 72", you see *where* that impact came from — "40% from Features, 30% from Bug Fixes, 20% from Reviews." This gives actionable insight into who fixes what, who ships what, and whether that aligns with team priorities.
+**Root cause**: Two completely different numbers being called "VIS":
 
-## 1. Enrich `compute-weekly-vis` with Badge Distribution
+- **Awards** (`useWeeklyAwards.ts` line 112): `impactScore` = raw sum of all `impact_score` values from `impact_classifications`. For Joachim that's ~532 (sum of all his individual scores like 59, 44, 49, 36, etc.).
+- **MemberBreakdown** (`useWeeklyVIS.ts` line 168): `visTotal` = the normalized composite (0-100) computed via `computeVISTotal()`, which normalizes raw impact against the team median then weights it with delivery, multiplier, and focus.
 
-**`supabase/functions/compute-weekly-vis/index.ts`**
+The awards stat line says `VIS: 532` but 532 is **raw impact points**, not VIS. This is misleading.
 
-After fetching `impact_classifications` (line 65), also fetch `activity_badges` for the same week/team. Join badge data to classifications by `activity_id` to build a per-member breakdown: `Record<string, number>` mapping badge_key to summed impact_score.
+**Fix**: In `useWeeklyAwards.ts` line 150, change the stat label from `VIS: ${mvp.impactScore}` to `Impact: ${mvp.impactScore}` — or better, compute a proper normalized VIS for the award display. The simplest correct fix: rename the label to "Impact" since it's the raw sum, not the VIS composite.
 
-Add to the existing `breakdown` jsonb (line 154):
-```ts
-breakdown: {
-  ...existingFields,
-  badgeDistribution: { feature: 45.2, bugfix: 22.1, refactor: 8.0, ... },
-  badgeImpactPct: { feature: 40, bugfix: 30, refactor: 10, ... },
-}
-```
+Also in the MVP composite formula (line 137), `m.impactScore` is the raw sum which can be hundreds, while `reviewsGiven * 20` and `commitmentsCompleted * 15` are tiny in comparison. This makes reviews and commitments nearly irrelevant. We should normalize impact to the 0-100 VIS scale before combining.
 
-No schema migration needed — `breakdown` is already a `jsonb` column.
+**Changes**:
+- `src/hooks/useWeeklyAwards.ts`: After building `visScoreMap` (raw sums), compute a team median and normalize each member's score to `min(100, (raw / median) * 50)` before using it in the composite. This matches `useWeeklyVIS` normalization. Update the stat line to show the normalized value.
 
-## 2. Enrich `useWeeklyVIS` Client Hook
+## Bug 2: MyAnalytics badges differ from MemberBreakdown badges
 
-**`src/hooks/useWeeklyVIS.ts`**
+**Root cause**: Two different badge systems being shown:
 
-- Add `badgeDistribution?: Record<string, number>` to `VISBreakdown` interface
-- For canonical (past) weeks: read from `breakdown.badgeDistribution`
-- For current week estimate: fetch `activity_badges` for the week alongside `impact_classifications`, join by `activity_id`, aggregate badge_key → impact_score sums
+- **MemberBreakdown** (line 136): Shows `MemberBadgeIcons` — these are **achievement badges** from the `useBadges` hook (First Commit, Shipper, Architect, etc. — gamification badges).
+- **MyAnalytics** (`BadgeShowcase` component): Also shows achievement badges — same system. So these should match.
+- **MemberBreakdown** (line 189): Shows `BadgeImpactBreakdown` — these are **activity badge** percentages (🐛 53%, 🚀 33%) from `useMemberBadgeCounts`.
+- **MyAnalytics** (line 51): Shows `BadgeImpactBreakdown` from `useWeeklyVIS` — but this fetches ALL `activity_badges` for the team (no date filter on line 87 of useWeeklyVIS), then joins only to this-week's classifications. Meanwhile `useMemberBadgeCounts` filters badges to last 7 days.
 
-## 3. Show Badge-Impact Distribution in Dashboard/MyAnalytics
+The `useWeeklyVIS` badge query (line 84-87) fetches **all** activity_badges for the team with no date filter, while `useMemberBadgeCounts` filters to 7 days. This causes the join to produce different results because old badges match current-week classification activity_ids differently.
 
-**New component: `src/components/analytics/BadgeImpactBreakdown.tsx`**
+**Fix**: In `useWeeklyVIS.ts` line 84-87, the badge query doesn't need a date filter because it joins by `activity_id` to classifications that ARE date-filtered. So the badge data itself is correct. The real discrepancy is that `useMemberBadgeCounts` filters `external_activity` to 7 days and counts badge occurrences, while `useWeeklyVIS` weights by impact_score. They show different things — counts vs impact-weighted percentages — which is by design but confusing when both use the same visual component.
 
-A compact horizontal stacked bar or pill row showing what % of a member's impact came from each badge type. Uses `ALL_BADGES` for emoji lookup. Example rendering:
+The actual visual mismatch: MemberBreakdown shows `🐛 53% 🚀 33% 🏗️ 14%` (impact-weighted from `useMemberBadgeCounts.impactPct`) while MyAnalytics shows `🔧 Chore 2% 🚀 Feature 0%` — the latter looks broken with near-zero values.
 
-```
-Impact sources: 🚀 40%  🐛 30%  🔧 15%  🔀 10%  🧹 5%
-```
+Let me check why MyAnalytics shows such low percentages — likely the `useWeeklyVIS` badge lookup is failing to match most activity_ids.
 
-Wire into:
-- **Dashboard.tsx**: Show below VIS score in MemberBreakdown cards (via the `badgeCounts` prop or a new `badgeImpact` prop)
-- **MyAnalytics.tsx**: Add a "Where Your Impact Comes From" card using `useWeeklyVIS` badge distribution data
+**Changes**:
+- `src/hooks/useWeeklyVIS.ts`: The badge query fetches all team badges but the join is by `activity_id` from `impact_classifications`. The classifications use `activity_id` but the badges table may have different `activity_id` values if the `source_type` differs. Check if the join key is correct.
+- Simplify: Make MyAnalytics use `useMemberBadgeCounts` for badge distribution (same source as MemberBreakdown) instead of deriving it from `useWeeklyVIS`.
 
-## 4. Update VIS Explained Page
-
-**`src/pages/VISExplained.tsx`**
-
-Add two new sections:
-
-### "Activity Badges" section (after "Impact tiers")
-- Explain that every contribution is automatically tagged with an activity badge (🐛 Bug Fix, 🚀 Feature, 🔧 Refactor, etc.)
-- 4-layer priority: Manual > Deterministic rules > AI classification > Source defaults
-- Badges map to value types but are more granular — they show *what kind* of work within each tier
-- Include a subset grid of the most common badges with emoji + label
-
-### "Where Your Impact Comes From" section (after Activity Badges)
-- Explain that VIS now tracks which badge types contributed to your Impact score
-- "If 60% of your impact came from Bug Fixes and only 10% from Features, that's a signal — are you in a stabilization phase, or is new feature work getting stuck?"
-- Clarify this is informational, not a penalty — all badge types contribute equally to the score formula
-
-## Files Summary
+## Implementation
 
 | File | Change |
 |---|---|
-| `supabase/functions/compute-weekly-vis/index.ts` | Fetch activity_badges, compute badge distribution, include in breakdown jsonb |
-| `src/hooks/useWeeklyVIS.ts` | Add `badgeDistribution` to VISBreakdown, compute in estimate path |
-| `src/components/analytics/BadgeImpactBreakdown.tsx` | Create — badge-impact pill/bar visualization |
-| `src/pages/MyAnalytics.tsx` | Add "Where Your Impact Comes From" card |
-| `src/pages/Dashboard.tsx` | Wire badge impact data to MemberBreakdown |
-| `src/pages/VISExplained.tsx` | Add "Activity Badges" and "Impact Sources" sections |
+| `src/hooks/useWeeklyAwards.ts` | Normalize `impactScore` to 0-100 scale (raw/median*50) before composite. Fix stat label. |
+| `src/hooks/useWeeklyVIS.ts` | Fix badge lookup: filter badges query to match classifications' activity_ids only. Or remove badge logic from this hook entirely since `useMemberBadgeCounts` already handles it. |
+| `src/pages/MyAnalytics.tsx` | Use `useMemberBadgeCounts` for badge distribution instead of `useWeeklyVIS.badgeImpactPct` — ensures same data as MemberBreakdown. |
 
