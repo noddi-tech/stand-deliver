@@ -62,6 +62,7 @@ const App = () => (
                 <Route path="/team-insights" element={<TeamInsights />} />
                 <Route path="/weekly-digest" element={<WeeklyDigest />} />
                 <Route path="/settings" element={<Settings />} />
+                <Route path="/vis-explained" element={<VISExplained />} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>
