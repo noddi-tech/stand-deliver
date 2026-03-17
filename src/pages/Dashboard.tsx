@@ -195,6 +195,8 @@ export default function Dashboard() {
           badgeCounts={badgeData?.counts}
           badgeCountPct={badgeData?.countPct}
           badgeImpactPct={badgeData?.impactPct}
+          period={breakdownPeriod}
+          onPeriodChange={setBreakdownPeriod}
           loading={summaryLoading}
         />
       </section>
