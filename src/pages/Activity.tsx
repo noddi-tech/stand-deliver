@@ -168,6 +168,22 @@ export default function Activity() {
 
   const { data: activity, isLoading } = useActivityFeed(teamId, days, sourceFilter, memberFilter);
 
+  // Last-synced timestamp for badges
+  const { data: lastSync } = useQuery({
+    queryKey: ["badge-last-sync", teamId],
+    enabled: !!teamId,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("activity_badges")
+        .select("updated_at")
+        .eq("team_id", teamId!)
+        .order("updated_at", { ascending: false })
+        .limit(1);
+      return data?.[0]?.updated_at || null;
+    },
+  });
+
   // Badge override mutation
   const { overrideBadge } = useActivityBadges(
     (activity || []).map(a => a.id)
@@ -217,6 +233,9 @@ export default function Activity() {
       <div>
         <h1 className="text-2xl font-bold text-foreground">Activity</h1>
         <p className="text-sm text-muted-foreground">Team activity over the last {days} days</p>
+        {lastSync && (
+          <p className="text-[11px] text-muted-foreground/70">Badges last synced {formatDistanceToNow(new Date(lastSync), { addSuffix: true })}</p>
+        )}
       </div>
 
       {/* Summary counters */}
