@@ -60,8 +60,27 @@ export function useWeeklyAwards(teamId: string | undefined) {
         .eq("team_id", teamId!)
         .gte("created_at", twoWeeksAgo);
 
+      // Fetch VIS impact classifications for the period
+      const { data: classifications } = await supabase
+        .from("impact_classifications")
+        .select("member_id, impact_score, created_at")
+        .eq("team_id", teamId!)
+        .gte("created_at", twoWeeksAgo);
+
       const items = activities || [];
       const allCommitments = commitments || [];
+      const allClassifications = classifications || [];
+
+      // Build per-member VIS score map per week
+      const visScoreMap = new Map<string, Map<string, number>>(); // weekKey -> memberId -> totalScore
+      for (const c of allClassifications) {
+        const d = new Date(c.created_at);
+        const weekKey = d >= thisWeekStart ? "this" : (d >= lastWeekStart ? "last" : "skip");
+        if (weekKey === "skip") continue;
+        if (!visScoreMap.has(weekKey)) visScoreMap.set(weekKey, new Map());
+        const weekMap = visScoreMap.get(weekKey)!;
+        weekMap.set(c.member_id, (weekMap.get(c.member_id) || 0) + Number(c.impact_score));
+      }
 
       // Split into this week vs last week
       const thisWeekItems = items.filter(i => new Date(i.occurred_at) >= thisWeekStart);
