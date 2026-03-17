@@ -42,8 +42,8 @@ export function useWeeklyAwards(teamId: string | undefined) {
     staleTime: 10 * 60 * 1000,
     queryFn: async () => {
       const now = new Date();
-      const thisWeekStart = startOfWeek(now);
-      const lastWeekStart = startOfWeek(subDays(now, 7));
+      const thisWeekStart = startOfWeek(now, { weekStartsOn: 1 });
+      const lastWeekStart = startOfWeek(subDays(now, 7), { weekStartsOn: 1 });
       const twoWeeksAgo = subDays(now, 14).toISOString();
 
       const { data: activities } = await supabase
