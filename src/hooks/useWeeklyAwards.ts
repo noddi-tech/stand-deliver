@@ -2,6 +2,26 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { subDays, startOfWeek } from "date-fns";
 
+/** Log-scale normalization: median maps to 50, compresses extreme ranges */
+function logScaleNormalize(rawScores: Map<string, number>): Map<string, number> {
+  const values = Array.from(rawScores.values()).filter(v => v > 0);
+  if (values.length === 0) return new Map();
+  const logValues = values.map(v => Math.log10(v + 1)).sort((a, b) => a - b);
+  const mid = Math.floor(logValues.length / 2);
+  let logMedian = logValues.length % 2 === 1
+    ? logValues[mid]
+    : (logValues[mid - 1] + logValues[mid]) / 2;
+  if (logMedian === 0) logMedian = 1;
+
+  const result = new Map<string, number>();
+  for (const [id, raw] of rawScores) {
+    if (raw <= 0) { result.set(id, 0); continue; }
+    const logScore = Math.log10(raw + 1);
+    result.set(id, Math.round(Math.min(100, Math.max(5, (logScore / logMedian) * 50))));
+  }
+  return result;
+}
+
 export interface WeeklyAward {
   type: "mvp" | "unsung_hero" | "momentum";
   emoji: string;
