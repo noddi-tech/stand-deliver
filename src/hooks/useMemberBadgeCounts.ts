@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
 export type MemberBadgeCounts = Record<string, Record<string, number>>;
+export type MemberBadgeCountPct = Record<string, Record<string, number>>;
 export type MemberBadgeImpactPct = Record<string, Record<string, number>>;
 
 export function useMemberBadgeCounts(teamId?: string) {
