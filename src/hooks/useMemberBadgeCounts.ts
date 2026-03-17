@@ -99,7 +99,7 @@ export function useMemberBadgeCounts(teamId?: string) {
         }
       }
 
-      return { counts, impactPct };
+      return { counts, countPct, impactPct };
     },
   });
 }
