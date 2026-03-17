@@ -7,6 +7,7 @@ import { useRecentActivity } from "@/hooks/useRecentActivity";
 import { useSkipStandup } from "@/hooks/useSkipStandup";
 import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
 import { useMemberBadgeCounts } from "@/hooks/useMemberBadgeCounts";
+import { useTeamMomentum } from "@/hooks/useTeamMomentum";
 import { MemberBreakdown } from "@/components/team/MemberBreakdown";
 import { useTeamFocusItems, useContributionClassification } from "@/hooks/useTeamFocus";
 import { FocusAlignment } from "@/components/analytics/FocusAlignment";
