@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { computeImpactScore } from "../_shared/scoring.ts";
+import { badgeFromAIClassification, resolveActivityBadge } from "../_shared/activity-badges.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
