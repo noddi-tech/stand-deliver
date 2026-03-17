@@ -64,24 +64,40 @@ Deno.serve(async (req) => {
       // Fetch impact_classifications for this week
       const { data: classifications } = await sb
         .from("impact_classifications")
-        .select("member_id, impact_score, focus_alignment")
+        .select("member_id, impact_score, focus_alignment, activity_id, source_type")
         .eq("team_id", teamId)
         .gte("created_at", weekStartTs)
         .lte("created_at", weekEndTs);
 
+      // Fetch activity_badges for this week's team to join with classifications
+      const { data: badges } = await sb
+        .from("activity_badges")
+        .select("activity_id, source_type, badge_key")
+        .eq("team_id", teamId);
+
+      // Build badge lookup: activity_id -> badge_key
+      const badgeLookup: Record<string, string> = {};
+      for (const b of badges || []) {
+        badgeLookup[b.activity_id] = b.badge_key;
+      }
+
       // Aggregate per member
-      const memberScores: Record<string, { rawImpact: number; alignedCount: number; totalCount: number }> = {};
+      const memberScores: Record<string, { rawImpact: number; alignedCount: number; totalCount: number; badgeImpact: Record<string, number> }> = {};
       for (const mid of memberIds) {
-        memberScores[mid] = { rawImpact: 0, alignedCount: 0, totalCount: 0 };
+        memberScores[mid] = { rawImpact: 0, alignedCount: 0, totalCount: 0, badgeImpact: {} };
       }
 
       for (const c of classifications || []) {
         if (!memberScores[c.member_id]) continue;
-        memberScores[c.member_id].rawImpact += Number(c.impact_score) || 0;
+        const score = Number(c.impact_score) || 0;
+        memberScores[c.member_id].rawImpact += score;
         memberScores[c.member_id].totalCount++;
         if (c.focus_alignment === "direct" || c.focus_alignment === "indirect") {
           memberScores[c.member_id].alignedCount++;
         }
+        // Aggregate impact by badge type
+        const badgeKey = badgeLookup[c.activity_id] || "unknown";
+        memberScores[c.member_id].badgeImpact[badgeKey] = (memberScores[c.member_id].badgeImpact[badgeKey] || 0) + score;
       }
 
       // Compute team median for normalization
@@ -151,6 +167,16 @@ Deno.serve(async (req) => {
           focusRatio,
         });
 
+        // Compute badge distribution percentages
+        const badgeDistribution = scores.badgeImpact;
+        const totalBadgeImpact = Object.values(badgeDistribution).reduce((s, v) => s + v, 0);
+        const badgeImpactPct: Record<string, number> = {};
+        if (totalBadgeImpact > 0) {
+          for (const [key, val] of Object.entries(badgeDistribution)) {
+            badgeImpactPct[key] = Math.round((val / totalBadgeImpact) * 1000) / 10;
+          }
+        }
+
         const breakdown = {
           rawImpact: scores.rawImpact,
           normalizedImpact: Math.round(normalizedImpact * 100) / 100,
@@ -161,6 +187,8 @@ Deno.serve(async (req) => {
           reviews: memberReviews[mid],
           classifications: scores.totalCount,
           alignedClassifications: scores.alignedCount,
+          badgeDistribution,
+          badgeImpactPct,
         };
 
         await sb.from("weekly_vis_scores").upsert(
