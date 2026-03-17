@@ -19,10 +19,9 @@ Deno.serve(async (req) => {
 
   let total = 0;
   let offset = 0;
-  const BATCH = 100;
+  const BATCH = 500;
 
   while (true) {
-    // Fetch external_activity rows that have no matching activity_badge
     const { data: rows, error } = await sb
       .from("external_activity")
       .select("id, source, activity_type, title, metadata, team_id")
@@ -48,24 +47,36 @@ Deno.serve(async (req) => {
     const existingSet = new Set((existing || []).map((e) => e.activity_id));
     const toProcess = rows.filter((r) => !existingSet.has(r.id));
 
-    for (const row of toProcess) {
-      const resolution = resolveActivityBadge({
-        source: row.source,
-        activity_type: row.activity_type,
-        title: row.title,
-        metadata: row.metadata as Record<string, any> | undefined,
+    if (toProcess.length > 0) {
+      const badgeRows = toProcess.map((row) => {
+        const resolution = resolveActivityBadge({
+          source: row.source,
+          activity_type: row.activity_type,
+          title: row.title,
+          metadata: row.metadata as Record<string, any> | undefined,
+        });
+        return {
+          activity_id: row.id,
+          source_type: "external_activity",
+          team_id: row.team_id,
+          badge_key: resolution.badge.key,
+          badge_source: resolution.source,
+          confidence: resolution.confidence,
+        };
       });
 
-      await sb.rpc("upsert_activity_badge", {
-        p_activity_id: row.id,
-        p_source_type: "external_activity",
-        p_team_id: row.team_id,
-        p_badge_key: resolution.badge.key,
-        p_badge_source: resolution.source,
-        p_confidence: resolution.confidence,
-      });
+      const { error: upsertError } = await sb
+        .from("activity_badges")
+        .upsert(badgeRows, { onConflict: "activity_id,source_type" });
 
-      total++;
+      if (upsertError) {
+        return new Response(JSON.stringify({ error: upsertError.message }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      total += badgeRows.length;
     }
 
     if (rows.length < BATCH) break;

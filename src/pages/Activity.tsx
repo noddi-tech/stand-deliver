@@ -168,6 +168,22 @@ export default function Activity() {
 
   const { data: activity, isLoading } = useActivityFeed(teamId, days, sourceFilter, memberFilter);
 
+  // Last-synced timestamp for badges
+  const { data: lastSync } = useQuery({
+    queryKey: ["badge-last-sync", teamId],
+    enabled: !!teamId,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("activity_badges")
+        .select("updated_at")
+        .eq("team_id", teamId!)
+        .order("updated_at", { ascending: false })
+        .limit(1);
+      return data?.[0]?.updated_at || null;
+    },
+  });
+
   // Badge override mutation
   const { overrideBadge } = useActivityBadges(
     (activity || []).map(a => a.id)
