@@ -74,14 +74,33 @@ Deno.serve(async (req) => {
     if (totalCarried > totalCommitments * 0.3) healthScore -= 10;
     healthScore = Math.max(0, Math.min(100, healthScore));
 
-    // Work distribution
-    const workDist: Record<string, number> = { feature: 0, bugfix: 0, tech_debt: 0, other: 0 };
-    for (const c of commitments || []) {
-      const lower = (c.title || "").toLowerCase();
-      if (lower.includes("bug") || lower.includes("fix")) workDist.bugfix++;
-      else if (lower.includes("refactor") || lower.includes("debt") || lower.includes("cleanup")) workDist.tech_debt++;
-      else if (lower.includes("feature") || lower.includes("add") || lower.includes("implement") || lower.includes("build")) workDist.feature++;
-      else workDist.other++;
+    // Work distribution — use activity_badges instead of title regex
+    let workDist: Record<string, number> = {};
+    try {
+      const { data: badges } = await supabaseAdmin
+        .from("activity_badges")
+        .select("badge_key")
+        .eq("team_id", team_id)
+        .gte("created_at", monday.toISOString())
+        .lte("created_at", sunday.toISOString());
+
+      if (badges && badges.length > 0) {
+        for (const b of badges) {
+          workDist[b.badge_key] = (workDist[b.badge_key] || 0) + 1;
+        }
+      } else {
+        // Fallback to title regex if no badges exist yet
+        workDist = { feature: 0, bugfix: 0, tech_debt: 0, other: 0 };
+        for (const c of commitments || []) {
+          const lower = (c.title || "").toLowerCase();
+          if (lower.includes("bug") || lower.includes("fix")) workDist.bugfix++;
+          else if (lower.includes("refactor") || lower.includes("debt") || lower.includes("cleanup")) workDist.tech_debt++;
+          else if (lower.includes("feature") || lower.includes("add") || lower.includes("implement") || lower.includes("build")) workDist.feature++;
+          else workDist.other++;
+        }
+      }
+    } catch (e) {
+      console.error("Badge fetch error:", e);
     }
 
     // ---- Cross-platform activity ----
@@ -117,7 +136,7 @@ Deno.serve(async (req) => {
           // This week's activity
           const { data: thisWeekAct } = await supabaseAdmin
             .from("external_activity")
-            .select("activity_type, member_id, metadata, occurred_at")
+            .select("id, activity_type, member_id, metadata, occurred_at")
             .eq("team_id", team_id)
             .eq("source", "github")
             .gte("occurred_at", monday.toISOString())
@@ -128,7 +147,7 @@ Deno.serve(async (req) => {
           // Last week's activity (for trends)
           const { data: lastWeekAct } = await supabaseAdmin
             .from("external_activity")
-            .select("activity_type, member_id, metadata, occurred_at")
+            .select("id, activity_type, member_id, metadata, occurred_at")
             .eq("team_id", team_id)
             .eq("source", "github")
             .gte("occurred_at", lastMonday.toISOString())
@@ -173,7 +192,6 @@ Deno.serve(async (req) => {
           const thisWeekAvgCycle = thisWeekCycles.length > 0 ? Math.round(thisWeekCycles.reduce((a, b) => a + b, 0) / thisWeekCycles.length * 10) / 10 : null;
           const lastWeekAvgCycle = lastWeekCycles.length > 0 ? Math.round(lastWeekCycles.reduce((a, b) => a + b, 0) / lastWeekCycles.length * 10) / 10 : null;
 
-          // Review turnaround
           function computeReviewTurnaround(acts: any[]): number | null {
             const times: number[] = [];
             for (const pr of acts.filter(p => p.activity_type === "pr_opened")) {
@@ -202,38 +220,73 @@ Deno.serve(async (req) => {
 
           crossPlatform.dora_metrics = doraMetrics;
 
-          // ---- Weekly Awards ----
+          // ---- Weekly Awards (VIS-based) ----
           const memberNameMap = new Map<string, string>();
           for (const tm of teamMembers || []) {
             memberNameMap.set(tm.id, (tm as any).profile?.full_name || "Unknown");
           }
 
-          interface MemberScore { name: string; impact: number; reviews: number; completions: number; prsOpened: number; }
+          // Fetch VIS impact classifications for this week and last week
+          const { data: thisWeekClassifications } = await supabaseAdmin
+            .from("impact_classifications")
+            .select("member_id, impact_score")
+            .eq("team_id", team_id)
+            .gte("created_at", monday.toISOString())
+            .lte("created_at", sunday.toISOString());
+
+          const { data: lastWeekClassifications } = await supabaseAdmin
+            .from("impact_classifications")
+            .select("member_id, impact_score")
+            .eq("team_id", team_id)
+            .gte("created_at", lastMonday.toISOString())
+            .lt("created_at", monday.toISOString());
+
+          // Build VIS score maps
+          const thisWeekVIS = new Map<string, number>();
+          for (const c of thisWeekClassifications || []) {
+            thisWeekVIS.set(c.member_id, (thisWeekVIS.get(c.member_id) || 0) + Number(c.impact_score));
+          }
+          const lastWeekVIS = new Map<string, number>();
+          for (const c of lastWeekClassifications || []) {
+            lastWeekVIS.set(c.member_id, (lastWeekVIS.get(c.member_id) || 0) + Number(c.impact_score));
+          }
+
+          interface MemberScore { name: string; impactScore: number; reviews: number; completions: number; prsOpened: number; }
           const thisWeekScores = new Map<string, MemberScore>();
           const lastWeekScores = new Map<string, MemberScore>();
 
-          function populateScores(acts: any[], scores: Map<string, MemberScore>) {
+          function populateScores(acts: any[], scores: Map<string, MemberScore>, visMap: Map<string, number>) {
             for (const a of acts) {
               if (!scores.has(a.member_id)) {
-                scores.set(a.member_id, { name: memberNameMap.get(a.member_id) || "Unknown", impact: 0, reviews: 0, completions: 0, prsOpened: 0 });
+                scores.set(a.member_id, {
+                  name: memberNameMap.get(a.member_id) || "Unknown",
+                  impactScore: 0,
+                  reviews: 0,
+                  completions: 0,
+                  prsOpened: 0,
+                });
               }
               const s = scores.get(a.member_id)!;
-              const meta = a.metadata as any;
-              if (a.activity_type === "commit") {
-                const adds = meta?.additions || 0;
-                const dels = meta?.deletions || 0;
-                const files = meta?.files_changed || 0;
-                s.impact += Math.round(Math.sqrt(adds + dels) * 2 + files * 1.5);
-              } else if (a.activity_type === "pr_review") {
-                s.reviews++;
-              } else if (a.activity_type === "pr_opened") {
-                s.prsOpened++;
+              if (a.activity_type === "pr_review") s.reviews++;
+              else if (a.activity_type === "pr_opened") s.prsOpened++;
+            }
+            // Apply VIS scores
+            for (const [memberId, visScore] of visMap) {
+              if (!scores.has(memberId)) {
+                scores.set(memberId, {
+                  name: memberNameMap.get(memberId) || "Unknown",
+                  impactScore: 0,
+                  reviews: 0,
+                  completions: 0,
+                  prsOpened: 0,
+                });
               }
+              scores.get(memberId)!.impactScore = Math.round(visScore);
             }
           }
 
-          populateScores(ghActivity, thisWeekScores);
-          populateScores(lastWeekGhActivity, lastWeekScores);
+          populateScores(ghActivity, thisWeekScores, thisWeekVIS);
+          populateScores(lastWeekGhActivity, lastWeekScores, lastWeekVIS);
 
           // Add commitment completions
           for (const c of commitments || []) {
@@ -246,24 +299,27 @@ Deno.serve(async (req) => {
           const weeklyAwards: any[] = [];
           const members = Array.from(thisWeekScores.entries())
             .map(([id, s]) => ({ id, ...s }))
-            .filter(m => m.impact + m.reviews + m.completions > 0);
+            .filter(m => m.impactScore + m.reviews + m.completions > 0);
 
           if (members.length > 0) {
-            // MVP
+            // MVP — same composite as useWeeklyAwards: VIS impact + reviews*20 + completions*15
             const mvp = members.reduce((best, m) => {
-              const score = m.impact + m.reviews * 20 + m.completions * 15;
-              const bestScore = best.impact + best.reviews * 20 + best.completions * 15;
+              const score = m.impactScore + m.reviews * 20 + m.completions * 15;
+              const bestScore = best.impactScore + best.reviews * 20 + best.completions * 15;
               return score > bestScore ? m : best;
             });
-            weeklyAwards.push({
-              type: "mvp",
-              emoji: "🏆",
-              title: "MVP",
-              member_name: mvp.name,
-              member_id: mvp.id,
-              description: "Highest composite of code impact, reviews, and commitments completed",
-              stat: `Impact: ${mvp.impact} · Reviews: ${mvp.reviews} · Done: ${mvp.completions}`,
-            });
+            const mvpScore = mvp.impactScore + mvp.reviews * 20 + mvp.completions * 15;
+            if (mvpScore > 0) {
+              weeklyAwards.push({
+                type: "mvp",
+                emoji: "🏆",
+                title: "MVP",
+                member_name: mvp.name,
+                member_id: mvp.id,
+                description: "Highest composite of VIS impact, reviews, and commitments completed",
+                stat: `VIS: ${mvp.impactScore} · Reviews: ${mvp.reviews} · Done: ${mvp.completions}`,
+              });
+            }
 
             // Unsung Hero
             const hero = members
@@ -280,19 +336,19 @@ Deno.serve(async (req) => {
                 title: "Unsung Hero",
                 member_name: hero.name,
                 member_id: hero.id,
-                description: "Most reviews given relative to own PRs",
-                stat: `${hero.reviews} reviews · ${hero.prsOpened} PRs`,
+                description: "Most reviews given relative to own PRs — lifting others up",
+                stat: `${hero.reviews} reviews given · ${hero.prsOpened} PRs opened`,
               });
             }
 
             // Momentum
-            let bestImprovement = 0.2; // threshold
+            let bestImprovement = 0.2;
             let momentumMember: typeof members[0] | null = null;
             for (const m of members) {
               if (m.id === mvp.id) continue;
               const lastWeek = lastWeekScores.get(m.id);
-              const lastScore = lastWeek ? lastWeek.impact + lastWeek.reviews * 20 + lastWeek.completions * 15 : 0;
-              const thisScore = m.impact + m.reviews * 20 + m.completions * 15;
+              const lastScore = lastWeek ? lastWeek.impactScore + lastWeek.reviews * 20 + lastWeek.completions * 15 : 0;
+              const thisScore = m.impactScore + m.reviews * 20 + m.completions * 15;
               const improvement = lastScore > 0 ? (thisScore - lastScore) / lastScore : thisScore > 30 ? 1 : 0;
               if (improvement > bestImprovement) {
                 bestImprovement = improvement;
@@ -306,13 +362,56 @@ Deno.serve(async (req) => {
                 title: "Momentum",
                 member_name: momentumMember.name,
                 member_id: momentumMember.id,
-                description: "Biggest week-over-week improvement",
+                description: "Biggest week-over-week improvement in output",
                 stat: `+${Math.round(bestImprovement * 100)}% vs last week`,
               });
             }
           }
 
           crossPlatform.weekly_awards = weeklyAwards;
+
+          // Badge impact percentages for historical view
+          try {
+            const activityIds = ghActivity.map(a => a.id);
+            if (activityIds.length > 0) {
+              const { data: badgesWithImpact } = await supabaseAdmin
+                .from("activity_badges")
+                .select("badge_key, activity_id")
+                .eq("team_id", team_id)
+                .in("activity_id", activityIds);
+
+              const { data: classifications } = await supabaseAdmin
+                .from("impact_classifications")
+                .select("activity_id, impact_score")
+                .eq("team_id", team_id)
+                .in("activity_id", activityIds);
+
+              if (badgesWithImpact && classifications) {
+                const impactMap = new Map<string, number>();
+                for (const c of classifications) {
+                  impactMap.set(c.activity_id, (impactMap.get(c.activity_id) || 0) + Number(c.impact_score));
+                }
+
+                const badgeImpact: Record<string, number> = {};
+                let totalImpact = 0;
+                for (const b of badgesWithImpact) {
+                  const score = impactMap.get(b.activity_id) || 0;
+                  badgeImpact[b.badge_key] = (badgeImpact[b.badge_key] || 0) + score;
+                  totalImpact += score;
+                }
+
+                if (totalImpact > 0) {
+                  const badgeImpactPct: Record<string, number> = {};
+                  for (const [key, val] of Object.entries(badgeImpact)) {
+                    badgeImpactPct[key] = Math.round((val / totalImpact) * 100);
+                  }
+                  crossPlatform.badge_impact_pct = badgeImpactPct;
+                }
+              }
+            }
+          } catch (e) {
+            console.error("Badge impact computation error:", e);
+          }
         }
       } catch (e) {
         console.error("GitHub/DORA integration error:", e);
@@ -357,14 +456,12 @@ Deno.serve(async (req) => {
           crossPlatformContext += `\nClickUp Activity:\n- ${cu.tasks_tracked} tasks tracked, ${cu.tasks_completed} completed`;
         }
 
-        // DORA metrics context
         const dora = crossPlatform.dora_metrics;
         let doraContext = "";
         if (dora) {
           doraContext = `\nEngineering Metrics:\n- Avg PR Cycle Time: ${dora.avg_pr_cycle_time !== null ? dora.avg_pr_cycle_time + "h" : "N/A"}\n- PRs Merged This Week: ${dora.pr_merge_rate}\n- Avg Review Turnaround: ${dora.review_turnaround !== null ? dora.review_turnaround + "h" : "N/A"}\n- Cycle Time Trend: ${dora.trends?.cycle_time || "flat"}`;
         }
 
-        // Awards context
         const awardsCtx = (crossPlatform.weekly_awards || []).map((a: any) => `- ${a.emoji} ${a.title}: ${a.member_name} (${a.stat})`).join("\n");
 
         const context = `Team: ${team?.name || "Unknown"}

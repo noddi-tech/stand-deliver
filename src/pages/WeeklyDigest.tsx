@@ -7,6 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import HealthGauge from "@/components/analytics/HealthGauge";
 import MetricCard from "@/components/analytics/MetricCard";
+import { useWeeklyAwards } from "@/hooks/useWeeklyAwards";
+import { useTeamMomentum } from "@/hooks/useTeamMomentum";
+import { ALL_BADGES } from "@/lib/activity-badges";
+import { startOfWeek } from "date-fns";
 import { Sparkles, ArrowLeft, Target, AlertTriangle, TrendingUp, TrendingDown, Minus, CheckCircle, Github, SquareKanban, Zap, Trophy, Clock, GitPullRequest, Eye } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -87,7 +91,6 @@ function CrossPlatformCard({ activity }: { activity: Record<string, any> }) {
 }
 
 function TrendIcon({ direction, inverted }: { direction?: string; inverted?: boolean }) {
-  // For cycle time, "down" is good (inverted=true)
   if (!direction || direction === "flat") return <Minus className="h-3 w-3 text-muted-foreground" />;
   const isGood = inverted ? direction === "down" : direction === "up";
   if (direction === "up") return <TrendingUp className={`h-3 w-3 ${isGood ? "text-emerald-500" : "text-destructive"}`} />;
@@ -111,7 +114,7 @@ function WeeklyAwardsCard({ awards }: { awards: any[] }) {
             <div className="flex-1">
               <div className="flex items-center gap-2">
                 <p className="text-sm font-semibold text-foreground">{award.title}</p>
-                <Badge variant="outline" className="text-xs">{award.member_name}</Badge>
+                <Badge variant="outline" className="text-xs">{award.memberName || award.member_name}</Badge>
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">{award.description}</p>
               <p className="text-xs font-medium text-primary mt-1">{award.stat}</p>
@@ -140,19 +143,20 @@ function DORAMetricsCard({ dora }: { dora: Record<string, any> }) {
           <div className="rounded-lg border border-border p-3 text-center space-y-1">
             <div className="flex items-center justify-center gap-1">
               <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-              <TrendIcon direction={trends.cycle_time} inverted />
+              <TrendIcon direction={trends.cycle_time || trends.cycleTime} inverted />
             </div>
             <p className="text-xl font-bold text-foreground">
-              {dora.avg_pr_cycle_time !== null ? `${dora.avg_pr_cycle_time}h` : "—"}
+              {(dora.avg_pr_cycle_time ?? dora.avgPRCycleTime) !== null && (dora.avg_pr_cycle_time ?? dora.avgPRCycleTime) !== undefined
+                ? `${dora.avg_pr_cycle_time ?? dora.avgPRCycleTime}h` : "—"}
             </p>
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Avg PR Cycle Time</p>
           </div>
           <div className="rounded-lg border border-border p-3 text-center space-y-1">
             <div className="flex items-center justify-center gap-1">
               <GitPullRequest className="h-3.5 w-3.5 text-muted-foreground" />
-              <TrendIcon direction={trends.merge_rate} />
+              <TrendIcon direction={trends.merge_rate || trends.mergeRate} />
             </div>
-            <p className="text-xl font-bold text-foreground">{dora.pr_merge_rate ?? 0}</p>
+            <p className="text-xl font-bold text-foreground">{dora.pr_merge_rate ?? dora.prsMerged ?? 0}</p>
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">PRs Merged</p>
           </div>
           <div className="rounded-lg border border-border p-3 text-center space-y-1">
@@ -161,7 +165,8 @@ function DORAMetricsCard({ dora }: { dora: Record<string, any> }) {
               <TrendIcon direction={trends.reviews} />
             </div>
             <p className="text-xl font-bold text-foreground">
-              {dora.review_turnaround !== null ? `${dora.review_turnaround}h` : "—"}
+              {(dora.review_turnaround ?? dora.reviewTurnaround) !== null && (dora.review_turnaround ?? dora.reviewTurnaround) !== undefined
+                ? `${dora.review_turnaround ?? dora.reviewTurnaround}h` : "—"}
             </p>
             <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Review Turnaround</p>
           </div>
@@ -169,6 +174,13 @@ function DORAMetricsCard({ dora }: { dora: Record<string, any> }) {
       </CardContent>
     </Card>
   );
+}
+
+/** Returns current week's Monday as YYYY-MM-DD */
+function getCurrentWeekStart(): string {
+  const now = new Date();
+  const monday = startOfWeek(now, { weekStartsOn: 1 });
+  return monday.toISOString().split("T")[0];
 }
 
 export default function WeeklyDigest() {
@@ -207,6 +219,11 @@ export default function WeeklyDigest() {
     enabled: !!membership?.team_id,
   });
 
+  // Live data hooks — only used when viewing the current week
+  const isCurrentWeek = digest?.week_start === getCurrentWeekStart();
+  const { data: liveAwards } = useWeeklyAwards(isCurrentWeek ? membership?.team_id : undefined);
+  const { data: liveMomentum } = useTeamMomentum(isCurrentWeek ? membership?.team_id : undefined);
+
   const triggerDigest = async () => {
     if (!membership?.team_id) return;
     try {
@@ -222,8 +239,24 @@ export default function WeeklyDigest() {
   const recommendations = (digest?.ai_recommendations as any[]) || [];
   const workDist = (digest?.work_distribution as Record<string, number>) || {};
   const crossPlatform = (digest?.cross_platform_activity as Record<string, any>) || {};
-  const weeklyAwards = (crossPlatform?.weekly_awards as any[]) || ((digest as any)?.weekly_awards as any[]) || [];
-  const doraMetrics = crossPlatform?.dora_metrics || (digest as any)?.dora_metrics || {};
+
+  // Awards: live for current week, frozen JSONB for historical
+  const resolvedAwards = isCurrentWeek && liveAwards?.awards?.length
+    ? liveAwards.awards
+    : (digest?.weekly_awards as any[]) || (crossPlatform?.weekly_awards as any[]) || [];
+
+  // DORA: live for current week, frozen JSONB for historical
+  const resolvedDora = isCurrentWeek && liveMomentum
+    ? {
+        avg_pr_cycle_time: liveMomentum.avgPRCycleTime,
+        pr_merge_rate: liveMomentum.prsMerged,
+        review_turnaround: liveMomentum.reviewTurnaround,
+        trends: liveMomentum.weekOverWeekTrends,
+      }
+    : (digest?.dora_metrics as Record<string, any>) || crossPlatform?.dora_metrics || {};
+
+  // Work distribution: render badge emojis when keys match activity badges
+  const workDistEntries = Object.entries(workDist).sort(([, a], [, b]) => b - a);
 
   return (
     <div className="min-h-screen bg-background p-6">
@@ -237,6 +270,9 @@ export default function WeeklyDigest() {
               <h1 className="text-2xl font-bold text-foreground">Weekly Digest</h1>
               <p className="text-sm text-muted-foreground">
                 {(membership?.teams as any)?.name} · {digest ? `${digest.week_start} — ${digest.week_end}` : "Latest"}
+                {isCurrentWeek && (
+                  <Badge variant="outline" className="ml-2 text-xs">Live</Badge>
+                )}
               </p>
             </div>
           </div>
@@ -299,11 +335,11 @@ export default function WeeklyDigest() {
               />
             </div>
 
-            {/* Weekly Awards */}
-            <WeeklyAwardsCard awards={weeklyAwards} />
+            {/* Weekly Awards — live or frozen */}
+            <WeeklyAwardsCard awards={resolvedAwards} />
 
-            {/* DORA / Team Momentum */}
-            <DORAMetricsCard dora={doraMetrics} />
+            {/* DORA / Team Momentum — live or frozen */}
+            <DORAMetricsCard dora={resolvedDora} />
 
             {/* AI Narrative */}
             <Card>
@@ -322,20 +358,23 @@ export default function WeeklyDigest() {
             <CrossPlatformCard activity={crossPlatform} />
 
             {/* Work Distribution */}
-            {Object.keys(workDist).length > 0 && (
+            {workDistEntries.length > 0 && (
               <Card>
                 <CardHeader>
                   <CardTitle className="text-lg">Work Distribution</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    {Object.entries(workDist).map(([key, count]) => {
+                    {workDistEntries.map(([key, count]) => {
                       const total = Object.values(workDist).reduce((a, b) => a + b, 0);
                       const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+                      const badge = ALL_BADGES[key];
                       return (
                         <div key={key} className="space-y-1">
                           <div className="flex justify-between text-sm">
-                            <span className="capitalize text-foreground">{key.replace("_", " ")}</span>
+                            <span className="text-foreground">
+                              {badge ? `${badge.emoji} ${badge.label}` : key.replace("_", " ")}
+                            </span>
                             <span className="text-muted-foreground">{pct}%</span>
                           </div>
                           <div className="h-2 w-full rounded-full bg-muted">
