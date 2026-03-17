@@ -288,6 +288,29 @@ Deno.serve(async (req) => {
           populateScores(ghActivity, thisWeekScores, thisWeekVIS);
           populateScores(lastWeekGhActivity, lastWeekScores, lastWeekVIS);
 
+          // Normalize impact scores to 0-100 using team median (matches client useWeeklyAwards)
+          function normalizeImpactScores(scores: Map<string, any>) {
+            const rawScores = Array.from(scores.values())
+              .map(s => s.impactScore)
+              .filter(v => v > 0)
+              .sort((a: number, b: number) => a - b);
+            let teamMedian = 1;
+            if (rawScores.length > 0) {
+              const mid = Math.floor(rawScores.length / 2);
+              teamMedian = rawScores.length % 2 === 1
+                ? rawScores[mid]
+                : (rawScores[mid - 1] + rawScores[mid]) / 2;
+              if (teamMedian === 0) teamMedian = 1;
+            }
+            for (const s of scores.values()) {
+              s.impactScore = s.impactScore > 0
+                ? Math.round(Math.min(100, (s.impactScore / teamMedian) * 50))
+                : 0;
+            }
+          }
+          normalizeImpactScores(thisWeekScores);
+          normalizeImpactScores(lastWeekScores);
+
           // Add commitment completions
           for (const c of commitments || []) {
             if (c.status === "done") {
@@ -317,7 +340,7 @@ Deno.serve(async (req) => {
                 member_name: mvp.name,
                 member_id: mvp.id,
                 description: "Highest composite of VIS impact, reviews, and commitments completed",
-                stat: `VIS: ${mvp.impactScore} · Reviews: ${mvp.reviews} · Done: ${mvp.completions}`,
+                stat: `Impact: ${mvp.impactScore}/100 · Reviews: ${mvp.reviews} · Done: ${mvp.completions}`,
               });
             }
 
