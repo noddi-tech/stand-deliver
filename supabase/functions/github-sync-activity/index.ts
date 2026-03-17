@@ -689,6 +689,13 @@ Deno.serve(async (req) => {
                 },
                 { onConflict: "team_id,member_id,external_id,activity_type,source" }
               );
+              // Badge resolution for commits
+              await upsertBadge(supabaseAdmin, {
+                id: (await supabaseAdmin.from("external_activity").select("id").eq("team_id", member.team_id).eq("member_id", member.id).eq("external_id", sha).eq("source", "github").eq("activity_type", "commit").maybeSingle()).data?.id,
+                source: "github", activity_type: "commit", title: message,
+                source_type: "external_activity",
+                metadata: stats ? { additions: stats.additions, deletions: stats.deletions } : {},
+              }, member.team_id);
             } catch { /* dedup */ }
           }
         }
