@@ -16,7 +16,7 @@ export default function MyAnalytics() {
   const { data, isLoading } = useMyAnalytics(memberId);
   const { data: enriched, isLoading: enrichedLoading } = usePersonalEnrichedMetrics(memberId, teamId);
   const { data: badgeData } = useMemberBadgeCounts(teamId);
-  const myBadgeImpactPct = memberId && badgeData?.impactPct?.[memberId];
+  const myBadgeImpactPct = memberId && (badgeData?.countPct?.[memberId] || badgeData?.impactPct?.[memberId]);
   const loading = teamLoading || isLoading;
 
   const tooltipStyle = { backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, color: "hsl(var(--foreground))" };
