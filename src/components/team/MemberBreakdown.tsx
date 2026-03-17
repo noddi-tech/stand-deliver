@@ -38,6 +38,7 @@ interface MemberBreakdownProps {
   classification?: ClassificationResult;
   focusItems?: TeamFocusItem[];
   badgeCounts?: MemberBadgeCounts;
+  badgeCountPct?: MemberBadgeCountPct;
   badgeImpactPct?: MemberBadgeImpactPct;
   loading?: boolean;
 }
