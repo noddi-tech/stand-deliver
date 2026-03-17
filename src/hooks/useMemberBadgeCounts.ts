@@ -21,7 +21,7 @@ export function useMemberBadgeCounts(teamId?: string) {
         .eq("team_id", teamId!)
         .gte("occurred_at", sevenDaysAgo.toISOString());
 
-      if (!activities?.length) return { counts: {}, impactPct: {} };
+      if (!activities?.length) return { counts: {}, countPct: {}, impactPct: {} };
 
       const activityIds = activities.map((a) => a.id);
       const memberMap: Record<string, string> = {};
