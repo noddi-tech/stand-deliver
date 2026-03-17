@@ -66,6 +66,18 @@ export function useMemberBadgeCounts(teamId?: string) {
         counts[memberId][b.badge_key] = (counts[memberId][b.badge_key] || 0) + 1;
       }
 
+      // Convert counts to percentages
+      const countPct: MemberBadgeCountPct = {};
+      for (const [memberId, badges] of Object.entries(counts)) {
+        const total = Object.values(badges).reduce((s, v) => s + v, 0);
+        if (total > 0) {
+          countPct[memberId] = {};
+          for (const [key, val] of Object.entries(badges)) {
+            countPct[memberId][key] = Math.round((val / total) * 1000) / 10;
+          }
+        }
+      }
+
       // Aggregate impact-weighted: memberId → badgeKey → totalImpact
       const impactByMemberBadge: Record<string, Record<string, number>> = {};
       for (const ic of allImpact) {
