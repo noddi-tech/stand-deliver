@@ -36,6 +36,7 @@ export default function Analytics() {
   const { data: enriched, isLoading: enrichedLoading } = useEnrichedTeamMetrics(teamId);
   const { data: teamBadges } = useTeamBadges(teamId);
   const badgeLookup = useBadgeLookup();
+  const { data: badgeCounts } = useMemberBadgeCounts(teamId);
   const { data: focusItems } = useTeamFocusItems(teamId);
   const { data: classification, isLoading: classificationLoading, refetch: refetchClassification } = useContributionClassification(teamId, (focusItems?.length ?? 0) > 0);
   const loading = teamLoading || isLoading;
