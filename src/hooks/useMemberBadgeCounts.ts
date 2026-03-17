@@ -19,7 +19,7 @@ export function useMemberBadgeCounts(teamId?: string, daysBack = 7) {
         .from("external_activity")
         .select("id, member_id")
         .eq("team_id", teamId!)
-        .gte("occurred_at", sevenDaysAgo.toISOString());
+        .gte("occurred_at", cutoff.toISOString());
 
       if (!activities?.length) return { counts: {}, countPct: {}, impactPct: {} };
 
