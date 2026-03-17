@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { upsertBadge } from "../_shared/activity-badges.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -688,6 +689,13 @@ Deno.serve(async (req) => {
                 },
                 { onConflict: "team_id,member_id,external_id,activity_type,source" }
               );
+              // Badge resolution for commits
+              await upsertBadge(supabaseAdmin, {
+                id: (await supabaseAdmin.from("external_activity").select("id").eq("team_id", member.team_id).eq("member_id", member.id).eq("external_id", sha).eq("source", "github").eq("activity_type", "commit").maybeSingle()).data?.id,
+                source: "github", activity_type: "commit", title: message,
+                source_type: "external_activity",
+                metadata: stats ? { additions: stats.additions, deletions: stats.deletions } : {},
+              }, member.team_id);
             } catch { /* dedup */ }
           }
         }
@@ -767,6 +775,13 @@ Deno.serve(async (req) => {
                 },
                 { onConflict: "team_id,member_id,external_id,activity_type,source" }
               );
+              // Badge resolution for PRs opened
+              await upsertBadge(supabaseAdmin, {
+                id: (await supabaseAdmin.from("external_activity").select("id").eq("team_id", member.team_id).eq("member_id", member.id).eq("external_id", prId).eq("source", "github").eq("activity_type", "pr_opened").maybeSingle()).data?.id,
+                source: "github", activity_type: "pr_opened", title: item.title,
+                source_type: "external_activity",
+                metadata: { labels: item.labels?.map((l: any) => l.name) || [], ...(detail || {}) },
+              }, member.team_id);
             } catch { /* dedup */ }
           }
         }
@@ -799,6 +814,13 @@ Deno.serve(async (req) => {
                 },
                 { onConflict: "team_id,member_id,external_id,activity_type,source" }
               );
+              // Badge resolution for PRs merged
+              await upsertBadge(supabaseAdmin, {
+                id: (await supabaseAdmin.from("external_activity").select("id").eq("team_id", member.team_id).eq("member_id", member.id).eq("external_id", `merged-${item.id}`).eq("source", "github").eq("activity_type", "pr_merged").maybeSingle()).data?.id,
+                source: "github", activity_type: "pr_merged", title: item.title,
+                source_type: "external_activity",
+                metadata: { labels: item.labels?.map((l: any) => l.name) || [], ...(detail || {}) },
+              }, member.team_id);
             } catch { /* dedup */ }
 
             // Auto-resolve commitments linked via github_ref
@@ -858,6 +880,13 @@ Deno.serve(async (req) => {
                     },
                     { onConflict: "team_id,member_id,external_id,activity_type,source" }
                   );
+                  // Badge resolution for reviews
+                  await upsertBadge(supabaseAdmin, {
+                    id: (await supabaseAdmin.from("external_activity").select("id").eq("team_id", reviewerMember.team_id).eq("member_id", reviewerMember.id).eq("external_id", `review-${item.id}-${review.user}-${review.submitted_at}`).eq("source", "github").eq("activity_type", "pr_review").maybeSingle()).data?.id,
+                    source: "github", activity_type: "pr_review", title: `Reviewed: ${item.title}`,
+                    source_type: "external_activity",
+                    metadata: { review_comments: detail?.review_comments || 0 },
+                  }, reviewerMember.team_id);
                 } catch { /* dedup */ }
               }
             }

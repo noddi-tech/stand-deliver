@@ -12,6 +12,10 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Activity as ActivityIcon, ExternalLink, GitBranch } from "lucide-react";
+import { ActivityBadgeChip } from "@/components/activity/ActivityBadgeChip";
+import { BadgePicker } from "@/components/activity/BadgePicker";
+import { useActivityBadges } from "@/hooks/useActivityBadges";
+import { ALL_BADGES } from "@/lib/activity-badges";
 import type { ActivityItem } from "@/hooks/useRecentActivity";
 
 const SOURCE_ICONS: Record<string, string> = {
@@ -40,7 +44,6 @@ function useActivityFeed(teamId: string | undefined, days: number, sourceFilter:
       const since = subDays(new Date(), days).toISOString();
       const sinceDate = since.split("T")[0];
       const items: ActivityItem[] = [];
-      
 
       // Fetch external activity with pagination - get up to 1000 rows
       if (sourceFilter !== "standup") {
@@ -110,6 +113,30 @@ function useActivityFeed(teamId: string | undefined, days: number, sourceFilter:
       }
 
       items.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+      // Batch-fetch badges
+      const activityIds = items.map(i => i.id);
+      if (activityIds.length > 0) {
+        const allBadges: any[] = [];
+        for (let i = 0; i < activityIds.length; i += 200) {
+          const batch = activityIds.slice(i, i + 200);
+          const { data } = await supabase
+            .from("activity_badges")
+            .select("activity_id, badge_key, badge_source")
+            .in("activity_id", batch);
+          if (data) allBadges.push(...data);
+        }
+        const badgeMap: Record<string, { badge_key: string; badge_source: string }> = {};
+        for (const b of allBadges) badgeMap[b.activity_id] = b;
+        for (const item of items) {
+          const b = badgeMap[item.id];
+          if (b) {
+            item.badgeKey = b.badge_key;
+            item.badgeSource = b.badge_source;
+          }
+        }
+      }
+
       return items;
     },
   });
@@ -123,6 +150,7 @@ export default function Activity() {
 
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [memberFilter, setMemberFilter] = useState<string>(presetMember || "all");
+  const [badgeFilter, setBadgeFilter] = useState<string>("all");
   const [days, setDays] = useState(30);
 
   const { data: members } = useQuery({
@@ -140,7 +168,16 @@ export default function Activity() {
 
   const { data: activity, isLoading } = useActivityFeed(teamId, days, sourceFilter, memberFilter);
 
-  const filtered = useMemo(() => activity || [], [activity]);
+  // Badge override mutation
+  const { overrideBadge } = useActivityBadges(
+    (activity || []).map(a => a.id)
+  );
+
+  const filtered = useMemo(() => {
+    const items = activity || [];
+    if (badgeFilter === "all") return items;
+    return items.filter(a => a.badgeKey === badgeFilter);
+  }, [activity, badgeFilter]);
 
   // Group by date
   const grouped = useMemo(() => {
@@ -163,6 +200,15 @@ export default function Activity() {
       standups: filtered.filter(a => a.source === "standup").length,
     };
   }, [filtered]);
+
+  // Get unique badge keys for filter dropdown
+  const availableBadges = useMemo(() => {
+    const keys = new Set<string>();
+    for (const a of activity || []) {
+      if (a.badgeKey) keys.add(a.badgeKey);
+    }
+    return Array.from(keys).sort();
+  }, [activity]);
 
   const loading = teamLoading || isLoading;
 
@@ -220,6 +266,25 @@ export default function Activity() {
           </SelectContent>
         </Select>
 
+        {availableBadges.length > 0 && (
+          <Select value={badgeFilter} onValueChange={setBadgeFilter}>
+            <SelectTrigger className="w-[160px] h-8 text-xs">
+              <SelectValue placeholder="All Badges" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Badges</SelectItem>
+              {availableBadges.map(key => {
+                const badge = ALL_BADGES[key];
+                return (
+                  <SelectItem key={key} value={key}>
+                    {badge ? `${badge.emoji} ${badge.label}` : key}
+                  </SelectItem>
+                );
+              })}
+            </SelectContent>
+          </Select>
+        )}
+
         <Select value={String(days)} onValueChange={v => setDays(Number(v))}>
           <SelectTrigger className="w-[120px] h-8 text-xs">
             <SelectValue />
@@ -258,7 +323,23 @@ export default function Activity() {
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{a.title}</p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-sm font-medium truncate">{a.title}</p>
+                          {a.badgeKey && teamId && (
+                            <BadgePicker
+                              onSelect={(badgeKey) => {
+                                overrideBadge({
+                                  activityId: a.id,
+                                  sourceType: a.type === "external" ? "external_activity" : "standup_response",
+                                  badgeKey,
+                                  teamId,
+                                });
+                              }}
+                            >
+                              <span><ActivityBadgeChip badgeKey={a.badgeKey} onClick={() => {}} /></span>
+                            </BadgePicker>
+                          )}
+                        </div>
                         <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
                           <span>{a.memberName || "Unknown"}</span>
                           <span>·</span>

@@ -13,6 +13,8 @@ export interface ActivityItem {
   memberId: string;
   timestamp: string;
   externalUrl?: string | null;
+  badgeKey?: string;
+  badgeSource?: string;
 }
 
 export function useRecentActivity(teamId: string | undefined) {
@@ -107,7 +109,29 @@ export function useRecentActivity(teamId: string | undefined) {
 
       // Sort by timestamp and cap
       selected.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      return selected.slice(0, MAX_TOTAL);
+      const capped = selected.slice(0, MAX_TOTAL);
+
+      // Batch-fetch badges for all activity IDs
+      const activityIds = capped.map((item) => item.id);
+      if (activityIds.length > 0) {
+        const { data: badges } = await supabase
+          .from("activity_badges")
+          .select("activity_id, badge_key, badge_source")
+          .in("activity_id", activityIds);
+        if (badges) {
+          const badgeMap: Record<string, { badge_key: string; badge_source: string }> = {};
+          for (const b of badges) badgeMap[b.activity_id] = b;
+          for (const item of capped) {
+            const b = badgeMap[item.id];
+            if (b) {
+              item.badgeKey = b.badge_key;
+              item.badgeSource = b.badge_source;
+            }
+          }
+        }
+      }
+
+      return capped;
     },
   });
 }

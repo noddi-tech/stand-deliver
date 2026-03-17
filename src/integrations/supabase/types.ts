@@ -14,6 +14,53 @@ export type Database = {
   }
   public: {
     Tables: {
+      activity_badges: {
+        Row: {
+          activity_id: string
+          badge_key: string
+          badge_source: string
+          confidence: number
+          created_at: string | null
+          id: string
+          manual_override: boolean | null
+          source_type: string
+          team_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          activity_id: string
+          badge_key: string
+          badge_source: string
+          confidence?: number
+          created_at?: string | null
+          id?: string
+          manual_override?: boolean | null
+          source_type: string
+          team_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          activity_id?: string
+          badge_key?: string
+          badge_source?: string
+          confidence?: number
+          created_at?: string | null
+          id?: string
+          manual_override?: boolean | null
+          source_type?: string
+          team_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_badges_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_weekly_digests: {
         Row: {
           ai_narrative: string | null
@@ -1376,6 +1423,17 @@ export type Database = {
       is_team_member: {
         Args: { _team_id: string; _user_id: string }
         Returns: boolean
+      }
+      upsert_activity_badge: {
+        Args: {
+          p_activity_id: string
+          p_badge_key: string
+          p_badge_source: string
+          p_confidence: number
+          p_source_type: string
+          p_team_id: string
+        }
+        Returns: undefined
       }
     }
     Enums: {

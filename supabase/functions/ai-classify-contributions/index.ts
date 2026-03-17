@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { computeImpactScore } from "../_shared/scoring.ts";
+import { badgeFromAIClassification, resolveActivityBadge } from "../_shared/activity-badges.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -274,6 +275,36 @@ Classify each item by its index number.`;
         console.error(`Upsert error for item ${item.id}:`, error);
       } else {
         upsertCount++;
+      }
+    }
+
+    // ─── Bulk badge upsert for all classified items ───
+    for (const c of classifications) {
+      const idx = c.index;
+      if (idx < 0 || idx >= batch.length) continue;
+      const item = batch[idx];
+
+      // Use the full resolver — for standup commitments, deterministic badgeFromCommitment
+      // runs first; for external_activity, deterministic rules run; AI is the fallback
+      const resolution = resolveActivityBadge({
+        source: item.source || "standup",
+        activity_type: item.activity_type || "commitment",
+        title: item.title,
+        metadata: item.metadata,
+        classification: { value_type: c.value_type, impact_tier: c.impact_tier },
+      });
+
+      try {
+        await sb.rpc("upsert_activity_badge", {
+          p_activity_id: item.id,
+          p_source_type: item.source_type,
+          p_team_id: team_id,
+          p_badge_key: resolution.badge.key,
+          p_badge_source: resolution.source,
+          p_confidence: resolution.confidence,
+        });
+      } catch (badgeErr) {
+        console.error(`Badge upsert error for ${item.id}:`, badgeErr);
       }
     }
 
