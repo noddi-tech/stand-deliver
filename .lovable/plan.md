@@ -1,75 +1,99 @@
 
 
-# Integrate Activity Badges into VIS System + Update VIS Explained
+# Unified Data Pipeline — Red Thread Refactor
 
-## Concept
+## Summary of Inconsistencies Found
 
-Activity badges already classify *what type* of work was done (🐛 Bug Fix, 🚀 Feature, etc.). Integrating them into VIS makes the score more transparent: instead of just seeing "Impact: 72", you see *where* that impact came from — "40% from Features, 30% from Bug Fixes, 20% from Reviews." This gives actionable insight into who fixes what, who ships what, and whether that aligns with team priorities.
+After reading all files, here's what needs fixing:
 
-## 1. Enrich `compute-weekly-vis` with Badge Distribution
+| Problem | Where | Details |
+|---|---|---|
+| **Legacy impact scoring** (`computeCodeImpact`) | `useEnrichedAnalytics.ts` lines 48-54, 166-176 | Blends VIS + sqrt-based legacy for unclassified commits. Awards in `ai-weekly-digest` use the same legacy formula (line 226). |
+| **Work types from `metadata.work_type`** | `useEnrichedAnalytics.ts` lines 154-159, 263-268 | Should use `activity_badges` instead. Same issue in personal metrics (lines 388-394). |
+| **DORA computed 3 separate times** | `useWeeklyAwards.ts`, `useEnrichedAnalytics.ts`, `ai-weekly-digest/index.ts` | Three independent cycle-time/review calculations with slightly different logic. |
+| **Awards computed 2 separate times** | `useWeeklyAwards.ts` (client, VIS-based) vs `ai-weekly-digest` (server, legacy sqrt-based) | Different formulas produce different winners. |
+| **WeeklyDigest reads stale JSONB** | `WeeklyDigest.tsx` line 225 | Always reads from stored `cross_platform_activity.weekly_awards` — never uses live `useWeeklyAwards`. |
+| **Digest work_distribution uses title regex** | `ai-weekly-digest` lines 78-85 | Matches "bug"/"fix"/"refactor" in commitment titles instead of `activity_badges`. |
 
-**`supabase/functions/compute-weekly-vis/index.ts`**
+## Implementation Plan
 
-After fetching `impact_classifications` (line 65), also fetch `activity_badges` for the same week/team. Join badge data to classifications by `activity_id` to build a per-member breakdown: `Record<string, number>` mapping badge_key to summed impact_score.
+### Step 1: Create `useTeamMomentum` hook
 
-Add to the existing `breakdown` jsonb (line 154):
-```ts
-breakdown: {
-  ...existingFields,
-  badgeDistribution: { feature: 45.2, bugfix: 22.1, refactor: 8.0, ... },
-  badgeImpactPct: { feature: 40, bugfix: 30, refactor: 10, ... },
-}
-```
+**New file: `src/hooks/useTeamMomentum.ts`**
 
-No schema migration needed — `breakdown` is already a `jsonb` column.
+Extract DORA metrics computation (cycle time, merge rate, review turnaround, week-over-week trends) into a standalone hook. Takes `teamId`, fetches `external_activity` for current + previous week (GitHub, `pr_merged`/`pr_opened`/`pr_review`), returns `{ avgPRCycleTime, prsMerged, reviewTurnaround, weekOverWeekTrends }`.
 
-## 2. Enrich `useWeeklyVIS` Client Hook
+This becomes the single source of truth for momentum metrics.
 
-**`src/hooks/useWeeklyVIS.ts`**
+### Step 2: Update `useEnrichedAnalytics.ts`
 
-- Add `badgeDistribution?: Record<string, number>` to `VISBreakdown` interface
-- For canonical (past) weeks: read from `breakdown.badgeDistribution`
-- For current week estimate: fetch `activity_badges` for the week alongside `impact_classifications`, join by `activity_id`, aggregate badge_key → impact_score sums
+- **Remove `computeCodeImpact` function entirely** (lines 48-54). For members without VIS classifications, show score 0 instead of a fake heuristic.
+- **Remove the blended score logic** (lines 161-176) — just use `visScore` directly.
+- **Replace `metadata.work_type` with `activity_badges`**: Fetch `activity_badges` for the team (7d/30d), join to `external_activity` by `activity_id`. Use `badge_key` for both per-member `workTypeBreakdown` and the weekly `workTypeDist` trend.
+- **Remove duplicate DORA** (`teamAvgCycleTime`, `teamAvgReviewVelocity`) — consumers should use `useTeamMomentum` instead.
 
-## 3. Show Badge-Impact Distribution in Dashboard/MyAnalytics
+### Step 3: Update `useWeeklyAwards.ts`
 
-**New component: `src/components/analytics/BadgeImpactBreakdown.tsx`**
+- Import and use `useTeamMomentum` for DORA metrics instead of computing its own.
+- Keep the awards computation as-is (it already uses `impact_classifications` / VIS).
 
-A compact horizontal stacked bar or pill row showing what % of a member's impact came from each badge type. Uses `ALL_BADGES` for emoji lookup. Example rendering:
+### Step 4: Update `WeeklyDigest.tsx` — live/frozen fallback
 
-```
-Impact sources: 🚀 40%  🐛 30%  🔧 15%  🔀 10%  🧹 5%
-```
+**Rule**: If `digest.week_start` equals the current week's Monday (`getWeekStart(new Date())`), use live `useWeeklyAwards()`. Otherwise, read from stored `digest.weekly_awards` / `digest.dora_metrics` JSONB. Past digests are frozen snapshots — correct behavior.
 
-Wire into:
-- **Dashboard.tsx**: Show below VIS score in MemberBreakdown cards (via the `badgeCounts` prop or a new `badgeImpact` prop)
-- **MyAnalytics.tsx**: Add a "Where Your Impact Comes From" card using `useWeeklyVIS` badge distribution data
+Changes:
+- Import `useWeeklyAwards` and `useTeamMomentum`.
+- Compute `currentWeekStart` using the same Monday logic.
+- If `digest.week_start === currentWeekStart`: use live awards + live DORA.
+- Else: use `digest.weekly_awards` and `digest.dora_metrics` (existing behavior).
+- Render awards using a unified component shape (normalize `memberName` vs `member_name` key differences between live and stored).
 
-## 4. Update VIS Explained Page
+### Step 5: Wire `useTeamMomentum` into Dashboard and TeamInsights
 
-**`src/pages/VISExplained.tsx`**
+**`Dashboard.tsx`**: Add a compact Team Momentum row (3 metric cards: cycle time, PRs merged, review turnaround) using `useTeamMomentum`. Currently Dashboard shows no DORA at all.
 
-Add two new sections:
+**`TeamInsights.tsx`**: Replace `awardsData?.doraMetrics` with `useTeamMomentum()` so it uses the shared hook instead of piggybacking on `useWeeklyAwards`.
 
-### "Activity Badges" section (after "Impact tiers")
-- Explain that every contribution is automatically tagged with an activity badge (🐛 Bug Fix, 🚀 Feature, 🔧 Refactor, etc.)
-- 4-layer priority: Manual > Deterministic rules > AI classification > Source defaults
-- Badges map to value types but are more granular — they show *what kind* of work within each tier
-- Include a subset grid of the most common badges with emoji + label
+### Step 6: Replace raw badge counts with impact-weighted view on MemberBreakdown
 
-### "Where Your Impact Comes From" section (after Activity Badges)
-- Explain that VIS now tracks which badge types contributed to your Impact score
-- "If 60% of your impact came from Bug Fixes and only 10% from Features, that's a signal — are you in a stabilization phase, or is new feature work getting stuck?"
-- Clarify this is informational, not a penalty — all badge types contribute equally to the score formula
+**`MemberBreakdown.tsx`**: Replace the `🚀×12 🐛×8` raw count line (lines 182-199) with the `BadgeImpactBreakdown` component (compact mode). This requires passing `badgeImpactPct` per member from `useWeeklyVIS` data or from a batch version.
+
+Since `useWeeklyVIS` is per-member and we need all members at once, create a lightweight batch query in `useMemberBadgeCounts.ts` that also returns impact-weighted percentages (join `activity_badges` to `impact_classifications` by `activity_id`). The existing `useMemberBadgeCounts` already fetches badge counts — extend it to also sum `impact_score` per badge_key per member.
+
+### Step 7: Update `ai-weekly-digest` edge function
+
+This is critical — without it, the next stored digest will have legacy data.
+
+**`supabase/functions/ai-weekly-digest/index.ts`** changes:
+
+1. **Work distribution** (lines 78-85): Replace title-regex classification with `activity_badges` query. Fetch `activity_badges` for the team + week, count by `badge_key`, store as `work_distribution`.
+
+2. **Awards** (lines 205-313): Replace the legacy `sqrt(adds + dels)` impact formula with VIS-based scoring. Fetch `impact_classifications` for the week, aggregate per member, use VIS scores for the MVP composite. This aligns server-generated awards with client-side `useWeeklyAwards`.
+
+3. **DORA metrics** (lines 158-201): Keep as-is (server-side computation is fine for the snapshot), but ensure the same cycle-time formula is used.
+
+4. **Badge impact in digest JSONB**: Add `badgeImpactPct` to the stored digest so historical views can show badge breakdown without recomputation.
+
+### Step 8: Add time-window labels
+
+Add small `<Badge>` labels to section headers across pages:
+- Dashboard MemberBreakdown: "This week"
+- Analytics engineering metrics: "Last 30 days"
+- TeamInsights awards: "This week"
+- WeeklyDigest: already shows date range
 
 ## Files Summary
 
 | File | Change |
 |---|---|
-| `supabase/functions/compute-weekly-vis/index.ts` | Fetch activity_badges, compute badge distribution, include in breakdown jsonb |
-| `src/hooks/useWeeklyVIS.ts` | Add `badgeDistribution` to VISBreakdown, compute in estimate path |
-| `src/components/analytics/BadgeImpactBreakdown.tsx` | Create — badge-impact pill/bar visualization |
-| `src/pages/MyAnalytics.tsx` | Add "Where Your Impact Comes From" card |
-| `src/pages/Dashboard.tsx` | Wire badge impact data to MemberBreakdown |
-| `src/pages/VISExplained.tsx` | Add "Activity Badges" and "Impact Sources" sections |
+| `src/hooks/useTeamMomentum.ts` | **Create** — single DORA metrics hook |
+| `src/hooks/useEnrichedAnalytics.ts` | Remove `computeCodeImpact`, use VIS-only; use `activity_badges` for work types; remove DORA |
+| `src/hooks/useWeeklyAwards.ts` | Use `useTeamMomentum`; keep awards as-is |
+| `src/hooks/useMemberBadgeCounts.ts` | Extend to return impact-weighted badge percentages |
+| `src/pages/Dashboard.tsx` | Add momentum row via `useTeamMomentum` |
+| `src/pages/Analytics.tsx` | Use `useTeamMomentum` for engineering metrics row |
+| `src/pages/TeamInsights.tsx` | Use `useTeamMomentum` for DORA card |
+| `src/pages/WeeklyDigest.tsx` | Live awards for current week, frozen for past; use `useTeamMomentum` |
+| `src/components/team/MemberBreakdown.tsx` | Replace raw counts with impact-weighted badges; add time label |
+| `supabase/functions/ai-weekly-digest/index.ts` | Use VIS for awards, `activity_badges` for work dist, store `badgeImpactPct` |
 
