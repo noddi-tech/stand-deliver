@@ -102,8 +102,10 @@ export function useWeeklyAwards(teamId: string | undefined) {
         commitmentsCompleted: number;
       }
 
-      function computeMemberStats(weekItems: typeof items, weekStart: Date): Map<string, MemberStats> {
+      function computeMemberStats(weekItems: typeof items, weekStart: Date, weekKey: "this" | "last"): Map<string, MemberStats> {
         const memberMap = new Map<string, MemberStats>();
+        const weekVisMap = visScoreMap.get(weekKey) || new Map<string, number>();
+
         for (const item of weekItems) {
           const m = item.member as any;
           const id = item.member_id;
@@ -121,13 +123,8 @@ export function useWeeklyAwards(teamId: string | undefined) {
             });
           }
           const stats = memberMap.get(id)!;
-          const meta = item.metadata as any;
 
           if (item.activity_type === "commit") {
-            const adds = meta?.additions || 0;
-            const dels = meta?.deletions || 0;
-            const files = meta?.files_changed || 0;
-            stats.impactScore += Math.round(Math.sqrt(adds + dels) * 2 + files * 1.5);
             stats.commitCount++;
           } else if (item.activity_type === "pr_review") {
             stats.reviewsGiven++;
@@ -135,6 +132,17 @@ export function useWeeklyAwards(teamId: string | undefined) {
             stats.prsOpened++;
           } else if (item.activity_type === "pr_merged") {
             stats.prsMerged++;
+          }
+        }
+
+        // Apply VIS scores; fall back to commit count heuristic for unclassified members
+        for (const [id, stats] of memberMap) {
+          const visScore = weekVisMap.get(id);
+          if (visScore !== undefined && visScore > 0) {
+            stats.impactScore = Math.round(visScore);
+          } else {
+            // Fallback: simple commit-based estimate for members without classifications
+            stats.impactScore = stats.commitCount * 10;
           }
         }
 
