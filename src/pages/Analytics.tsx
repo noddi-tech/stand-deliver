@@ -187,8 +187,7 @@ export default function Analytics() {
         badgeImpactPct={badgeData?.impactPct}
         loading={summaryLoading}
       />
-
-      
+import { useState } from "react";
       {enriched && (enriched.prCycleTimeTrend.some(w => w.avgHours > 0) || enriched.teamTotalReviews > 0) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
