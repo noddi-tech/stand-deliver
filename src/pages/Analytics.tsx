@@ -14,6 +14,7 @@ import { useUserTeam, useAnalyticsMetrics } from "@/hooks/useAnalytics";
 import { useTeamSummary } from "@/hooks/useTeamSummary";
 import { useEnrichedTeamMetrics } from "@/hooks/useEnrichedAnalytics";
 import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
+import { useMemberBadgeCounts } from "@/hooks/useMemberBadgeCounts";
 import { MemberBreakdown } from "@/components/team/MemberBreakdown";
 import { useTeamFocusItems, useContributionClassification } from "@/hooks/useTeamFocus";
 import { FocusAlignment } from "@/components/analytics/FocusAlignment";
