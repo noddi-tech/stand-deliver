@@ -233,7 +233,9 @@ export default function Activity() {
       <div>
         <h1 className="text-2xl font-bold text-foreground">Activity</h1>
         <p className="text-sm text-muted-foreground">Team activity over the last {days} days</p>
-      </div>
+        {lastSync && (
+          <p className="text-[11px] text-muted-foreground/70">Badges last synced {formatDistanceToNow(new Date(lastSync), { addSuffix: true })}</p>
+        )}
 
       {/* Summary counters */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
