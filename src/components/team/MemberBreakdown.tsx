@@ -22,6 +22,10 @@ const SENTIMENT_CONFIG: Record<string, { label: string; className: string }> = {
   needs_attention: { label: "Needs check-in", className: "bg-amber-500/10 text-amber-600 border-amber-500/20" },
 };
 
+export type BreakdownPeriod = "week" | "month" | "quarter" | "year";
+export const PERIOD_DAYS: Record<BreakdownPeriod, number> = { week: 7, month: 30, quarter: 90, year: 365 };
+const PERIOD_LABELS: Record<BreakdownPeriod, string> = { week: "This Week", month: "This Month", quarter: "This Quarter", year: "This Year" };
+
 interface MemberBreakdownProps {
   memberStats: MemberStat[];
   highlights?: MemberHighlight[];
@@ -41,6 +45,8 @@ interface MemberBreakdownProps {
   badgeCountPct?: MemberBadgeCountPct;
   badgeImpactPct?: MemberBadgeImpactPct;
   loading?: boolean;
+  period?: BreakdownPeriod;
+  onPeriodChange?: (period: BreakdownPeriod) => void;
 }
 
 export function MemberBreakdown({
