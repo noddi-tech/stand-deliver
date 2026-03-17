@@ -159,6 +159,7 @@ export default function Analytics() {
         enrichedMembers={enriched?.members}
         classification={classification}
         focusItems={focusItems}
+        badgeCounts={badgeCounts}
         loading={summaryLoading}
       />
 

@@ -189,6 +189,7 @@ export default function Dashboard() {
           enrichedMembers={enriched?.members}
           classification={classification}
           focusItems={focusItems}
+          badgeCounts={badgeCounts}
           loading={summaryLoading}
         />
       </section>
