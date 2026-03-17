@@ -52,6 +52,7 @@ export function MemberBreakdown({
   classification,
   focusItems,
   badgeCounts,
+  badgeCountPct,
   badgeImpactPct,
   loading,
 }: MemberBreakdownProps) {
