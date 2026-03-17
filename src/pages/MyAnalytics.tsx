@@ -6,7 +6,7 @@ import { Lightbulb, GitPullRequest, Eye, Code2, Target, PieChart } from "lucide-
 import { useUserTeam, useMyAnalytics } from "@/hooks/useAnalytics";
 import { usePersonalEnrichedMetrics } from "@/hooks/useEnrichedAnalytics";
 import { BadgeShowcase } from "@/components/badges/BadgeShowcase";
-import { useWeeklyVIS } from "@/hooks/useWeeklyVIS";
+import { useMemberBadgeCounts } from "@/hooks/useMemberBadgeCounts";
 import { BadgeImpactBreakdown } from "@/components/analytics/BadgeImpactBreakdown";
 
 export default function MyAnalytics() {
@@ -15,7 +15,8 @@ export default function MyAnalytics() {
   const teamId = teamData?.team_id;
   const { data, isLoading } = useMyAnalytics(memberId);
   const { data: enriched, isLoading: enrichedLoading } = usePersonalEnrichedMetrics(memberId, teamId);
-  const { data: visData } = useWeeklyVIS(memberId, teamId);
+  const { data: badgeData } = useMemberBadgeCounts(teamId);
+  const myBadgeImpactPct = memberId && badgeData?.impactPct?.[memberId];
   const loading = teamLoading || isLoading;
 
   const tooltipStyle = { backgroundColor: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, color: "hsl(var(--foreground))" };
