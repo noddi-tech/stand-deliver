@@ -4,6 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PartyPopper, HelpCircle, ShieldAlert, Trophy, TrendingUp, TrendingDown, Minus, Clock, GitPullRequest, Eye } from "lucide-react";
 import { useUserTeam, useWeeklyDigests, useAnalyticsMetrics } from "@/hooks/useAnalytics";
 import { useWeeklyAwards } from "@/hooks/useWeeklyAwards";
+import { useTeamMomentum } from "@/hooks/useTeamMomentum";
 
 function TrendIcon({ direction, inverted }: { direction?: string; inverted?: boolean }) {
   if (!direction || direction === "flat") return <Minus className="h-3 w-3 text-muted-foreground" />;
@@ -19,6 +20,7 @@ export default function TeamInsights() {
   const { data: digests, isLoading: digestLoading } = useWeeklyDigests(teamId);
   const { data: metrics, isLoading: metricsLoading } = useAnalyticsMetrics(teamId);
   const { data: awardsData, isLoading: awardsLoading } = useWeeklyAwards(teamId);
+  const { data: momentum } = useTeamMomentum(teamId);
   const loading = teamLoading || digestLoading || metricsLoading;
 
   if (!teamLoading && !isLead) {
@@ -37,7 +39,6 @@ export default function TeamInsights() {
 
   const latestDigest = digests?.[0];
   const awards = awardsData?.awards || [];
-  const dora = awardsData?.doraMetrics;
 
   // Derive celebrations & concerns from metrics
   const celebrations: string[] = [];
@@ -67,6 +68,7 @@ export default function TeamInsights() {
             <CardTitle className="text-base flex items-center gap-2">
               <Trophy className="h-4 w-4 text-primary" />
               This Week's Awards
+              <Badge variant="secondary" className="text-[10px] font-normal">This week</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -87,13 +89,14 @@ export default function TeamInsights() {
         </Card>
       )}
 
-      {/* Team Momentum (DORA) */}
-      {dora && (dora.avgPRCycleTime !== null || dora.prMergeRate > 0 || dora.reviewTurnaround !== null) && (
+      {/* Team Momentum (from useTeamMomentum) */}
+      {momentum && (momentum.avgPRCycleTime !== null || momentum.prsMerged > 0 || momentum.reviewTurnaround !== null) && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <GitPullRequest className="h-4 w-4 text-muted-foreground" />
               Team Momentum
+              <Badge variant="secondary" className="text-[10px] font-normal">This week</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -101,28 +104,28 @@ export default function TeamInsights() {
               <div className="rounded-lg border border-border p-3 text-center space-y-1">
                 <div className="flex items-center justify-center gap-1">
                   <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                  <TrendIcon direction={dora.weekOverWeekTrends.cycleTime} inverted />
+                  <TrendIcon direction={momentum.weekOverWeekTrends.cycleTime} inverted />
                 </div>
                 <p className="text-xl font-bold text-foreground">
-                  {dora.avgPRCycleTime !== null ? `${dora.avgPRCycleTime}h` : "—"}
+                  {momentum.avgPRCycleTime !== null ? `${momentum.avgPRCycleTime}h` : "—"}
                 </p>
                 <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Avg PR Cycle Time</p>
               </div>
               <div className="rounded-lg border border-border p-3 text-center space-y-1">
                 <div className="flex items-center justify-center gap-1">
                   <GitPullRequest className="h-3.5 w-3.5 text-muted-foreground" />
-                  <TrendIcon direction={dora.weekOverWeekTrends.mergeRate} />
+                  <TrendIcon direction={momentum.weekOverWeekTrends.mergeRate} />
                 </div>
-                <p className="text-xl font-bold text-foreground">{dora.prMergeRate}</p>
+                <p className="text-xl font-bold text-foreground">{momentum.prsMerged}</p>
                 <p className="text-[10px] text-muted-foreground uppercase tracking-wider">PRs Merged</p>
               </div>
               <div className="rounded-lg border border-border p-3 text-center space-y-1">
                 <div className="flex items-center justify-center gap-1">
                   <Eye className="h-3.5 w-3.5 text-muted-foreground" />
-                  <TrendIcon direction={dora.weekOverWeekTrends.reviews} />
+                  <TrendIcon direction={momentum.weekOverWeekTrends.reviews} />
                 </div>
                 <p className="text-xl font-bold text-foreground">
-                  {dora.reviewTurnaround !== null ? `${dora.reviewTurnaround}h` : "—"}
+                  {momentum.reviewTurnaround !== null ? `${momentum.reviewTurnaround}h` : "—"}
                 </p>
                 <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Review Turnaround</p>
               </div>

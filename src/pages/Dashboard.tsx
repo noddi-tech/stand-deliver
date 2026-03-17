@@ -7,6 +7,7 @@ import { useRecentActivity } from "@/hooks/useRecentActivity";
 import { useSkipStandup } from "@/hooks/useSkipStandup";
 import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
 import { useMemberBadgeCounts } from "@/hooks/useMemberBadgeCounts";
+import { useTeamMomentum } from "@/hooks/useTeamMomentum";
 import { MemberBreakdown } from "@/components/team/MemberBreakdown";
 import { useTeamFocusItems, useContributionClassification } from "@/hooks/useTeamFocus";
 import { FocusAlignment } from "@/components/analytics/FocusAlignment";
@@ -24,7 +25,7 @@ import MetricCard from "@/components/analytics/MetricCard";
 import HealthGauge from "@/components/analytics/HealthGauge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LineChart, Line, ResponsiveContainer } from "recharts";
-import { AlertTriangle, CheckCircle2, Clock, ArrowRight, Users, SkipForward, GitBranch, ExternalLink } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, ArrowRight, Users, SkipForward, GitBranch, ExternalLink, GitPullRequest, Eye, TrendingUp, TrendingDown, Minus } from "lucide-react";
 
 const SOURCE_ICONS: Record<string, string> = {
   github: "🐙",
@@ -62,7 +63,7 @@ export default function Dashboard() {
   const skipMutation = useSkipStandup();
   const { data: teamBadges } = useTeamBadges(teamId);
   const badgeLookup = useBadgeLookup();
-  const { data: badgeCounts } = useMemberBadgeCounts(teamId);
+  const { data: badgeData } = useMemberBadgeCounts(teamId);
   const { data: summaryData, isLoading: summaryLoading } = useTeamSummary(teamId);
   const { data: enriched } = useEnrichedTeamMetrics(teamId);
   const { data: focusItems } = useTeamFocusItems(teamId);
@@ -189,7 +190,8 @@ export default function Dashboard() {
           enrichedMembers={enriched?.members}
           classification={classification}
           focusItems={focusItems}
-          badgeCounts={badgeCounts}
+          badgeCounts={badgeData?.counts}
+          badgeImpactPct={badgeData?.impactPct}
           loading={summaryLoading}
         />
       </section>

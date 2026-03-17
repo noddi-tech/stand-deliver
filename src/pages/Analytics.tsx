@@ -1,6 +1,6 @@
 
 import { AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { Activity, AlertTriangle, ArrowDownRight, TrendingUp, BarChart3, Sparkles, Loader2, RefreshCw, GitPullRequest, Clock, Eye } from "lucide-react";
+import { Activity, AlertTriangle, ArrowDownRight, TrendingUp, BarChart3, Sparkles, Loader2, RefreshCw, GitPullRequest, Clock, Eye, TrendingDown, Minus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,18 +15,17 @@ import { useTeamSummary } from "@/hooks/useTeamSummary";
 import { useEnrichedTeamMetrics } from "@/hooks/useEnrichedAnalytics";
 import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
 import { useMemberBadgeCounts } from "@/hooks/useMemberBadgeCounts";
+import { useTeamMomentum } from "@/hooks/useTeamMomentum";
 import { MemberBreakdown } from "@/components/team/MemberBreakdown";
 import { useTeamFocusItems, useContributionClassification } from "@/hooks/useTeamFocus";
 import { FocusAlignment } from "@/components/analytics/FocusAlignment";
 
-
-const WORK_TYPE_LABELS: Record<string, string> = {
-  feature: "Feature",
-  bugfix: "Bug Fix",
-  refactor: "Refactor",
-  chore: "Chore",
-  infra: "Infra",
-};
+function TrendIcon({ direction, inverted }: { direction?: string; inverted?: boolean }) {
+  if (!direction || direction === "flat") return <Minus className="h-3 w-3 text-muted-foreground" />;
+  const isGood = inverted ? direction === "down" : direction === "up";
+  if (direction === "up") return <TrendingUp className={`h-3 w-3 ${isGood ? "text-emerald-500" : "text-destructive"}`} />;
+  return <TrendingDown className={`h-3 w-3 ${isGood ? "text-emerald-500" : "text-destructive"}`} />;
+}
 
 export default function Analytics() {
   const { data: teamData, isLoading: teamLoading } = useUserTeam();
@@ -34,9 +33,10 @@ export default function Analytics() {
   const { data: metrics, isLoading } = useAnalyticsMetrics(teamId);
   const { data: summaryData, isLoading: summaryLoading, refetch: refetchSummary } = useTeamSummary(teamId);
   const { data: enriched, isLoading: enrichedLoading } = useEnrichedTeamMetrics(teamId);
+  const { data: momentum } = useTeamMomentum(teamId);
   const { data: teamBadges } = useTeamBadges(teamId);
   const badgeLookup = useBadgeLookup();
-  const { data: badgeCounts } = useMemberBadgeCounts(teamId);
+  const { data: badgeData } = useMemberBadgeCounts(teamId);
   const { data: focusItems } = useTeamFocusItems(teamId);
   const { data: classification, isLoading: classificationLoading, refetch: refetchClassification } = useContributionClassification(teamId, (focusItems?.length ?? 0) > 0);
   const loading = teamLoading || isLoading;
@@ -118,31 +118,52 @@ export default function Analytics() {
         <MetricCard label="Carry-Over Rate" value={loading ? "" : `${metrics?.carryRate ?? 0}%`} loading={loading} icon={<ArrowDownRight className="h-4 w-4 text-muted-foreground" />} />
       </div>
 
-      {/* Engineering Metrics (new enriched row) */}
-      {enriched && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <MetricCard
-            label="Avg PR Cycle Time"
-            value={enriched.teamAvgCycleTime !== null ? `${enriched.teamAvgCycleTime}h` : "—"}
-            loading={enrichedLoading}
-            icon={<Clock className="h-4 w-4 text-muted-foreground" />}
-          />
-          <MetricCard
-            label="Avg Review Turnaround"
-            value={enriched.teamAvgReviewVelocity !== null ? `${enriched.teamAvgReviewVelocity}h` : "—"}
-            loading={enrichedLoading}
-            icon={<Eye className="h-4 w-4 text-muted-foreground" />}
-          />
-          <MetricCard
-            label="Reviews Given (30d)"
-            value={`${enriched.teamTotalReviews}`}
-            loading={enrichedLoading}
-            icon={<GitPullRequest className="h-4 w-4 text-muted-foreground" />}
-          />
-        </div>
+      {/* Team Momentum (from useTeamMomentum) */}
+      {momentum && (momentum.avgPRCycleTime !== null || momentum.prsMerged > 0 || momentum.reviewTurnaround !== null) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <GitPullRequest className="h-4 w-4 text-muted-foreground" />
+              Team Momentum
+              <Badge variant="secondary" className="text-[10px] font-normal">This week</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="rounded-lg border border-border p-3 text-center space-y-1">
+                <div className="flex items-center justify-center gap-1">
+                  <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                  <TrendIcon direction={momentum.weekOverWeekTrends.cycleTime} inverted />
+                </div>
+                <p className="text-xl font-bold text-foreground">
+                  {momentum.avgPRCycleTime !== null ? `${momentum.avgPRCycleTime}h` : "—"}
+                </p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Avg PR Cycle Time</p>
+              </div>
+              <div className="rounded-lg border border-border p-3 text-center space-y-1">
+                <div className="flex items-center justify-center gap-1">
+                  <GitPullRequest className="h-3.5 w-3.5 text-muted-foreground" />
+                  <TrendIcon direction={momentum.weekOverWeekTrends.mergeRate} />
+                </div>
+                <p className="text-xl font-bold text-foreground">{momentum.prsMerged}</p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">PRs Merged</p>
+              </div>
+              <div className="rounded-lg border border-border p-3 text-center space-y-1">
+                <div className="flex items-center justify-center gap-1">
+                  <Eye className="h-3.5 w-3.5 text-muted-foreground" />
+                  <TrendIcon direction={momentum.weekOverWeekTrends.reviews} />
+                </div>
+                <p className="text-xl font-bold text-foreground">
+                  {momentum.reviewTurnaround !== null ? `${momentum.reviewTurnaround}h` : "—"}
+                </p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Review Turnaround</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
-      {/* Focus Alignment — always shown on Analytics */}
+      {/* Focus Alignment */}
       <FocusAlignment
         focusItems={focusItems || []}
         classification={classification}
@@ -159,7 +180,8 @@ export default function Analytics() {
         enrichedMembers={enriched?.members}
         classification={classification}
         focusItems={focusItems}
-        badgeCounts={badgeCounts}
+        badgeCounts={badgeData?.counts}
+        badgeImpactPct={badgeData?.impactPct}
         loading={summaryLoading}
       />
 
@@ -167,7 +189,12 @@ export default function Analytics() {
       {enriched && (enriched.prCycleTimeTrend.some(w => w.avgHours > 0) || enriched.teamTotalReviews > 0) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
-            <CardHeader><CardTitle className="text-base flex items-center gap-2"><GitPullRequest className="h-4 w-4 text-muted-foreground" /> PR Cycle Time</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <GitPullRequest className="h-4 w-4 text-muted-foreground" /> PR Cycle Time
+                <Badge variant="secondary" className="text-[10px] font-normal">Last 30 days</Badge>
+              </CardTitle>
+            </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={220}>
                 <LineChart data={enriched.prCycleTimeTrend}>
@@ -182,7 +209,12 @@ export default function Analytics() {
           </Card>
 
           <Card>
-            <CardHeader><CardTitle className="text-base flex items-center gap-2"><Activity className="h-4 w-4 text-muted-foreground" /> Code Impact</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Activity className="h-4 w-4 text-muted-foreground" /> VIS Impact
+                <Badge variant="secondary" className="text-[10px] font-normal">Last 30 days</Badge>
+              </CardTitle>
+            </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={enriched.codeImpactTrend}>
@@ -198,11 +230,16 @@ export default function Analytics() {
         </div>
       )}
 
-      {/* Work Distribution — use AI-classified data if available, else fallback */}
+      {/* Work Distribution — from activity_badges */}
       <Card>
-        <CardHeader><CardTitle className="text-base">Work Distribution</CardTitle></CardHeader>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            Work Distribution
+            <Badge variant="secondary" className="text-[10px] font-normal">Last 30 days</Badge>
+          </CardTitle>
+        </CardHeader>
         <CardContent>
-          {loading && enrichedLoading ? <Skeleton className="h-64 w-full" /> : enriched && enriched.workTypeDist.some(w => w.feature + w.bugfix + w.refactor + w.chore + w.infra > 0) ? (
+          {loading && enrichedLoading ? <Skeleton className="h-64 w-full" /> : enriched && enriched.workTypeDist.some(w => (Number(w.feature) || 0) + (Number(w.bugfix) || 0) + (Number(w.refactor) || 0) + (Number(w.chore) || 0) + (Number(w.infra) || 0) > 0) ? (
             <ResponsiveContainer width="100%" height={260}>
               <AreaChart data={enriched.workTypeDist}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />

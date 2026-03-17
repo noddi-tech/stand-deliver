@@ -3,14 +3,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { subDays, startOfWeek, format, differenceInHours } from "date-fns";
 
 export interface EnrichedMetrics {
-  // Per-member metrics
   members: EnrichedMemberMetrics[];
-  // Team-level
-  teamAvgCycleTime: number | null; // hours
-  teamAvgReviewVelocity: number | null; // hours
   teamTotalReviews: number;
   prCycleTimeTrend: { week: string; avgHours: number }[];
-  workTypeDist: { week: string; feature: number; bugfix: number; refactor: number; chore: number; infra: number }[];
+  workTypeDist: { week: string; [key: string]: string | number }[];
   codeImpactTrend: { week: string; impact: number }[];
 }
 
@@ -19,11 +15,11 @@ export interface EnrichedMemberMetrics {
   memberName: string;
   codeImpactScore: number;
   hasVIS: boolean;
-  avgPRCycleTime: number | null; // hours
+  avgPRCycleTime: number | null;
   reviewsGiven: number;
   reviewsReceived: number;
-  avgReviewVelocity: number | null; // hours
-  focusScore: number; // distinct repos
+  avgReviewVelocity: number | null;
+  focusScore: number;
   totalAdditions: number;
   totalDeletions: number;
   netLines: number;
@@ -31,7 +27,6 @@ export interface EnrichedMemberMetrics {
   workTypeBreakdown: Record<string, number>;
 }
 
-// Personal enriched analytics
 export interface PersonalEnrichedMetrics {
   prCycleTimeTrend: { week: string; avgHours: number }[];
   reviewsGivenVsReceived: { week: string; given: number; received: number }[];
@@ -45,14 +40,6 @@ export interface PersonalEnrichedMetrics {
   reviewsReceivedTotal: number;
 }
 
-function computeCodeImpact(additions: number, deletions: number, filesChanged: number): number {
-  // Weighted composite: net lines + file breadth bonus
-  const netLines = Math.abs(additions - deletions);
-  const totalChanged = additions + deletions;
-  // Weight: sqrt of total changes (diminishing returns on large diffs) + files bonus
-  return Math.round(Math.sqrt(totalChanged) * 2 + filesChanged * 1.5 + netLines * 0.1);
-}
-
 export function useEnrichedTeamMetrics(teamId: string | undefined) {
   return useQuery({
     queryKey: ["enriched-team-metrics", teamId],
@@ -61,22 +48,30 @@ export function useEnrichedTeamMetrics(teamId: string | undefined) {
     queryFn: async () => {
       const thirtyDaysAgo = subDays(new Date(), 30).toISOString();
 
-      // Fetch VIS impact scores from impact_classifications (last 30 days)
+      // Fetch VIS impact scores
       const { data: visScores } = await supabase
         .from("impact_classifications")
         .select("member_id, activity_id, impact_score")
         .eq("team_id", teamId!)
         .gte("created_at", thirtyDaysAgo);
 
-      // Build per-member VIS totals AND a set of classified activity IDs
       const visMap = new Map<string, number>();
-      const classifiedActivityIds = new Set<string>();
       for (const row of visScores || []) {
         visMap.set(row.member_id, (visMap.get(row.member_id) || 0) + Number(row.impact_score));
-        classifiedActivityIds.add(row.activity_id);
       }
 
-      // Fetch all enriched external activity for the team
+      // Fetch activity badges for work type classification
+      const { data: activityBadges } = await supabase
+        .from("activity_badges")
+        .select("activity_id, badge_key")
+        .eq("team_id", teamId!);
+
+      const badgeLookup = new Map<string, string>();
+      for (const b of activityBadges || []) {
+        badgeLookup.set(b.activity_id, b.badge_key);
+      }
+
+      // Fetch all external activity
       const { data: activities } = await supabase
         .from("external_activity")
         .select("id, activity_type, title, member_id, occurred_at, metadata, member:team_members!inner(id, user_id, profile:profiles!inner(full_name))")
@@ -108,32 +103,29 @@ export function useEnrichedTeamMetrics(teamId: string | undefined) {
         const prsMerged = memberItems.filter((i) => i.activity_type === "pr_merged");
         const reviewsGiven = memberItems.filter((i) => i.activity_type === "pr_review");
 
-        // Reviews received: PRs opened by this user that have review_count in metadata
         const reviewsReceived = prsOpened.reduce((sum, pr) => {
           const meta = pr.metadata as any;
           return sum + (meta?.review_count || 0);
         }, 0);
 
-        // Code impact from commits
-        let totalAdditions = 0, totalDeletions = 0, totalFiles = 0;
+        let totalAdditions = 0, totalDeletions = 0;
         for (const c of commits) {
           const meta = c.metadata as any;
           totalAdditions += meta?.additions || 0;
           totalDeletions += meta?.deletions || 0;
-          totalFiles += meta?.files_changed || 0;
         }
 
-        // PR cycle time (from created_at to merged_at in metadata)
+        // PR cycle time
         const cycleTimes: number[] = [];
         for (const pr of prsMerged) {
           const meta = pr.metadata as any;
           if (meta?.created_at && meta?.merged_at) {
             const hours = differenceInHours(new Date(meta.merged_at), new Date(meta.created_at));
-            if (hours >= 0 && hours < 720) cycleTimes.push(hours); // cap at 30 days
+            if (hours >= 0 && hours < 720) cycleTimes.push(hours);
           }
         }
 
-        // Review velocity (PR opened to first review)
+        // Review velocity
         const reviewVelocities: number[] = [];
         for (const pr of prsOpened) {
           const meta = pr.metadata as any;
@@ -150,35 +142,22 @@ export function useEnrichedTeamMetrics(teamId: string | undefined) {
           if (meta?.repo) repos.add(meta.repo);
         }
 
-        // Work type breakdown
+        // Work type from activity_badges (not metadata.work_type)
         const workTypes: Record<string, number> = {};
-        for (const c of commits) {
-          const meta = c.metadata as any;
-          const wt = meta?.work_type || "unclassified";
+        for (const item of memberItems) {
+          const badge = badgeLookup.get(item.id);
+          const wt = badge || "unclassified";
           workTypes[wt] = (workTypes[wt] || 0) + 1;
         }
 
+        // Pure VIS score — no legacy fallback
         const visScore = visMap.get(memberId) || 0;
         const hasVIS = visScore > 0;
-
-        // Per-activity blended score: VIS for classified activities + legacy for unclassified
-        let unclassifiedImpact = 0;
-        for (const c of commits) {
-          if (!classifiedActivityIds.has(c.id)) {
-            const meta = c.metadata as any;
-            unclassifiedImpact += computeCodeImpact(
-              meta?.additions || 0,
-              meta?.deletions || 0,
-              meta?.files_changed || 0
-            );
-          }
-        }
-        const blendedScore = Math.round(visScore + unclassifiedImpact);
 
         members.push({
           memberId,
           memberName: name,
-          codeImpactScore: blendedScore,
+          codeImpactScore: visScore,
           hasVIS,
           avgPRCycleTime: cycleTimes.length > 0 ? Math.round(cycleTimes.reduce((a, b) => a + b, 0) / cycleTimes.length * 10) / 10 : null,
           reviewsGiven: reviewsGiven.length,
@@ -218,15 +197,10 @@ export function useEnrichedTeamMetrics(teamId: string | undefined) {
           }
         }
       }
-      // --- End VIS Normalization ---
-
-      // Team averages
-      const allCycleTimes = members.filter((m) => m.avgPRCycleTime !== null).map((m) => m.avgPRCycleTime!);
-      const allReviewVelocities = members.filter((m) => m.avgReviewVelocity !== null).map((m) => m.avgReviewVelocity!);
 
       // Weekly trends
       const prCycleTimeTrend: { week: string; avgHours: number }[] = [];
-      const workTypeDist: { week: string; feature: number; bugfix: number; refactor: number; chore: number; infra: number }[] = [];
+      const workTypeDist: Record<string, any>[] = [];
       const codeImpactTrend: { week: string; impact: number }[] = [];
 
       for (let w = 3; w >= 0; w--) {
@@ -253,34 +227,31 @@ export function useEnrichedTeamMetrics(teamId: string | undefined) {
           avgHours: weekCycles.length > 0 ? Math.round(weekCycles.reduce((a, b) => a + b, 0) / weekCycles.length * 10) / 10 : 0,
         });
 
-        // Work type distribution
-        const weekCommits = items.filter((i) => {
-          if (i.activity_type !== "commit") return false;
+        // Work type from activity_badges
+        const weekItems = items.filter((i) => {
           const d = new Date(i.occurred_at);
           return d >= ws && d < we;
         });
-        const dist = { week: weekLabel, feature: 0, bugfix: 0, refactor: 0, chore: 0, infra: 0 };
-        for (const c of weekCommits) {
-          const meta = c.metadata as any;
-          const wt = meta?.work_type;
-          if (wt && wt in dist) (dist as any)[wt]++;
-          else dist.chore++; // unclassified → chore
+        const dist: Record<string, string | number> = { week: weekLabel, feature: 0, bugfix: 0, refactor: 0, chore: 0, infra: 0 };
+        for (const item of weekItems) {
+          const badge = badgeLookup.get(item.id);
+          if (badge && badge in dist) (dist as any)[badge]++;
+          else (dist as any).chore = ((dist as any).chore || 0) + 1;
         }
         workTypeDist.push(dist);
 
-        // Code impact
+        // VIS-based code impact per week
         let weekImpact = 0;
-        for (const c of weekCommits) {
-          const meta = c.metadata as any;
-          weekImpact += computeCodeImpact(meta?.additions || 0, meta?.deletions || 0, meta?.files_changed || 0);
+        for (const item of weekItems) {
+          // Sum VIS scores for items in this week
+          const vis = visScores?.find(v => v.activity_id === item.id);
+          if (vis) weekImpact += Number(vis.impact_score);
         }
-        codeImpactTrend.push({ week: weekLabel, impact: weekImpact });
+        codeImpactTrend.push({ week: weekLabel, impact: Math.round(weekImpact) });
       }
 
       return {
         members,
-        teamAvgCycleTime: allCycleTimes.length > 0 ? Math.round(allCycleTimes.reduce((a, b) => a + b, 0) / allCycleTimes.length * 10) / 10 : null,
-        teamAvgReviewVelocity: allReviewVelocities.length > 0 ? Math.round(allReviewVelocities.reduce((a, b) => a + b, 0) / allReviewVelocities.length * 10) / 10 : null,
         teamTotalReviews: members.reduce((s, m) => s + m.reviewsGiven, 0),
         prCycleTimeTrend,
         workTypeDist,
@@ -307,11 +278,34 @@ export function usePersonalEnrichedMetrics(memberId: string | undefined, teamId:
         .order("occurred_at", { ascending: false })
         .limit(500);
 
+      // Fetch activity badges for work type
+      const { data: activityBadges } = await supabase
+        .from("activity_badges")
+        .select("activity_id, badge_key")
+        .eq("team_id", teamId!);
+
+      const badgeLookup = new Map<string, string>();
+      for (const b of activityBadges || []) {
+        badgeLookup.set(b.activity_id, b.badge_key);
+      }
+
+      // Fetch VIS scores for code impact trend
+      const { data: visScores } = await supabase
+        .from("impact_classifications")
+        .select("activity_id, impact_score, member_id")
+        .eq("team_id", teamId!)
+        .eq("member_id", memberId!)
+        .gte("created_at", thirtyDaysAgo);
+
+      const visLookup = new Map<string, number>();
+      for (const v of visScores || []) {
+        visLookup.set(v.activity_id, Number(v.impact_score));
+      }
+
       const allItems = activities || [];
       const myItems = allItems.filter((i) => i.member_id === memberId);
       const now = new Date();
 
-      // Weekly trends
       const prCycleTimeTrend: { week: string; avgHours: number }[] = [];
       const reviewsGivenVsReceived: { week: string; given: number; received: number }[] = [];
       const codeImpactTrend: { week: string; impact: number; additions: number; deletions: number }[] = [];
@@ -349,9 +343,8 @@ export function usePersonalEnrichedMetrics(memberId: string | undefined, teamId:
         fourWeekCycles.push(...weekCycles);
         if (w === 0) currentWeekCycles = weekCycles;
 
-        // Reviews given (this member reviewed others)
+        // Reviews
         const given = weekItems.filter((i) => i.activity_type === "pr_review").length;
-        // Reviews received (PRs opened by this member that got reviews)
         const received = weekItems
           .filter((i) => i.activity_type === "pr_opened")
           .reduce((sum, pr) => sum + ((pr.metadata as any)?.review_count || 0), 0);
@@ -359,23 +352,21 @@ export function usePersonalEnrichedMetrics(memberId: string | undefined, teamId:
         totalReviewsGiven += given;
         totalReviewsReceived += received;
 
-        // Code impact
-        const weekCommits = weekItems.filter((i) => i.activity_type === "commit");
-        let additions = 0, deletions = 0, files = 0;
-        for (const c of weekCommits) {
-          const meta = c.metadata as any;
-          additions += meta?.additions || 0;
-          deletions += meta?.deletions || 0;
-          files += meta?.files_changed || 0;
+        // Code impact — VIS-based
+        let weekImpact = 0;
+        let additions = 0, deletions = 0;
+        for (const item of weekItems) {
+          const vis = visLookup.get(item.id);
+          if (vis) weekImpact += vis;
+          if (item.activity_type === "commit") {
+            const meta = item.metadata as any;
+            additions += meta?.additions || 0;
+            deletions += meta?.deletions || 0;
+          }
         }
-        codeImpactTrend.push({
-          week: weekLabel,
-          impact: computeCodeImpact(additions, deletions, files),
-          additions,
-          deletions,
-        });
+        codeImpactTrend.push({ week: weekLabel, impact: Math.round(weekImpact), additions, deletions });
 
-        // Focus (distinct repos)
+        // Focus
         const repos = new Set<string>();
         for (const item of weekItems) {
           const meta = item.metadata as any;
@@ -384,13 +375,11 @@ export function usePersonalEnrichedMetrics(memberId: string | undefined, teamId:
         focusTrend.push({ week: weekLabel, repos: repos.size });
       }
 
-      // Work type breakdown
-      const commits = myItems.filter((i) => i.activity_type === "commit");
+      // Work type from activity_badges
       const workTypes: Record<string, number> = {};
-      for (const c of commits) {
-        const meta = c.metadata as any;
-        const wt = meta?.work_type || "unclassified";
-        workTypes[wt] = (workTypes[wt] || 0) + 1;
+      for (const item of myItems) {
+        const badge = badgeLookup.get(item.id) || "unclassified";
+        workTypes[badge] = (workTypes[badge] || 0) + 1;
       }
       const workTypeBreakdown = Object.entries(workTypes)
         .map(([type, count]) => ({ type, count }))
@@ -430,7 +419,6 @@ export function usePersonalEnrichedMetrics(memberId: string | undefined, teamId:
         });
       }
 
-      // Focus insight
       const latestFocus = focusTrend[focusTrend.length - 1]?.repos || 0;
       if (latestFocus <= 2 && latestFocus > 0) {
         insights.push({
@@ -446,7 +434,6 @@ export function usePersonalEnrichedMetrics(memberId: string | undefined, teamId:
         });
       }
 
-      // Net lines insight
       const latestImpact = codeImpactTrend[codeImpactTrend.length - 1];
       if (latestImpact && latestImpact.deletions > latestImpact.additions) {
         insights.push({
