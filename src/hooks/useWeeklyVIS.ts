@@ -109,12 +109,38 @@ export function useWeeklyVIS(
       const reviewCount = (reviews || []).length;
       const multiplierScore = Math.min(100, (reviewCount / 10) * 100);
 
-      // Simple normalization: use raw score directly scaled (no team median available client-side)
-      // Cap at 100 using a reasonable scale (50 raw points = 50 normalized)
-      const normalizedImpact = Math.min(100, rawImpact);
+      // Fetch ALL team members' classifications for this week to compute median
+      const { data: allClassifications } = await supabase
+        .from("impact_classifications" as any)
+        .select("member_id, impact_score")
+        .eq("team_id", teamId!)
+        .gte("created_at", `${targetWeek}T00:00:00Z`)
+        .lt("created_at", weekEnd.toISOString());
+
+      // Aggregate raw impact per member
+      const memberRawImpacts = new Map<string, number>();
+      for (const c of (allClassifications || []) as any[]) {
+        memberRawImpacts.set(
+          c.member_id,
+          (memberRawImpacts.get(c.member_id) || 0) + (Number(c.impact_score) || 0)
+        );
+      }
+
+      // Compute team median
+      const allRaw = Array.from(memberRawImpacts.values()).sort((a, b) => a - b);
+      let median = 1;
+      if (allRaw.length > 0) {
+        const mid = Math.floor(allRaw.length / 2);
+        median = allRaw.length % 2 === 1
+          ? allRaw[mid]
+          : (allRaw[mid - 1] + allRaw[mid]) / 2;
+        if (median === 0) median = 1;
+      }
+
+      const normalizedImpact = Math.min(100, (rawImpact / median) * 50);
 
       const visTotal = computeVISTotal({
-        normalizedImpact,
+        normalizedImpact: Math.min(100, normalizedImpact),
         deliveryScore: Math.min(100, deliveryScore),
         multiplierScore,
         focusRatio: Math.min(100, focusRatio),

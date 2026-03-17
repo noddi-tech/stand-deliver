@@ -248,9 +248,11 @@ Classify each item by its index number.`;
       });
 
       // Validate focus_item_id
-      const focusItemId = (c.focus_alignment === "direct" && c.focus_item_id && focusIds.includes(c.focus_item_id))
-        ? c.focus_item_id
-        : null;
+      const focusItemId = (
+        (c.focus_alignment === "direct" || c.focus_alignment === "indirect") &&
+        c.focus_item_id &&
+        focusIds.includes(c.focus_item_id)
+      ) ? c.focus_item_id : null;
 
       const { error } = await sb.from("impact_classifications").upsert(
         {
