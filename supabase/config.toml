@@ -95,3 +95,6 @@ verify_jwt = false
 
 [functions.compute-weekly-vis]
 verify_jwt = false
+
+[functions.backfill-activity-badges]
+verify_jwt = false

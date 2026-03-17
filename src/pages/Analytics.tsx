@@ -14,6 +14,7 @@ import { useUserTeam, useAnalyticsMetrics } from "@/hooks/useAnalytics";
 import { useTeamSummary } from "@/hooks/useTeamSummary";
 import { useEnrichedTeamMetrics } from "@/hooks/useEnrichedAnalytics";
 import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
+import { useMemberBadgeCounts } from "@/hooks/useMemberBadgeCounts";
 import { MemberBreakdown } from "@/components/team/MemberBreakdown";
 import { useTeamFocusItems, useContributionClassification } from "@/hooks/useTeamFocus";
 import { FocusAlignment } from "@/components/analytics/FocusAlignment";
@@ -35,6 +36,7 @@ export default function Analytics() {
   const { data: enriched, isLoading: enrichedLoading } = useEnrichedTeamMetrics(teamId);
   const { data: teamBadges } = useTeamBadges(teamId);
   const badgeLookup = useBadgeLookup();
+  const { data: badgeCounts } = useMemberBadgeCounts(teamId);
   const { data: focusItems } = useTeamFocusItems(teamId);
   const { data: classification, isLoading: classificationLoading, refetch: refetchClassification } = useContributionClassification(teamId, (focusItems?.length ?? 0) > 0);
   const loading = teamLoading || isLoading;
@@ -157,6 +159,7 @@ export default function Analytics() {
         enrichedMembers={enriched?.members}
         classification={classification}
         focusItems={focusItems}
+        badgeCounts={badgeCounts}
         loading={summaryLoading}
       />
 

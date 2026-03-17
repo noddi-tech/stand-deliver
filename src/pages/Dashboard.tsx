@@ -6,6 +6,7 @@ import { useAttentionItems } from "@/hooks/useAttentionItems";
 import { useRecentActivity } from "@/hooks/useRecentActivity";
 import { useSkipStandup } from "@/hooks/useSkipStandup";
 import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
+import { useMemberBadgeCounts } from "@/hooks/useMemberBadgeCounts";
 import { MemberBreakdown } from "@/components/team/MemberBreakdown";
 import { useTeamFocusItems, useContributionClassification } from "@/hooks/useTeamFocus";
 import { FocusAlignment } from "@/components/analytics/FocusAlignment";
@@ -61,6 +62,7 @@ export default function Dashboard() {
   const skipMutation = useSkipStandup();
   const { data: teamBadges } = useTeamBadges(teamId);
   const badgeLookup = useBadgeLookup();
+  const { data: badgeCounts } = useMemberBadgeCounts(teamId);
   const { data: summaryData, isLoading: summaryLoading } = useTeamSummary(teamId);
   const { data: enriched } = useEnrichedTeamMetrics(teamId);
   const { data: focusItems } = useTeamFocusItems(teamId);
@@ -187,6 +189,7 @@ export default function Dashboard() {
           enrichedMembers={enriched?.members}
           classification={classification}
           focusItems={focusItems}
+          badgeCounts={badgeCounts}
           loading={summaryLoading}
         />
       </section>
