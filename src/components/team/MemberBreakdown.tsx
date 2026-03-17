@@ -119,13 +119,25 @@ export function MemberBreakdown({
           <CardTitle className="text-base flex items-center gap-2">
             <User className="h-4 w-4 text-muted-foreground" />
             Member Breakdown
-            <Badge variant="secondary" className="text-[10px] font-normal">This week</Badge>
           </CardTitle>
-          {memberStats.length > 6 && (
-            <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => setShowAll(!showAll)}>
-              {showAll ? "Show less" : `Show all (${memberStats.length})`}
-            </Button>
-          )}
+          <div className="flex items-center gap-1">
+            {(Object.keys(PERIOD_LABELS) as BreakdownPeriod[]).map((p) => (
+              <Button
+                key={p}
+                variant={period === p ? "secondary" : "ghost"}
+                size="sm"
+                className="text-xs h-7 px-2.5"
+                onClick={() => onPeriodChange?.(p)}
+              >
+                {PERIOD_LABELS[p]}
+              </Button>
+            ))}
+            {memberStats.length > 6 && (
+              <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => setShowAll(!showAll)}>
+                {showAll ? "Show less" : `Show all (${memberStats.length})`}
+              </Button>
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent>
