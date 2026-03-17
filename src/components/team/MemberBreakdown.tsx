@@ -37,6 +37,7 @@ interface MemberBreakdownProps {
   }>;
   classification?: ClassificationResult;
   focusItems?: TeamFocusItem[];
+  badgeCounts?: MemberBadgeCounts;
   loading?: boolean;
 }
 
