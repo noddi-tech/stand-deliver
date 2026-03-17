@@ -178,6 +178,26 @@ export function MemberBreakdown({
                     <Progress value={m.commitments.completionRate} className="h-1.5" />
                   </div>
 
+                  {/* Activity badge distribution */}
+                  {(() => {
+                    const em = getEnriched(m.name);
+                    const counts = em && badgeCounts?.[em.memberId];
+                    if (!counts) return null;
+                    const sorted = Object.entries(counts)
+                      .sort((a, b) => b[1] - a[1])
+                      .slice(0, 4);
+                    if (!sorted.length) return null;
+                    return (
+                      <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                        {sorted.map(([key, count]) => (
+                          <span key={key}>
+                            {ALL_BADGES[key]?.emoji ?? "📋"}×{count}
+                          </span>
+                        ))}
+                      </div>
+                    );
+                  })()}
+
                   {getMemberBreakdown(m.name) && (
                     <InlineFocusBar breakdown={getMemberBreakdown(m.name)!} colorMap={focusColorMap} />
                   )}
