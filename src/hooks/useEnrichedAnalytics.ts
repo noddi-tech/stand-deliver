@@ -193,16 +193,28 @@ export function useEnrichedTeamMetrics(teamId: string | undefined) {
         });
       }
 
-      // --- VIS Normalization: convert raw sums to 0–100 scale ---
-      const rawScores = members.filter((m) => m.hasVIS).map((m) => m.codeImpactScore);
-      if (rawScores.length > 0) {
-        const sorted = [...rawScores].sort((a, b) => a - b);
+      // --- VIS Normalization: log-scale, median = 50 ---
+      const visMembers = members.filter((m) => m.hasVIS && m.codeImpactScore > 0);
+
+      if (visMembers.length > 0) {
+        const logScores = visMembers.map((m) => Math.log10(m.codeImpactScore + 1));
+        const sorted = [...logScores].sort((a, b) => a - b);
         const mid = Math.floor(sorted.length / 2);
-        let median = sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-        if (median === 0) median = 1;
+        let logMedian = sorted.length % 2 === 1
+          ? sorted[mid]
+          : (sorted[mid - 1] + sorted[mid]) / 2;
+        if (logMedian === 0) logMedian = 1;
+
+        for (const m of visMembers) {
+          const logScore = Math.log10(m.codeImpactScore + 1);
+          m.codeImpactScore = Math.round(
+            Math.min(100, Math.max(5, (logScore / logMedian) * 50))
+          );
+        }
+
         for (const m of members) {
-          if (m.hasVIS) {
-            m.codeImpactScore = Math.round(Math.min(100, Math.max(0, (m.codeImpactScore / median) * 50)));
+          if (m.hasVIS && m.codeImpactScore <= 0) {
+            m.codeImpactScore = 0;
           }
         }
       }
