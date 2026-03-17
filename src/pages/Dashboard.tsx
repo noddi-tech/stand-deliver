@@ -25,7 +25,7 @@ import MetricCard from "@/components/analytics/MetricCard";
 import HealthGauge from "@/components/analytics/HealthGauge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LineChart, Line, ResponsiveContainer } from "recharts";
-import { AlertTriangle, CheckCircle2, Clock, ArrowRight, Users, SkipForward, GitBranch, ExternalLink } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, ArrowRight, Users, SkipForward, GitBranch, ExternalLink, GitPullRequest, Eye, TrendingUp, TrendingDown, Minus } from "lucide-react";
 
 const SOURCE_ICONS: Record<string, string> = {
   github: "🐙",

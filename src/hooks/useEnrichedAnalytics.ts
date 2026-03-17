@@ -200,7 +200,7 @@ export function useEnrichedTeamMetrics(teamId: string | undefined) {
 
       // Weekly trends
       const prCycleTimeTrend: { week: string; avgHours: number }[] = [];
-      const workTypeDist: { week: string; [key: string]: string | number }[] = [];
+      const workTypeDist: Record<string, any>[] = [];
       const codeImpactTrend: { week: string; impact: number }[] = [];
 
       for (let w = 3; w >= 0; w--) {

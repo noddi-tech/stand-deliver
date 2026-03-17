@@ -9,12 +9,12 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { User } from "lucide-react";
 import { MemberBadgeIcons } from "@/components/badges/MemberBadgeIcons";
 import { BadgeLegend } from "@/components/badges/BadgeLegend";
+import { BadgeImpactBreakdown } from "@/components/analytics/BadgeImpactBreakdown";
 import { InlineFocusBar } from "@/components/analytics/FocusAlignment";
-import { ALL_BADGES } from "@/lib/activity-badges";
 import type { MemberStat, MemberHighlight } from "@/hooks/useTeamSummary";
 import type { MemberBadge, BadgeDefinition } from "@/hooks/useBadges";
 import type { ClassificationResult, TeamFocusItem } from "@/hooks/useTeamFocus";
-import type { MemberBadgeCounts } from "@/hooks/useMemberBadgeCounts";
+import type { MemberBadgeCounts, MemberBadgeImpactPct } from "@/hooks/useMemberBadgeCounts";
 
 const SENTIMENT_CONFIG: Record<string, { label: string; className: string }> = {
   strong: { label: "Strong week", className: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" },
@@ -38,6 +38,7 @@ interface MemberBreakdownProps {
   classification?: ClassificationResult;
   focusItems?: TeamFocusItem[];
   badgeCounts?: MemberBadgeCounts;
+  badgeImpactPct?: MemberBadgeImpactPct;
   loading?: boolean;
 }
 
@@ -50,6 +51,7 @@ export function MemberBreakdown({
   classification,
   focusItems,
   badgeCounts,
+  badgeImpactPct,
   loading,
 }: MemberBreakdownProps) {
   const [showAll, setShowAll] = useState(false);
@@ -107,6 +109,7 @@ export function MemberBreakdown({
           <CardTitle className="text-base flex items-center gap-2">
             <User className="h-4 w-4 text-muted-foreground" />
             Member Breakdown
+            <Badge variant="secondary" className="text-[10px] font-normal">This week</Badge>
           </CardTitle>
           {memberStats.length > 6 && (
             <Button variant="ghost" size="sm" className="text-xs h-7" onClick={() => setShowAll(!showAll)}>
@@ -178,24 +181,14 @@ export function MemberBreakdown({
                     <Progress value={m.commitments.completionRate} className="h-1.5" />
                   </div>
 
-                  {/* Activity badge distribution */}
+                  {/* Impact-weighted badge distribution */}
                   {(() => {
-                    const em = getEnriched(m.name);
-                    const counts = em && badgeCounts?.[em.memberId];
-                    if (!counts) return null;
-                    const sorted = Object.entries(counts)
-                      .sort((a, b) => b[1] - a[1])
-                      .slice(0, 4);
-                    if (!sorted.length) return null;
-                    return (
-                      <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
-                        {sorted.map(([key, count]) => (
-                          <span key={key}>
-                            {ALL_BADGES[key]?.emoji ?? "📋"}×{count}
-                          </span>
-                        ))}
-                      </div>
-                    );
+                    const memberId = em?.memberId;
+                    const pct = memberId && badgeImpactPct?.[memberId];
+                    if (pct && Object.keys(pct).length > 0) {
+                      return <BadgeImpactBreakdown badgeImpactPct={pct} compact />;
+                    }
+                    return null;
                   })()}
 
                   {getMemberBreakdown(m.name) && (
