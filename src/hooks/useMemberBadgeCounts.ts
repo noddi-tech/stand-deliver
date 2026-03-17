@@ -10,7 +10,7 @@ export function useMemberBadgeCounts(teamId?: string) {
     queryKey: ["member-badge-counts", teamId],
     enabled: !!teamId,
     staleTime: 60_000,
-    queryFn: async (): Promise<{ counts: MemberBadgeCounts; impactPct: MemberBadgeImpactPct }> => {
+    queryFn: async (): Promise<{ counts: MemberBadgeCounts; countPct: MemberBadgeCountPct; impactPct: MemberBadgeImpactPct }> => {
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
