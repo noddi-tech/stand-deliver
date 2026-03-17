@@ -157,7 +157,7 @@ export function MemberBreakdown({
                               </TooltipTrigger>
                               <TooltipContent side="bottom" className="max-w-[220px] text-xs">
                                 <p>Value Impact Score — measures what your work accomplishes, not just code volume.</p>
-                                <a href="/vis-explained" className="text-primary underline mt-1 inline-block">Learn more</a>
+                                <Link to="/vis-explained" className="text-primary underline mt-1 inline-block">Learn more</Link>
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
