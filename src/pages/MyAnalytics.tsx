@@ -38,18 +38,18 @@ export default function MyAnalytics() {
       <BadgeShowcase memberId={memberId} teamId={teamId} />
 
       {/* Where Your Impact Comes From */}
-      {visData?.breakdown?.badgeImpactPct && Object.keys(visData.breakdown.badgeImpactPct).length > 0 && (
+      {myBadgeImpactPct && Object.keys(myBadgeImpactPct).length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <PieChart className="h-4 w-4 text-muted-foreground" /> Where Your Impact Comes From
             </CardTitle>
             <p className="text-xs text-muted-foreground">
-              Breakdown of your VIS impact score by activity type{visData.isEstimate ? " (mid-week estimate)" : ""}
+              Breakdown of your impact score by activity type (last 7 days)
             </p>
           </CardHeader>
           <CardContent>
-            <BadgeImpactBreakdown badgeImpactPct={visData.breakdown.badgeImpactPct} />
+            <BadgeImpactBreakdown badgeImpactPct={myBadgeImpactPct} />
           </CardContent>
         </Card>
       )}

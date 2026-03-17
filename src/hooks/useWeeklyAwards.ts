@@ -159,8 +159,8 @@ export function useWeeklyAwards(teamId: string | undefined) {
             title: "MVP",
             memberName: mvp.name,
             memberId: mvp.memberId,
-            description: "Highest composite of VIS impact, reviews, and commitments completed",
-            stat: `VIS: ${mvp.impactScore} · Reviews: ${mvp.reviewsGiven} · Done: ${mvp.commitmentsCompleted}`,
+            description: "Highest composite of normalized impact, reviews, and commitments completed",
+            stat: `Impact: ${mvp.impactScore}/100 · Reviews: ${mvp.reviewsGiven} · Done: ${mvp.commitmentsCompleted}`,
           });
         }
 
