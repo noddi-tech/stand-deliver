@@ -14,7 +14,7 @@ import { InlineFocusBar } from "@/components/analytics/FocusAlignment";
 import type { MemberStat, MemberHighlight } from "@/hooks/useTeamSummary";
 import type { MemberBadge, BadgeDefinition } from "@/hooks/useBadges";
 import type { ClassificationResult, TeamFocusItem } from "@/hooks/useTeamFocus";
-import type { MemberBadgeCounts, MemberBadgeImpactPct } from "@/hooks/useMemberBadgeCounts";
+import type { MemberBadgeCounts, MemberBadgeImpactPct, MemberBadgeCountPct } from "@/hooks/useMemberBadgeCounts";
 
 const SENTIMENT_CONFIG: Record<string, { label: string; className: string }> = {
   strong: { label: "Strong week", className: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" },
@@ -38,6 +38,7 @@ interface MemberBreakdownProps {
   classification?: ClassificationResult;
   focusItems?: TeamFocusItem[];
   badgeCounts?: MemberBadgeCounts;
+  badgeCountPct?: MemberBadgeCountPct;
   badgeImpactPct?: MemberBadgeImpactPct;
   loading?: boolean;
 }
@@ -51,6 +52,7 @@ export function MemberBreakdown({
   classification,
   focusItems,
   badgeCounts,
+  badgeCountPct,
   badgeImpactPct,
   loading,
 }: MemberBreakdownProps) {
@@ -184,7 +186,7 @@ export function MemberBreakdown({
                   {/* Impact-weighted badge distribution */}
                   {(() => {
                     const memberId = em?.memberId;
-                    const pct = memberId && badgeImpactPct?.[memberId];
+                    const pct = memberId && (badgeCountPct?.[memberId] || badgeImpactPct?.[memberId]);
                     if (pct && Object.keys(pct).length > 0) {
                       return <BadgeImpactBreakdown badgeImpactPct={pct} compact />;
                     }

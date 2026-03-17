@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
 export type MemberBadgeCounts = Record<string, Record<string, number>>;
+export type MemberBadgeCountPct = Record<string, Record<string, number>>;
 export type MemberBadgeImpactPct = Record<string, Record<string, number>>;
 
 export function useMemberBadgeCounts(teamId?: string) {
@@ -9,7 +10,7 @@ export function useMemberBadgeCounts(teamId?: string) {
     queryKey: ["member-badge-counts", teamId],
     enabled: !!teamId,
     staleTime: 60_000,
-    queryFn: async (): Promise<{ counts: MemberBadgeCounts; impactPct: MemberBadgeImpactPct }> => {
+    queryFn: async (): Promise<{ counts: MemberBadgeCounts; countPct: MemberBadgeCountPct; impactPct: MemberBadgeImpactPct }> => {
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
@@ -20,7 +21,7 @@ export function useMemberBadgeCounts(teamId?: string) {
         .eq("team_id", teamId!)
         .gte("occurred_at", sevenDaysAgo.toISOString());
 
-      if (!activities?.length) return { counts: {}, impactPct: {} };
+      if (!activities?.length) return { counts: {}, countPct: {}, impactPct: {} };
 
       const activityIds = activities.map((a) => a.id);
       const memberMap: Record<string, string> = {};
@@ -65,6 +66,18 @@ export function useMemberBadgeCounts(teamId?: string) {
         counts[memberId][b.badge_key] = (counts[memberId][b.badge_key] || 0) + 1;
       }
 
+      // Convert counts to percentages
+      const countPct: MemberBadgeCountPct = {};
+      for (const [memberId, badges] of Object.entries(counts)) {
+        const total = Object.values(badges).reduce((s, v) => s + v, 0);
+        if (total > 0) {
+          countPct[memberId] = {};
+          for (const [key, val] of Object.entries(badges)) {
+            countPct[memberId][key] = Math.round((val / total) * 1000) / 10;
+          }
+        }
+      }
+
       // Aggregate impact-weighted: memberId → badgeKey → totalImpact
       const impactByMemberBadge: Record<string, Record<string, number>> = {};
       for (const ic of allImpact) {
@@ -86,7 +99,7 @@ export function useMemberBadgeCounts(teamId?: string) {
         }
       }
 
-      return { counts, impactPct };
+      return { counts, countPct, impactPct };
     },
   });
 }

@@ -191,6 +191,7 @@ export default function Dashboard() {
           classification={classification}
           focusItems={focusItems}
           badgeCounts={badgeData?.counts}
+          badgeCountPct={badgeData?.countPct}
           badgeImpactPct={badgeData?.impactPct}
           loading={summaryLoading}
         />
