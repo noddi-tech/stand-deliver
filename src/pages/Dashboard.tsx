@@ -62,6 +62,7 @@ export default function Dashboard() {
   const skipMutation = useSkipStandup();
   const { data: teamBadges } = useTeamBadges(teamId);
   const badgeLookup = useBadgeLookup();
+  const { data: badgeCounts } = useMemberBadgeCounts(teamId);
   const { data: summaryData, isLoading: summaryLoading } = useTeamSummary(teamId);
   const { data: enriched } = useEnrichedTeamMetrics(teamId);
   const { data: focusItems } = useTeamFocusItems(teamId);
