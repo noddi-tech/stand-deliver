@@ -13,6 +13,8 @@ export interface ActivityItem {
   memberId: string;
   timestamp: string;
   externalUrl?: string | null;
+  badgeKey?: string;
+  badgeSource?: string;
 }
 
 export function useRecentActivity(teamId: string | undefined) {
