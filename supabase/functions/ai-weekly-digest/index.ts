@@ -288,28 +288,27 @@ Deno.serve(async (req) => {
           populateScores(ghActivity, thisWeekScores, thisWeekVIS);
           populateScores(lastWeekGhActivity, lastWeekScores, lastWeekVIS);
 
-          // Normalize impact scores to 0-100 using team median (matches client useWeeklyAwards)
-          function normalizeImpactScores(scores: Map<string, any>) {
-            const rawScores = Array.from(scores.values())
+          // Log-scale normalization (matches client useWeeklyAwards / useEnrichedTeamMetrics)
+          function logScaleNormalize(scores: Map<string, any>) {
+            const rawValues = Array.from(scores.values())
               .map(s => s.impactScore)
-              .filter(v => v > 0)
-              .sort((a: number, b: number) => a - b);
-            let teamMedian = 1;
-            if (rawScores.length > 0) {
-              const mid = Math.floor(rawScores.length / 2);
-              teamMedian = rawScores.length % 2 === 1
-                ? rawScores[mid]
-                : (rawScores[mid - 1] + rawScores[mid]) / 2;
-              if (teamMedian === 0) teamMedian = 1;
-            }
+              .filter(v => v > 0);
+            if (rawValues.length === 0) return;
+            const logValues = rawValues.map(v => Math.log10(v + 1)).sort((a: number, b: number) => a - b);
+            const mid = Math.floor(logValues.length / 2);
+            let logMedian = logValues.length % 2 === 1
+              ? logValues[mid]
+              : (logValues[mid - 1] + logValues[mid]) / 2;
+            if (logMedian === 0) logMedian = 1;
             for (const s of scores.values()) {
-              s.impactScore = s.impactScore > 0
-                ? Math.round(Math.min(100, (s.impactScore / teamMedian) * 50))
-                : 0;
+              if (s.impactScore > 0) {
+                const logScore = Math.log10(s.impactScore + 1);
+                s.impactScore = Math.round(Math.min(100, Math.max(5, (logScore / logMedian) * 50)));
+              }
             }
           }
-          normalizeImpactScores(thisWeekScores);
-          normalizeImpactScores(lastWeekScores);
+          logScaleNormalize(thisWeekScores);
+          logScaleNormalize(lastWeekScores);
 
           // Add commitment completions
           for (const c of commitments || []) {
