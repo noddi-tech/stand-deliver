@@ -5,7 +5,7 @@ export type MemberBadgeCounts = Record<string, Record<string, number>>;
 export type MemberBadgeCountPct = Record<string, Record<string, number>>;
 export type MemberBadgeImpactPct = Record<string, Record<string, number>>;
 
-export function useMemberBadgeCounts(teamId?: string) {
+export function useMemberBadgeCounts(teamId?: string, daysBack = 7) {
   return useQuery({
     queryKey: ["member-badge-counts", teamId],
     enabled: !!teamId,
