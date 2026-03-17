@@ -814,6 +814,13 @@ Deno.serve(async (req) => {
                 },
                 { onConflict: "team_id,member_id,external_id,activity_type,source" }
               );
+              // Badge resolution for PRs merged
+              await upsertBadge(supabaseAdmin, {
+                id: (await supabaseAdmin.from("external_activity").select("id").eq("team_id", member.team_id).eq("member_id", member.id).eq("external_id", `merged-${item.id}`).eq("source", "github").eq("activity_type", "pr_merged").maybeSingle()).data?.id,
+                source: "github", activity_type: "pr_merged", title: item.title,
+                source_type: "external_activity",
+                metadata: { labels: item.labels?.map((l: any) => l.name) || [], ...(detail || {}) },
+              }, member.team_id);
             } catch { /* dedup */ }
 
             // Auto-resolve commitments linked via github_ref
