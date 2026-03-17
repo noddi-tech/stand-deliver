@@ -14,7 +14,7 @@ import { InlineFocusBar } from "@/components/analytics/FocusAlignment";
 import type { MemberStat, MemberHighlight } from "@/hooks/useTeamSummary";
 import type { MemberBadge, BadgeDefinition } from "@/hooks/useBadges";
 import type { ClassificationResult, TeamFocusItem } from "@/hooks/useTeamFocus";
-import type { MemberBadgeCounts, MemberBadgeImpactPct } from "@/hooks/useMemberBadgeCounts";
+import type { MemberBadgeCounts, MemberBadgeImpactPct, MemberBadgeCountPct } from "@/hooks/useMemberBadgeCounts";
 
 const SENTIMENT_CONFIG: Record<string, { label: string; className: string }> = {
   strong: { label: "Strong week", className: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" },
