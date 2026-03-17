@@ -340,7 +340,7 @@ Deno.serve(async (req) => {
                 member_name: mvp.name,
                 member_id: mvp.id,
                 description: "Highest composite of VIS impact, reviews, and commitments completed",
-                stat: `VIS: ${mvp.impactScore} · Reviews: ${mvp.reviews} · Done: ${mvp.completions}`,
+                stat: `Impact: ${mvp.impactScore}/100 · Reviews: ${mvp.reviews} · Done: ${mvp.completions}`,
               });
             }
 
