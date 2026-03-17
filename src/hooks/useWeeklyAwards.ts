@@ -159,8 +159,8 @@ export function useWeeklyAwards(teamId: string | undefined) {
         return memberMap;
       }
 
-      const thisWeekMap = computeMemberStats(thisWeekItems, thisWeekStart);
-      const lastWeekMap = computeMemberStats(lastWeekItems, lastWeekStart);
+      const thisWeekMap = computeMemberStats(thisWeekItems, thisWeekStart, "this");
+      const lastWeekMap = computeMemberStats(lastWeekItems, lastWeekStart, "last");
 
       const awards: WeeklyAward[] = [];
       const thisWeekMembers = Array.from(thisWeekMap.values()).filter(m => m.commitCount + m.reviewsGiven + m.commitmentsCompleted > 0);
