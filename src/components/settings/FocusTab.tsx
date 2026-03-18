@@ -133,7 +133,7 @@ const TagInput = forwardRef<TagInputHandle, {
       )}
     </div>
   );
-}
+});
 
 export function FocusTab() {
   const { data: team } = useUserTeam();
