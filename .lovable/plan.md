@@ -1,45 +1,75 @@
 
 
-# Auto-Trigger Re-classification When Focus Items Change
+# Integrate Activity Badges into VIS System + Update VIS Explained
 
-## Problem
-Classifications are write-once. When a new focus item is created (e.g. "EonTyre integration"), existing activities from the past week remain classified as "unaligned" because the AI never re-evaluates them against the new focus context.
+## Concept
 
-## Solution
-After any focus item is added, updated, or restored, automatically re-classify recent activities (last 14 days) by calling the `ai-classify-contributions` edge function.
+Activity badges already classify *what type* of work was done (🐛 Bug Fix, 🚀 Feature, etc.). Integrating them into VIS makes the score more transparent: instead of just seeing "Impact: 72", you see *where* that impact came from — "40% from Features, 30% from Bug Fixes, 20% from Reviews." This gives actionable insight into who fixes what, who ships what, and whether that aligns with team priorities.
 
-### Changes
+## 1. Enrich `compute-weekly-vis` with Badge Distribution
 
-**1. `src/hooks/useTeamFocus.ts`** — Add a `useReclassifyContributions` mutation:
-- Fetches recent `external_activity` (last 14 days) and recent `commitments` for the team
-- Maps them into the `ClassifyItem` format the edge function expects
-- Calls `ai-classify-contributions` in batches of 20
-- Invalidates the `contribution-classification` query cache on success
-- Returns a toast-friendly result (count classified)
+**`supabase/functions/compute-weekly-vis/index.ts`**
 
-**2. `src/components/settings/FocusTab.tsx`** — Auto-trigger after save/restore:
-- Import and call `useReclassifyContributions`
-- In `handleSubmit` (after successful add/update) and `handleRestore`, fire the reclassify mutation
-- Show a toast: "Re-classifying recent activity against updated focus areas..."
-- Non-blocking: the mutation runs in the background; user doesn't wait
+After fetching `impact_classifications` (line 65), also fetch `activity_badges` for the same week/team. Join badge data to classifications by `activity_id` to build a per-member breakdown: `Record<string, number>` mapping badge_key to summed impact_score.
 
-**3. `src/components/analytics/FocusAlignment.tsx`** — Wire refresh button too:
-- Pass `onRefresh` through to also trigger the reclassify mutation (from Dashboard/Analytics)
-- This gives users a manual re-run option as well
-
-**4. `src/pages/Dashboard.tsx` + `src/pages/Analytics.tsx`** — Pass reclassify as `onRefresh` to `FocusAlignment`
-
-### Edge function
-No changes needed — `ai-classify-contributions` already fetches current active focus items on each call and upserts on `(activity_id, source_type)`, so re-sending the same activities will update their classifications.
-
-### Data flow
-```text
-Focus item saved → useReclassifyContributions fires →
-  fetch external_activity + commitments (14 days) →
-  POST ai-classify-contributions (batches of 20) →
-  impact_classifications upserted with new focus_item_id →
-  query cache invalidated → FocusAlignment re-renders
+Add to the existing `breakdown` jsonb (line 154):
+```ts
+breakdown: {
+  ...existingFields,
+  badgeDistribution: { feature: 45.2, bugfix: 22.1, refactor: 8.0, ... },
+  badgeImpactPct: { feature: 40, bugfix: 30, refactor: 10, ... },
+}
 ```
 
-4-5 files changed, no DB migration needed.
+No schema migration needed — `breakdown` is already a `jsonb` column.
+
+## 2. Enrich `useWeeklyVIS` Client Hook
+
+**`src/hooks/useWeeklyVIS.ts`**
+
+- Add `badgeDistribution?: Record<string, number>` to `VISBreakdown` interface
+- For canonical (past) weeks: read from `breakdown.badgeDistribution`
+- For current week estimate: fetch `activity_badges` for the week alongside `impact_classifications`, join by `activity_id`, aggregate badge_key → impact_score sums
+
+## 3. Show Badge-Impact Distribution in Dashboard/MyAnalytics
+
+**New component: `src/components/analytics/BadgeImpactBreakdown.tsx`**
+
+A compact horizontal stacked bar or pill row showing what % of a member's impact came from each badge type. Uses `ALL_BADGES` for emoji lookup. Example rendering:
+
+```
+Impact sources: 🚀 40%  🐛 30%  🔧 15%  🔀 10%  🧹 5%
+```
+
+Wire into:
+- **Dashboard.tsx**: Show below VIS score in MemberBreakdown cards (via the `badgeCounts` prop or a new `badgeImpact` prop)
+- **MyAnalytics.tsx**: Add a "Where Your Impact Comes From" card using `useWeeklyVIS` badge distribution data
+
+## 4. Update VIS Explained Page
+
+**`src/pages/VISExplained.tsx`**
+
+Add two new sections:
+
+### "Activity Badges" section (after "Impact tiers")
+- Explain that every contribution is automatically tagged with an activity badge (🐛 Bug Fix, 🚀 Feature, 🔧 Refactor, etc.)
+- 4-layer priority: Manual > Deterministic rules > AI classification > Source defaults
+- Badges map to value types but are more granular — they show *what kind* of work within each tier
+- Include a subset grid of the most common badges with emoji + label
+
+### "Where Your Impact Comes From" section (after Activity Badges)
+- Explain that VIS now tracks which badge types contributed to your Impact score
+- "If 60% of your impact came from Bug Fixes and only 10% from Features, that's a signal — are you in a stabilization phase, or is new feature work getting stuck?"
+- Clarify this is informational, not a penalty — all badge types contribute equally to the score formula
+
+## Files Summary
+
+| File | Change |
+|---|---|
+| `supabase/functions/compute-weekly-vis/index.ts` | Fetch activity_badges, compute badge distribution, include in breakdown jsonb |
+| `src/hooks/useWeeklyVIS.ts` | Add `badgeDistribution` to VISBreakdown, compute in estimate path |
+| `src/components/analytics/BadgeImpactBreakdown.tsx` | Create — badge-impact pill/bar visualization |
+| `src/pages/MyAnalytics.tsx` | Add "Where Your Impact Comes From" card |
+| `src/pages/Dashboard.tsx` | Wire badge impact data to MemberBreakdown |
+| `src/pages/VISExplained.tsx` | Add "Activity Badges" and "Impact Sources" sections |
 

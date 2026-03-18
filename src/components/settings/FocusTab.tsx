@@ -12,6 +12,7 @@ import {
   useAddFocusItem,
   useUpdateFocusItem,
   useDeleteFocusItem,
+  useReclassifyContributions,
   type TeamFocusItem,
 } from "@/hooks/useTeamFocus";
 import { toast } from "@/hooks/use-toast";
@@ -129,6 +130,7 @@ export function FocusTab() {
   const addMutation = useAddFocusItem(teamId);
   const updateMutation = useUpdateFocusItem(teamId);
   const deleteMutation = useDeleteFocusItem(teamId);
+  const reclassifyMutation = useReclassifyContributions(teamId);
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -152,6 +154,16 @@ export function FocusTab() {
     setEditingId(null);
   };
 
+  const triggerReclassify = () => {
+    reclassifyMutation.mutate(undefined, {
+      onSuccess: (result) => {
+        if (result.classified > 0) {
+          toast({ title: `Re-classified ${result.classified} activities against updated focus areas` });
+        }
+      },
+    });
+  };
+
   const handleSubmit = async () => {
     if (!title.trim() || tags.length === 0) return;
     const payload = {
@@ -170,6 +182,7 @@ export function FocusTab() {
         toast({ title: "Focus item added" });
       }
       resetForm();
+      triggerReclassify();
     } catch {
       toast({ title: "Error saving focus item", variant: "destructive" });
     }
@@ -193,6 +206,7 @@ export function FocusTab() {
   const handleRestore = async (id: string) => {
     await updateMutation.mutateAsync({ id, is_active: true });
     toast({ title: "Focus item restored" });
+    triggerReclassify();
   };
 
   const handleDelete = async (id: string) => {

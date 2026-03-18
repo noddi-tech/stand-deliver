@@ -120,6 +120,82 @@ export function useDeleteFocusItem(teamId: string | undefined) {
   });
 }
 
+export function useReclassifyContributions(teamId: string | undefined) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      if (!teamId) throw new Error("No team");
+      const fourteenDaysAgo = new Date();
+      fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+      const since = fourteenDaysAgo.toISOString();
+
+      // Fetch recent external_activity
+      const { data: extData } = await supabase
+        .from("external_activity")
+        .select("id, source, activity_type, title, member_id, metadata")
+        .eq("team_id", teamId)
+        .gte("occurred_at", since);
+
+      // Fetch recent commitments
+      const { data: commitData } = await supabase
+        .from("commitments")
+        .select("id, title, description, member_id")
+        .eq("team_id", teamId)
+        .gte("created_at", since);
+
+      const items: Array<{
+        id: string;
+        source_type: string;
+        source?: string;
+        activity_type?: string;
+        title: string;
+        description?: string;
+        metadata?: Record<string, any>;
+        member_id: string;
+      }> = [];
+
+      for (const e of extData || []) {
+        items.push({
+          id: e.id,
+          source_type: "external_activity",
+          source: e.source,
+          activity_type: e.activity_type,
+          title: e.title,
+          member_id: e.member_id,
+          metadata: e.metadata as Record<string, any> | undefined,
+        });
+      }
+      for (const c of commitData || []) {
+        items.push({
+          id: c.id,
+          source_type: "commitment",
+          title: c.title,
+          description: c.description || undefined,
+          member_id: c.member_id,
+        });
+      }
+
+      if (items.length === 0) return { classified: 0 };
+
+      // Send in batches of 20
+      let totalClassified = 0;
+      for (let i = 0; i < items.length; i += 20) {
+        const batch = items.slice(i, i + 20);
+        const { data, error } = await supabase.functions.invoke("ai-classify-contributions", {
+          body: { team_id: teamId, items: batch },
+        });
+        if (error) console.error("Reclassify batch error:", error);
+        else totalClassified += data?.classified || 0;
+      }
+
+      return { classified: totalClassified };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["contribution-classification", teamId] });
+    },
+  });
+}
+
 export function useContributionClassification(teamId: string | undefined, enabled = true) {
   return useQuery({
     queryKey: ["contribution-classification", teamId],
