@@ -179,10 +179,11 @@ export function FocusTab() {
   };
 
   const handleSubmit = async () => {
-    if (!title.trim() || tags.length === 0) return;
+    const finalTags = tagInputRef.current?.flush() ?? tags;
+    if (!title.trim() || finalTags.length === 0) return;
     const payload = {
       title,
-      label: tags.join(", "),
+      label: finalTags.join(", "),
       description: description || undefined,
       starts_at: startsAt ? new Date(startsAt).toISOString() : null,
       ends_at: endsAt ? new Date(endsAt).toISOString() : null,
