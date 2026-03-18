@@ -18,6 +18,7 @@ export interface ActivityClassification {
   externalId: string;
   focusLabel: string;
   rationale: string;
+  memberId: string;
 }
 
 export interface MemberValueBreakdown {
