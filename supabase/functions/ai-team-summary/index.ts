@@ -239,17 +239,49 @@ Total members: ${members.length} — you MUST return exactly ${members.length} h
 
     if (!aiResponse.ok) {
       const status = aiResponse.status;
-      if (status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limit exceeded. Try again shortly." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted. Add credits in Lovable settings." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
       const text = await aiResponse.text();
+
+      if (status === 402 || status === 429) {
+        const isCredits = status === 402;
+        const fallbackHighlights = memberStats.map((ms) => {
+          const totalEng = ms.engineering.commits + ms.engineering.prsOpened + ms.engineering.prsMerged + ms.engineering.reviewsGiven;
+          return {
+            name: ms.name,
+            sentiment: (totalEng > 0 ? "steady" : "needs_attention") as "steady" | "needs_attention",
+            highlight:
+              totalEng > 0
+                ? `${ms.engineering.commits} commits, ${ms.engineering.prsOpened + ms.engineering.prsMerged} PRs, ${ms.engineering.reviewsGiven} reviews in this period.`
+                : "No standup or code activity this period — may need a check-in.",
+          };
+        });
+
+        const fallbackAnalysis = {
+          teamSummary: isCredits
+            ? "AI team summary is temporarily unavailable because AI credits are exhausted."
+            : "AI team summary is temporarily unavailable due to rate limiting.",
+          memberHighlights: fallbackHighlights,
+          recommendations: [
+            isCredits
+              ? "Add credits in Settings → Workspace → Usage, then refresh."
+              : "Wait a minute and refresh to retry summary generation.",
+          ],
+        };
+
+        return new Response(
+          JSON.stringify({
+            analysis: fallbackAnalysis,
+            memberStats,
+            degraded: {
+              reason: isCredits ? "credits_exhausted" : "rate_limited",
+              status,
+            },
+          }),
+          {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
+      }
+
       console.error("AI gateway error:", status, text);
       throw new Error("AI gateway error");
     }
