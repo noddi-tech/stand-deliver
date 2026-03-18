@@ -1,75 +1,57 @@
 
 
-# Integrate Activity Badges into VIS System + Update VIS Explained
+# Fix: Member Breakdown Data Doesn't Scale With Period
 
-## Concept
+## Root Causes
 
-Activity badges already classify *what type* of work was done (🐛 Bug Fix, 🚀 Feature, etc.). Integrating them into VIS makes the score more transparent: instead of just seeing "Impact: 72", you see *where* that impact came from — "40% from Features, 30% from Bug Fixes, 20% from Reviews." This gives actionable insight into who fixes what, who ships what, and whether that aligns with team priorities.
+Three bugs cause longer periods to show less or identical data:
 
-## 1. Enrich `compute-weekly-vis` with Badge Distribution
+### 1. Supabase 1000-row default limit truncates longer periods
+`useTeamMemberStats` queries `external_activity` without `.limit()` or pagination. Supabase returns at most 1000 rows by default. For "This Week" there are ~200 activities so all are returned. For "This Quarter" there are ~2000+, but only 1000 come back — and those 1000 are arbitrary, so per-member counts can actually be **lower** than the weekly view.
 
-**`supabase/functions/compute-weekly-vis/index.ts`**
+### 2. VIS/enriched metrics are hardcoded to 30 days
+`useEnrichedTeamMetrics` always queries the last 30 days (`subDays(new Date(), 30)`). It ignores the period selector entirely, so VIS scores stay the same regardless of week/month/quarter/year.
 
-After fetching `impact_classifications` (line 65), also fetch `activity_badges` for the same week/team. Join badge data to classifications by `activity_id` to build a per-member breakdown: `Record<string, number>` mapping badge_key to summed impact_score.
+### 3. AI highlights are hardcoded to 7 days
+`useTeamSummary(teamId)` is called without passing the period. The edge function defaults to `"7d"`. The quoted text and sentiment badges ("Strong week", "Steady") never change.
 
-Add to the existing `breakdown` jsonb (line 154):
-```ts
-breakdown: {
-  ...existingFields,
-  badgeDistribution: { feature: 45.2, bugfix: 22.1, refactor: 8.0, ... },
-  badgeImpactPct: { feature: 40, bugfix: 30, refactor: 10, ... },
-}
-```
+## Plan
 
-No schema migration needed — `breakdown` is already a `jsonb` column.
+### 1. Paginate `external_activity` in `useTeamMemberStats`
+**File:** `src/hooks/useTeamMemberStats.ts`
 
-## 2. Enrich `useWeeklyVIS` Client Hook
+Replace the single query with a paginated loop using `.range(offset, offset+999)` to fetch all rows for the period. Same pattern already used in `useReclassifyContributions`.
 
-**`src/hooks/useWeeklyVIS.ts`**
+### 2. Make `useEnrichedTeamMetrics` period-aware
+**File:** `src/hooks/useEnrichedAnalytics.ts`
 
-- Add `badgeDistribution?: Record<string, number>` to `VISBreakdown` interface
-- For canonical (past) weeks: read from `breakdown.badgeDistribution`
-- For current week estimate: fetch `activity_badges` for the week alongside `impact_classifications`, join by `activity_id`, aggregate badge_key → impact_score sums
+- Add `periodDays` parameter (default 30 for backward compat)
+- Replace hardcoded `subDays(new Date(), 30)` with `subDays(new Date(), periodDays)`
+- Add pagination for the `external_activity` and `impact_classifications` queries (same 1000-row limit issue)
+- Include `periodDays` in the query key
 
-## 3. Show Badge-Impact Distribution in Dashboard/MyAnalytics
+### 3. Pass period to enriched metrics from Dashboard & Analytics
+**Files:** `src/pages/Dashboard.tsx`, `src/pages/Analytics.tsx`
 
-**New component: `src/components/analytics/BadgeImpactBreakdown.tsx`**
+- Change `useEnrichedTeamMetrics(teamId)` to `useEnrichedTeamMetrics(teamId, PERIOD_DAYS[breakdownPeriod])`
 
-A compact horizontal stacked bar or pill row showing what % of a member's impact came from each badge type. Uses `ALL_BADGES` for emoji lookup. Example rendering:
+### 4. Make AI highlights period-aware
+**Files:** `src/pages/Dashboard.tsx`, `src/pages/Analytics.tsx`
 
-```
-Impact sources: 🚀 40%  🐛 30%  🔧 15%  🔀 10%  🧹 5%
-```
+- Pass period string to `useTeamSummary`: map `breakdownPeriod` to `"7d"` / `"30d"` / `"90d"` / `"365d"`
+- Include period in the query key (already done — `useTeamSummary` takes `period` as second arg)
 
-Wire into:
-- **Dashboard.tsx**: Show below VIS score in MemberBreakdown cards (via the `badgeCounts` prop or a new `badgeImpact` prop)
-- **MyAnalytics.tsx**: Add a "Where Your Impact Comes From" card using `useWeeklyVIS` badge distribution data
-
-## 4. Update VIS Explained Page
-
-**`src/pages/VISExplained.tsx`**
-
-Add two new sections:
-
-### "Activity Badges" section (after "Impact tiers")
-- Explain that every contribution is automatically tagged with an activity badge (🐛 Bug Fix, 🚀 Feature, 🔧 Refactor, etc.)
-- 4-layer priority: Manual > Deterministic rules > AI classification > Source defaults
-- Badges map to value types but are more granular — they show *what kind* of work within each tier
-- Include a subset grid of the most common badges with emoji + label
-
-### "Where Your Impact Comes From" section (after Activity Badges)
-- Explain that VIS now tracks which badge types contributed to your Impact score
-- "If 60% of your impact came from Bug Fixes and only 10% from Features, that's a signal — are you in a stabilization phase, or is new feature work getting stuck?"
-- Clarify this is informational, not a penalty — all badge types contribute equally to the score formula
-
-## Files Summary
+## Files to change
 
 | File | Change |
-|---|---|
-| `supabase/functions/compute-weekly-vis/index.ts` | Fetch activity_badges, compute badge distribution, include in breakdown jsonb |
-| `src/hooks/useWeeklyVIS.ts` | Add `badgeDistribution` to VISBreakdown, compute in estimate path |
-| `src/components/analytics/BadgeImpactBreakdown.tsx` | Create — badge-impact pill/bar visualization |
-| `src/pages/MyAnalytics.tsx` | Add "Where Your Impact Comes From" card |
-| `src/pages/Dashboard.tsx` | Wire badge impact data to MemberBreakdown |
-| `src/pages/VISExplained.tsx` | Add "Activity Badges" and "Impact Sources" sections |
+|------|--------|
+| `src/hooks/useTeamMemberStats.ts` | Paginate external_activity fetch |
+| `src/hooks/useEnrichedAnalytics.ts` | Add `periodDays` param, paginate queries |
+| `src/pages/Dashboard.tsx` | Pass period to enriched metrics + team summary |
+| `src/pages/Analytics.tsx` | Same |
+
+## Result
+- Switching to "This Quarter" shows cumulative data that is always ≥ "This Week"
+- VIS scores reflect the selected period
+- AI highlights regenerate per period (cached separately per period string)
 
