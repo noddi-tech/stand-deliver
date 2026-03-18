@@ -74,7 +74,12 @@ export default function Dashboard() {
   const { data: classification, isLoading: classificationLoading, refetch: refetchClassification } = useContributionClassification(teamId, hasFocusItems);
   const reclassifyMutation = useReclassifyContributions(teamId);
   const handleRefreshClassification = () => {
-    reclassifyMutation.mutate(undefined, { onSuccess: () => refetchClassification() });
+    reclassifyMutation.mutate(undefined, {
+      onSuccess: () => refetchClassification(),
+      onError: (err: Error) => {
+        toast({ title: err.message || "Re-classification failed", variant: "destructive" });
+      },
+    });
   };
   const [sourceFilter, setSourceFilter] = useState<string>("all");
 

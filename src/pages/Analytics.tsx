@@ -43,7 +43,12 @@ export default function Analytics() {
   const { data: classification, isLoading: classificationLoading, refetch: refetchClassification } = useContributionClassification(teamId, (focusItems?.length ?? 0) > 0);
   const reclassifyMutation = useReclassifyContributions(teamId);
   const handleRefreshClassification = () => {
-    reclassifyMutation.mutate(undefined, { onSuccess: () => refetchClassification() });
+    reclassifyMutation.mutate(undefined, {
+      onSuccess: () => refetchClassification(),
+      onError: (err: Error) => {
+        toast({ title: err.message || "Re-classification failed", variant: "destructive" });
+      },
+    });
   };
   const loading = teamLoading || isLoading;
 

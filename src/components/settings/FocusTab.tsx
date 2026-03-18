@@ -175,6 +175,9 @@ export function FocusTab() {
           toast({ title: `Re-classified ${result.classified} activities against updated focus areas` });
         }
       },
+      onError: (err: Error) => {
+        toast({ title: err.message || "Re-classification failed", variant: "destructive" });
+      },
     });
   };
 
