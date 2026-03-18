@@ -30,6 +30,7 @@ interface FocusAlignmentProps {
   onRefresh?: (mode: ReclassifyMode) => void;
   progress?: ReclassifyProgress;
   compact?: boolean;
+  periodLabel?: string;
 }
 
 export function FocusAlignment({ focusItems, classification, classificationLoading, onRefresh, progress, compact }: FocusAlignmentProps) {
