@@ -101,7 +101,7 @@ export function useAddFocusItem(teamId: string | undefined) {
 export function useUpdateFocusItem(teamId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, ...updates }: { id: string; title?: string; label?: string; description?: string; is_active?: boolean; starts_at?: string | null; ends_at?: string | null }) => {
+    mutationFn: async ({ id, ...updates }: { id: string; title?: string; label?: string; description?: string; is_active?: boolean; starts_at?: string | null; ends_at?: string | null; parent_id?: string | null }) => {
       const { error } = await supabase
         .from("team_focus" as any)
         .update({ ...updates, updated_at: new Date().toISOString() } as any)
