@@ -42,7 +42,15 @@ Deno.serve(async (req) => {
       .eq("is_active", true);
 
     const focusContext = (focusItems && focusItems.length > 0)
-      ? focusItems.map((f: any) => `- [${f.id}] "${f.title}" (label: ${f.label})${f.description ? ` — ${f.description}` : ""}`).join("\n")
+      ? focusItems.map((f: any) => {
+          let line = `- [${f.id}] "${f.title}" (label: ${f.label})`;
+          if (f.description) {
+            line += `\n  Objective: ${f.title}`;
+            line += `\n  Details: ${f.description}`;
+            line += `\n  → Only classify as "direct" if the work itself advances this objective, not just because it involves the same customer/partner.`;
+          }
+          return line;
+        }).join("\n")
       : "No focus areas defined. Classify all items as focus_alignment: 'none'.";
 
     const focusIds = (focusItems || []).map((f: any) => f.id);
