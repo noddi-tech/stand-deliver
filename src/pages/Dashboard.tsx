@@ -76,7 +76,7 @@ export default function Dashboard() {
   const { data: enriched } = useEnrichedTeamMetrics(teamId, PERIOD_DAYS[breakdownPeriod]);
   const { data: focusItems } = useTeamFocusItems(teamId);
   const hasFocusItems = (focusItems?.length ?? 0) > 0;
-  const { data: classification, isLoading: classificationLoading, refetch: refetchClassification } = useContributionClassification(teamId, hasFocusItems);
+  const { data: classification, isLoading: classificationLoading, refetch: refetchClassification } = useContributionClassification(teamId, hasFocusItems, PERIOD_DAYS[breakdownPeriod]);
   const reclassifyMutation = useReclassifyContributions(teamId);
   const handleRefreshClassification = (mode: ReclassifyMode = "incremental") => {
     reclassifyMutation.mutate({ mode }, {
