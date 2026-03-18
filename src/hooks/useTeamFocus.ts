@@ -388,13 +388,15 @@ export function useContributionClassification(teamId: string | undefined, enable
       // Fetch focus items to map focus_item_id -> title
       const { data: focusItems } = await supabase
         .from("team_focus" as any)
-        .select("id, title")
+        .select("id, title, parent_id")
         .eq("team_id", teamId!)
         .eq("is_active", true);
 
       const focusLabelMap = new Map<string, string>();
+      const focusParentMap = new Map<string, string | null>();
       for (const f of (focusItems || []) as any[]) {
         focusLabelMap.set(f.id, f.title);
+        focusParentMap.set(f.id, f.parent_id || null);
       }
 
       // Build per-member breakdowns
