@@ -105,7 +105,7 @@ export function useEnrichedTeamMetrics(teamId: string | undefined, periodDays = 
             .range(from, to),
       );
 
-      const items = activities || [];
+      const items = activities;
 
       // Group by member
       const memberMap = new Map<string, { name: string; items: typeof items }>();
