@@ -257,7 +257,7 @@ export function useContributionClassification(teamId: string | undefined, enable
 
       const focusLabelMap = new Map<string, string>();
       for (const f of (focusItems || []) as any[]) {
-        focusLabelMap.set(f.id, f.label);
+        focusLabelMap.set(f.id, f.title);
       }
 
       // Build per-member breakdowns
