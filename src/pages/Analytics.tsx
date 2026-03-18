@@ -34,8 +34,9 @@ export default function Analytics() {
   const { data: teamData, isLoading: teamLoading } = useUserTeam();
   const teamId = teamData?.team_id;
   const { data: metrics, isLoading } = useAnalyticsMetrics(teamId);
-  const { data: summaryData, isLoading: summaryLoading, refetch: refetchSummary } = useTeamSummary(teamId);
-  const { data: enriched, isLoading: enrichedLoading } = useEnrichedTeamMetrics(teamId);
+  const PERIOD_STRINGS: Record<BreakdownPeriod, string> = { week: "7d", month: "30d", quarter: "90d", year: "365d" };
+  const { data: summaryData, isLoading: summaryLoading, refetch: refetchSummary } = useTeamSummary(teamId, PERIOD_STRINGS[breakdownPeriod]);
+  const { data: enriched, isLoading: enrichedLoading } = useEnrichedTeamMetrics(teamId, PERIOD_DAYS[breakdownPeriod]);
   const { data: momentum } = useTeamMomentum(teamId);
   const { data: teamBadges } = useTeamBadges(teamId);
   const badgeLookup = useBadgeLookup();

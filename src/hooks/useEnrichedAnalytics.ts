@@ -268,7 +268,7 @@ export function useEnrichedTeamMetrics(teamId: string | undefined, periodDays = 
         let weekImpact = 0;
         for (const item of weekItems) {
           // Sum VIS scores for items in this week
-          const vis = visScores?.find(v => v.activity_id === item.id);
+          const vis = visScores.find(v => v.activity_id === item.id);
           if (vis) weekImpact += Number(vis.impact_score);
         }
         codeImpactTrend.push({ week: weekLabel, impact: Math.round(weekImpact) });

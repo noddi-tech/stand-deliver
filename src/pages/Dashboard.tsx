@@ -70,9 +70,10 @@ export default function Dashboard() {
   const badgeLookup = useBadgeLookup();
   const [breakdownPeriod, setBreakdownPeriod] = useState<BreakdownPeriod>("week");
   const { data: badgeData } = useMemberBadgeCounts(teamId, PERIOD_DAYS[breakdownPeriod]);
-  const { data: summaryData, isLoading: summaryLoading } = useTeamSummary(teamId);
+  const PERIOD_STRINGS: Record<BreakdownPeriod, string> = { week: "7d", month: "30d", quarter: "90d", year: "365d" };
+  const { data: summaryData, isLoading: summaryLoading } = useTeamSummary(teamId, PERIOD_STRINGS[breakdownPeriod]);
   const { data: memberStats, isLoading: memberStatsLoading } = useTeamMemberStats(teamId, PERIOD_DAYS[breakdownPeriod]);
-  const { data: enriched } = useEnrichedTeamMetrics(teamId);
+  const { data: enriched } = useEnrichedTeamMetrics(teamId, PERIOD_DAYS[breakdownPeriod]);
   const { data: focusItems } = useTeamFocusItems(teamId);
   const hasFocusItems = (focusItems?.length ?? 0) > 0;
   const { data: classification, isLoading: classificationLoading, refetch: refetchClassification } = useContributionClassification(teamId, hasFocusItems);
