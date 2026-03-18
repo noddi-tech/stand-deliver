@@ -274,6 +274,19 @@ export function FocusTab() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Reclassification progress banner */}
+          {reclassifyMutation.progress.status === "running" && (
+            <div className="rounded-lg border border-primary/20 bg-primary/[0.02] p-3 space-y-1.5">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                  Re-classifying activities against updated focus areas…
+                </span>
+                <span>{reclassifyMutation.progress.processed}/{reclassifyMutation.progress.total}</span>
+              </div>
+              <Progress value={reclassifyMutation.progress.total > 0 ? (reclassifyMutation.progress.processed / reclassifyMutation.progress.total) * 100 : 0} className="h-1.5" />
+            </div>
+          )}
           {activeItems.length === 0 && !showForm && (
             <div className="text-center py-8 border border-dashed border-border rounded-lg">
               <Target className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
