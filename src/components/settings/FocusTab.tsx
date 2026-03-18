@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
-import { Target, Plus, Pencil, Archive, Trash2, RotateCcw, X, Loader2 } from "lucide-react";
+import { Target, Plus, Pencil, Archive, Trash2, RotateCcw, X, Loader2, Sparkles, Check } from "lucide-react";
 import { useUserTeam } from "@/hooks/useAnalytics";
 import {
   useAllTeamFocusItems,
@@ -18,6 +18,14 @@ import {
 } from "@/hooks/useTeamFocus";
 import { toast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { supabase } from "@/integrations/supabase/client";
+
+interface AISuggestion {
+  title: string;
+  tags: string;
+  reason: string;
+  priority: "high" | "medium" | "low";
+}
 
 function splitLabels(label: string): string[] {
   return label.split(",").map((t) => t.trim()).filter(Boolean);
