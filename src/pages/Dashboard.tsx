@@ -191,6 +191,7 @@ export default function Dashboard() {
             classification={classification}
             classificationLoading={classificationLoading || reclassifyMutation.isPending}
             onRefresh={handleRefreshClassification}
+            progress={reclassifyMutation.progress}
           />
         </section>
       )}

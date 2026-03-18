@@ -131,23 +131,6 @@ export function useDeleteFocusItem(teamId: string | undefined) {
   });
 }
 
-/** Paginated fetch that bypasses Supabase 1000-row limit */
-async function fetchAllPaginated<T>(
-  query: () => ReturnType<ReturnType<typeof supabase.from>["select"]>,
-  pageSize = 1000
-): Promise<T[]> {
-  const all: T[] = [];
-  let from = 0;
-  while (true) {
-    const { data, error } = await (query() as any).range(from, from + pageSize - 1);
-    if (error) throw error;
-    const rows = (data || []) as T[];
-    all.push(...rows);
-    if (rows.length < pageSize) break;
-    from += pageSize;
-  }
-  return all;
-}
 
 export function useReclassifyContributions(teamId: string | undefined) {
   const qc = useQueryClient();

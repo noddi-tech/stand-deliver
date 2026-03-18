@@ -181,6 +181,7 @@ export default function Analytics() {
         classification={classification}
         classificationLoading={classificationLoading || reclassifyMutation.isPending}
         onRefresh={handleRefreshClassification}
+        progress={reclassifyMutation.progress}
       />
 
       {/* Member Breakdown */}
