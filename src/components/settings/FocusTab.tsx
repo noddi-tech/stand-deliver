@@ -145,6 +145,7 @@ export function FocusTab() {
   const deleteMutation = useDeleteFocusItem(teamId);
   const reclassifyMutation = useReclassifyContributions(teamId);
 
+  const tagInputRef = useRef<TagInputHandle>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
