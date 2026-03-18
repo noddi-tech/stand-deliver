@@ -56,7 +56,6 @@ export default function Analytics() {
   const loading = teamLoading || isLoading;
 
   const analysis = summaryData?.analysis;
-  const memberStats = summaryData?.memberStats || [];
 
   if (!loading && !metrics) {
     return (
