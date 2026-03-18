@@ -256,7 +256,7 @@ export function useContributionClassification(teamId: string | undefined, enable
   return useQuery({
     queryKey: ["contribution-classification", teamId],
     enabled: !!teamId && enabled,
-    staleTime: 5 * 60 * 1000, // 5 min — reads stored data, not AI calls
+    staleTime: 60 * 1000, // 60s — reads stored data, cheap query
     queryFn: async () => {
       // Fetch recent classifications from the table (last 7 days)
       const sevenDaysAgo = new Date();
