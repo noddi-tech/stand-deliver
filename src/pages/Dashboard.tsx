@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import { useUserTeam } from "@/hooks/useAnalytics";
 import { useTeamMetrics, useTodaySession } from "@/hooks/useTeamMetrics";
@@ -74,7 +75,12 @@ export default function Dashboard() {
   const { data: classification, isLoading: classificationLoading, refetch: refetchClassification } = useContributionClassification(teamId, hasFocusItems);
   const reclassifyMutation = useReclassifyContributions(teamId);
   const handleRefreshClassification = () => {
-    reclassifyMutation.mutate(undefined, { onSuccess: () => refetchClassification() });
+    reclassifyMutation.mutate(undefined, {
+      onSuccess: () => refetchClassification(),
+      onError: (err: Error) => {
+        toast({ title: err.message || "Re-classification failed", variant: "destructive" });
+      },
+    });
   };
   const [sourceFilter, setSourceFilter] = useState<string>("all");
 

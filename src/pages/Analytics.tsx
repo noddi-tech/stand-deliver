@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { toast } from "@/hooks/use-toast";
 import { AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Activity, AlertTriangle, ArrowDownRight, TrendingUp, BarChart3, Sparkles, Loader2, RefreshCw, GitPullRequest, Clock, Eye, TrendingDown, Minus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,7 +44,12 @@ export default function Analytics() {
   const { data: classification, isLoading: classificationLoading, refetch: refetchClassification } = useContributionClassification(teamId, (focusItems?.length ?? 0) > 0);
   const reclassifyMutation = useReclassifyContributions(teamId);
   const handleRefreshClassification = () => {
-    reclassifyMutation.mutate(undefined, { onSuccess: () => refetchClassification() });
+    reclassifyMutation.mutate(undefined, {
+      onSuccess: () => refetchClassification(),
+      onError: (err: Error) => {
+        toast({ title: err.message || "Re-classification failed", variant: "destructive" });
+      },
+    });
   };
   const loading = teamLoading || isLoading;
 
