@@ -1,75 +1,73 @@
 
 
-# Integrate Activity Badges into VIS System + Update VIS Explained
+# Fix Over-Generous Focus Alignment Classification
 
-## Concept
+## Problem
 
-Activity badges already classify *what type* of work was done (🐛 Bug Fix, 🚀 Feature, etc.). Integrating them into VIS makes the score more transparent: instead of just seeing "Impact: 72", you see *where* that impact came from — "40% from Features, 30% from Bug Fixes, 20% from Reviews." This gives actionable insight into who fixes what, who ships what, and whether that aligns with team priorities.
+The AI classifier is incorrectly marking Tom Arne's "Setup 2x Trønderdekk Dintero accounts" as **direct alignment** with "EonTyre integration" because the focus item description mentions Trønderdekk:
 
-## 1. Enrich `compute-weekly-vis` with Badge Distribution
+> *"Creating a two-way API integration with EonTyre for Trønderdekk to enable them using Navio..."*
 
-**`supabase/functions/compute-weekly-vis/index.ts`**
+The AI sees "Trønderdekk" and assumes any work involving that customer is EonTyre-related. But setting up Dintero (payment provider) accounts is general partner onboarding — not EonTyre API integration work. This causes Tom Arne to show ~100% blue on the Focus Alignment chart (since it's his only classified activity in certain periods).
 
-After fetching `impact_classifications` (line 65), also fetch `activity_badges` for the same week/team. Join badge data to classifications by `activity_id` to build a per-member breakdown: `Record<string, number>` mapping badge_key to summed impact_score.
+Database confirms: Tom Arne has 4 classified activities — 3 correctly marked `none`, 1 incorrectly marked `direct` for Dintero setup. In shorter periods where only the Dintero task falls in range, he shows 100% aligned.
 
-Add to the existing `breakdown` jsonb (line 154):
-```ts
-breakdown: {
-  ...existingFields,
-  badgeDistribution: { feature: 45.2, bugfix: 22.1, refactor: 8.0, ... },
-  badgeImpactPct: { feature: 40, bugfix: 30, refactor: 10, ... },
-}
-```
+## Root Cause
 
-No schema migration needed — `breakdown` is already a `jsonb` column.
+The AI prompt's focus context includes the full description with customer names. The classification rules say "Do NOT hallucinate focus alignment" but the AI still matches on customer/partner names rather than the actual work being done (API integration vs payment setup).
 
-## 2. Enrich `useWeeklyVIS` Client Hook
+## Plan
 
-**`src/hooks/useWeeklyVIS.ts`**
+### 1. Tighten the AI classification prompt
+**File:** `supabase/functions/ai-classify-contributions/index.ts`
 
-- Add `badgeDistribution?: Record<string, number>` to `VISBreakdown` interface
-- For canonical (past) weeks: read from `breakdown.badgeDistribution`
-- For current week estimate: fetch `activity_badges` for the week alongside `impact_classifications`, join by `activity_id`, aggregate badge_key → impact_score sums
-
-## 3. Show Badge-Impact Distribution in Dashboard/MyAnalytics
-
-**New component: `src/components/analytics/BadgeImpactBreakdown.tsx`**
-
-A compact horizontal stacked bar or pill row showing what % of a member's impact came from each badge type. Uses `ALL_BADGES` for emoji lookup. Example rendering:
+Add an explicit rule to the `CLASSIFICATION RULES` section:
 
 ```
-Impact sources: 🚀 40%  🐛 30%  🔧 15%  🔀 10%  🧹 5%
+- Focus alignment means the WORK ITSELF advances the focus objective,
+  not merely that it involves the same customer/partner/project.
+  Example: If the focus is "EonTyre API integration for Trønderdekk",
+  then building API sync endpoints = "direct", but setting up payment
+  accounts for Trønderdekk = "none" (general onboarding, not API work).
+  Match on WHAT is being done, not WHO it's for.
 ```
 
-Wire into:
-- **Dashboard.tsx**: Show below VIS score in MemberBreakdown cards (via the `badgeCounts` prop or a new `badgeImpact` prop)
-- **MyAnalytics.tsx**: Add a "Where Your Impact Comes From" card using `useWeeklyVIS` badge distribution data
+### 2. Fix the existing misclassification
+**Migration:** Update the one incorrect row so the chart is immediately correct without waiting for a full reclassify.
 
-## 4. Update VIS Explained Page
+```sql
+UPDATE impact_classifications
+SET focus_alignment = 'none', focus_item_id = NULL,
+    reasoning = 'Setting up payment accounts is general onboarding, not EonTyre API integration work.'
+WHERE activity_id = '56cad304-f84b-4300-9321-f342490106b2'
+  OR (reasoning ILIKE '%dintero%' AND focus_alignment != 'none');
+```
 
-**`src/pages/VISExplained.tsx`**
+Wait — the Dintero activity_id from the query is the one with the `Setup 2x Trønderdekk Dintero accounts` title. Let me use the exact ID from the query results.
 
-Add two new sections:
+Actually, better approach: run a targeted reclassify rather than a one-off migration, since there could be other similar false positives. Instead, I'll just fix the prompt and the user can hit "Rebuild all classifications" to fix existing data.
 
-### "Activity Badges" section (after "Impact tiers")
-- Explain that every contribution is automatically tagged with an activity badge (🐛 Bug Fix, 🚀 Feature, 🔧 Refactor, etc.)
-- 4-layer priority: Manual > Deterministic rules > AI classification > Source defaults
-- Badges map to value types but are more granular — they show *what kind* of work within each tier
-- Include a subset grid of the most common badges with emoji + label
+### 3. Improve focus context formatting
+**File:** `supabase/functions/ai-classify-contributions/index.ts`
 
-### "Where Your Impact Comes From" section (after Activity Badges)
-- Explain that VIS now tracks which badge types contributed to your Impact score
-- "If 60% of your impact came from Bug Fixes and only 10% from Features, that's a signal — are you in a stabilization phase, or is new feature work getting stuck?"
-- Clarify this is informational, not a penalty — all badge types contribute equally to the score formula
+Separate the focus item's core objective from its customer context in the prompt, so the AI can distinguish between "work ON the integration" vs "work FOR the same customer":
 
-## Files Summary
+```
+- [UUID] "EonTyre integration"
+  Objective: Two-way API integration with EonTyre
+  Context: For Trønderdekk to use Navio as core system
+  Tags: Platform, SaaS, API-integration
+  → Only classify as "direct" if the work IS API/integration/sync work, not just because it involves Trønderdekk
+```
+
+## Files to Change
 
 | File | Change |
-|---|---|
-| `supabase/functions/compute-weekly-vis/index.ts` | Fetch activity_badges, compute badge distribution, include in breakdown jsonb |
-| `src/hooks/useWeeklyVIS.ts` | Add `badgeDistribution` to VISBreakdown, compute in estimate path |
-| `src/components/analytics/BadgeImpactBreakdown.tsx` | Create — badge-impact pill/bar visualization |
-| `src/pages/MyAnalytics.tsx` | Add "Where Your Impact Comes From" card |
-| `src/pages/Dashboard.tsx` | Wire badge impact data to MemberBreakdown |
-| `src/pages/VISExplained.tsx` | Add "Activity Badges" and "Impact Sources" sections |
+|------|--------|
+| `supabase/functions/ai-classify-contributions/index.ts` | Add work-vs-customer distinction rule; improve focus context formatting |
+
+## Result
+- AI stops conflating "same customer" with "same focus area"
+- User hits "Rebuild all classifications" to fix existing false positives
+- Future classifications are more precise about what constitutes alignment
 
