@@ -11,6 +11,7 @@ export interface TeamFocusItem {
   is_active: boolean;
   starts_at: string | null;
   ends_at: string | null;
+  parent_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -81,7 +82,7 @@ export function useAllTeamFocusItems(teamId: string | undefined) {
 export function useAddFocusItem(teamId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (item: { title: string; label: string; description?: string; starts_at?: string | null; ends_at?: string | null }) => {
+    mutationFn: async (item: { title: string; label: string; description?: string; starts_at?: string | null; ends_at?: string | null; parent_id?: string | null }) => {
       const { data, error } = await supabase
         .from("team_focus" as any)
         .insert({ team_id: teamId!, ...item } as any)
@@ -100,7 +101,7 @@ export function useAddFocusItem(teamId: string | undefined) {
 export function useUpdateFocusItem(teamId: string | undefined) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, ...updates }: { id: string; title?: string; label?: string; description?: string; is_active?: boolean; starts_at?: string | null; ends_at?: string | null }) => {
+    mutationFn: async ({ id, ...updates }: { id: string; title?: string; label?: string; description?: string; is_active?: boolean; starts_at?: string | null; ends_at?: string | null; parent_id?: string | null }) => {
       const { error } = await supabase
         .from("team_focus" as any)
         .update({ ...updates, updated_at: new Date().toISOString() } as any)
@@ -387,13 +388,15 @@ export function useContributionClassification(teamId: string | undefined, enable
       // Fetch focus items to map focus_item_id -> title
       const { data: focusItems } = await supabase
         .from("team_focus" as any)
-        .select("id, title")
+        .select("id, title, parent_id")
         .eq("team_id", teamId!)
         .eq("is_active", true);
 
       const focusLabelMap = new Map<string, string>();
+      const focusParentMap = new Map<string, string | null>();
       for (const f of (focusItems || []) as any[]) {
         focusLabelMap.set(f.id, f.title);
+        focusParentMap.set(f.id, f.parent_id || null);
       }
 
       // Build per-member breakdowns

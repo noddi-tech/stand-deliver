@@ -6,7 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
-import { Target, Plus, Pencil, Archive, Trash2, RotateCcw, X, Loader2, Sparkles, Check } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Target, Plus, Pencil, Archive, Trash2, RotateCcw, X, Loader2, Sparkles, Check, ChevronRight, FolderOpen } from "lucide-react";
 import { useUserTeam } from "@/hooks/useAnalytics";
 import {
   useAllTeamFocusItems,
@@ -144,6 +146,58 @@ const TagInput = forwardRef<TagInputHandle, {
   );
 });
 
+/** Renders a single focus item row */
+function FocusItemRow({
+  item,
+  isLead,
+  isChild,
+  onEdit,
+  onArchive,
+}: {
+  item: TeamFocusItem;
+  isLead: boolean;
+  isChild?: boolean;
+  onEdit: (item: TeamFocusItem) => void;
+  onArchive: (id: string) => void;
+}) {
+  const dateLabel = formatDateRange(item);
+  const expired = isPastEnd(item);
+  const itemTags = splitLabels(item.label);
+
+  return (
+    <div
+      className={`flex items-start gap-3 p-3 rounded-lg border border-border bg-card ${expired ? "opacity-50" : ""} ${isChild ? "ml-6 border-l-2 border-l-primary/20" : ""}`}
+    >
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
+          <p className="text-sm font-medium text-foreground">{item.title}</p>
+          {itemTags.map((t) => (
+            <Badge key={t} variant="secondary" className="text-[10px]">{t}</Badge>
+          ))}
+          {dateLabel && (
+            <span className={`text-[10px] ${expired ? "text-destructive" : "text-muted-foreground"}`}>
+              {expired ? `Ended ${dateLabel.replace("Until ", "")}` : dateLabel}
+            </span>
+          )}
+        </div>
+        {item.description && (
+          <p className="text-xs text-muted-foreground">{item.description}</p>
+        )}
+      </div>
+      {isLead && (
+        <div className="flex gap-1 shrink-0">
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => onEdit(item)}>
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => onArchive(item.id)}>
+            <Archive className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function FocusTab() {
   const { data: team } = useUserTeam();
   const teamId = team?.team_id;
@@ -162,6 +216,10 @@ export function FocusTab() {
   const [description, setDescription] = useState("");
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
+  const [parentId, setParentId] = useState<string | null>(null);
+
+  // Track which groups are expanded
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   // AI suggestions state
   const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
@@ -198,6 +256,7 @@ export function FocusTab() {
     setDescription("");
     setStartsAt("");
     setEndsAt("");
+    setParentId(null);
     setEditingId(null);
     setShowForm(true);
     setAiSuggestions(prev => prev.filter(s => s.title !== suggestion.title));
@@ -235,9 +294,34 @@ export function FocusTab() {
     };
   }, []);
 
+  // Auto-expand groups on load
+  useEffect(() => {
+    if (items) {
+      const groupIds = new Set(
+        items.filter(i => i.is_active && !i.parent_id && items.some(c => c.parent_id === i.id && c.is_active))
+          .map(i => i.id)
+      );
+      setExpandedGroups(groupIds);
+    }
+  }, [items]);
+
   const activeItems = items?.filter((i) => i.is_active) || [];
   const archivedItems = items?.filter((i) => !i.is_active) || [];
   const existingLabels = [...new Set((items || []).flatMap((i) => splitLabels(i.label)))];
+
+  // Build hierarchy: top-level items (no parent) and their children
+  const topLevelItems = activeItems.filter(i => !i.parent_id);
+  const childrenByParent = new Map<string, TeamFocusItem[]>();
+  for (const item of activeItems) {
+    if (item.parent_id) {
+      const existing = childrenByParent.get(item.parent_id) || [];
+      existing.push(item);
+      childrenByParent.set(item.parent_id, existing);
+    }
+  }
+
+  // Available parents for the form: top-level active items (excluding the item being edited)
+  const availableParents = topLevelItems.filter(i => i.id !== editingId);
 
   const resetForm = () => {
     setTitle("");
@@ -245,6 +329,7 @@ export function FocusTab() {
     setDescription("");
     setStartsAt("");
     setEndsAt("");
+    setParentId(null);
     setShowForm(false);
     setEditingId(null);
   };
@@ -258,6 +343,7 @@ export function FocusTab() {
       description: description || undefined,
       starts_at: startsAt ? new Date(startsAt).toISOString() : null,
       ends_at: endsAt ? new Date(endsAt).toISOString() : null,
+      parent_id: parentId || null,
     };
     try {
       if (editingId) {
@@ -281,6 +367,7 @@ export function FocusTab() {
     setDescription(item.description || "");
     setStartsAt(item.starts_at ? item.starts_at.split("T")[0] : "");
     setEndsAt(item.ends_at ? item.ends_at.split("T")[0] : "");
+    setParentId(item.parent_id || null);
     setShowForm(true);
   };
 
@@ -298,6 +385,15 @@ export function FocusTab() {
   const handleDelete = async (id: string) => {
     await deleteMutation.mutateAsync(id);
     toast({ title: "Focus item deleted" });
+  };
+
+  const toggleGroup = (id: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   if (isLoading) {
@@ -322,7 +418,7 @@ export function FocusTab() {
             Team Focus Areas
           </CardTitle>
           <CardDescription>
-            Define what your team is focused on. AI will classify contributions against these areas and show alignment insights.
+            Define what your team is focused on. Group related tasks under a parent focus area for better alignment tracking.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -357,42 +453,97 @@ export function FocusTab() {
             </div>
           )}
 
-          {activeItems.map((item) => {
-            const dateLabel = formatDateRange(item);
-            const expired = isPastEnd(item);
-            const itemTags = splitLabels(item.label);
+          {/* Render grouped focus items */}
+          {topLevelItems.map((item) => {
+            const children = childrenByParent.get(item.id) || [];
+            const hasChildren = children.length > 0;
+            const isExpanded = expandedGroups.has(item.id);
+
+            if (!hasChildren) {
+              return (
+                <FocusItemRow
+                  key={item.id}
+                  item={item}
+                  isLead={isLead}
+                  onEdit={startEdit}
+                  onArchive={handleArchive}
+                />
+              );
+            }
+
             return (
-              <div
+              <Collapsible
                 key={item.id}
-                className={`flex items-start gap-3 p-3 rounded-lg border border-border bg-card ${expired ? "opacity-50" : ""}`}
+                open={isExpanded}
+                onOpenChange={() => toggleGroup(item.id)}
               >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <p className="text-sm font-medium text-foreground">{item.title}</p>
-                    {itemTags.map((t) => (
-                      <Badge key={t} variant="secondary" className="text-[10px]">{t}</Badge>
-                    ))}
-                    {dateLabel && (
-                      <span className={`text-[10px] ${expired ? "text-destructive" : "text-muted-foreground"}`}>
-                        {expired ? `Ended ${dateLabel.replace("Until ", "")}` : dateLabel}
-                      </span>
+                <div className="rounded-lg border border-border bg-card">
+                  <div className="flex items-start gap-3 p-3">
+                    <CollapsibleTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-6 w-6 p-0 mt-0.5 shrink-0">
+                        <ChevronRight className={`h-4 w-4 transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+                      </Button>
+                    </CollapsibleTrigger>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <FolderOpen className="h-3.5 w-3.5 text-primary" />
+                        <p className="text-sm font-medium text-foreground">{item.title}</p>
+                        {splitLabels(item.label).map((t) => (
+                          <Badge key={t} variant="secondary" className="text-[10px]">{t}</Badge>
+                        ))}
+                        <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                          {children.length} task{children.length !== 1 ? "s" : ""}
+                        </Badge>
+                        {formatDateRange(item) && (
+                          <span className={`text-[10px] ${isPastEnd(item) ? "text-destructive" : "text-muted-foreground"}`}>
+                            {formatDateRange(item)}
+                          </span>
+                        )}
+                      </div>
+                      {item.description && (
+                        <p className="text-xs text-muted-foreground">{item.description}</p>
+                      )}
+                    </div>
+                    {isLead && (
+                      <div className="flex gap-1 shrink-0">
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => startEdit(item)}>
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => handleArchive(item.id)}>
+                          <Archive className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     )}
                   </div>
-                  {item.description && (
-                    <p className="text-xs text-muted-foreground">{item.description}</p>
-                  )}
+                  <CollapsibleContent>
+                    <div className="px-3 pb-3 space-y-2">
+                      {children.map((child) => (
+                        <FocusItemRow
+                          key={child.id}
+                          item={child}
+                          isLead={isLead}
+                          isChild
+                          onEdit={startEdit}
+                          onArchive={handleArchive}
+                        />
+                      ))}
+                      {isLead && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="ml-6 h-7 text-xs text-muted-foreground"
+                          onClick={() => {
+                            setParentId(item.id);
+                            setShowForm(true);
+                          }}
+                        >
+                          <Plus className="h-3 w-3 mr-1" /> Add sub-task
+                        </Button>
+                      )}
+                    </div>
+                  </CollapsibleContent>
                 </div>
-                {isLead && (
-                  <div className="flex gap-1 shrink-0">
-                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => startEdit(item)}>
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => handleArchive(item.id)}>
-                      <Archive className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                )}
-              </div>
+              </Collapsible>
             );
           })}
 
@@ -468,6 +619,28 @@ export function FocusTab() {
                 onChange={(e) => setDescription(e.target.value)}
                 className="text-sm min-h-[60px]"
               />
+              {/* Parent selector */}
+              {availableParents.length > 0 && (
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Parent focus group (optional)</label>
+                  <Select
+                    value={parentId || "__none__"}
+                    onValueChange={(v) => setParentId(v === "__none__" ? null : v)}
+                  >
+                    <SelectTrigger className="text-sm">
+                      <SelectValue placeholder="None (top-level)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">None (top-level)</SelectItem>
+                      {availableParents.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="text-xs text-muted-foreground">Starts (optional)</label>

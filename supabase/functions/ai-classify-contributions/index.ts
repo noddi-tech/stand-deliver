@@ -34,26 +34,51 @@ Deno.serve(async (req) => {
 
     const sb = createClient(supabaseUrl, serviceKey);
 
-    // Fetch active focus items
+    // Fetch active focus items (including parent_id for hierarchy)
     const { data: focusItems } = await sb
       .from("team_focus")
-      .select("id, title, label, description, starts_at, ends_at")
+      .select("id, title, label, description, starts_at, ends_at, parent_id")
       .eq("team_id", team_id)
       .eq("is_active", true);
 
-    const focusContext = (focusItems && focusItems.length > 0)
-      ? focusItems.map((f: any) => {
+    // Build hierarchy: parents and children
+    const allFocus = (focusItems || []) as any[];
+    const childrenByParent = new Map<string, any[]>();
+    const topLevel: any[] = [];
+    for (const f of allFocus) {
+      if (f.parent_id) {
+        const existing = childrenByParent.get(f.parent_id) || [];
+        existing.push(f);
+        childrenByParent.set(f.parent_id, existing);
+      } else {
+        topLevel.push(f);
+      }
+    }
+
+    const focusContext = (allFocus.length > 0)
+      ? topLevel.map((f: any) => {
+          const children = childrenByParent.get(f.id) || [];
           let line = `- [${f.id}] "${f.title}" (label: ${f.label})`;
           if (f.description) {
             line += `\n  Objective: ${f.title}`;
             line += `\n  Details: ${f.description}`;
+          }
+          if (children.length > 0) {
+            line += `\n  TYPE: FOCUS GROUP — contains ${children.length} sub-tasks:`;
+            for (const child of children) {
+              line += `\n    - [${child.id}] "${child.title}" (label: ${child.label})`;
+              if (child.description) line += ` — ${child.description}`;
+            }
+            line += `\n  → Work on a child sub-task = "direct" to the child, "indirect" to this parent group.`;
+            line += `\n  → Only classify as "direct" to this GROUP if the work broadly advances the group objective without fitting any specific child.`;
+          } else {
             line += `\n  → Only classify as "direct" if the work itself advances this objective, not just because it involves the same customer/partner.`;
           }
           return line;
         }).join("\n")
       : "No focus areas defined. Classify all items as focus_alignment: 'none'.";
 
-    const focusIds = (focusItems || []).map((f: any) => f.id);
+    const focusIds = allFocus.map((f: any) => f.id);
 
     // Build items context for prompt (cap at 20)
     const batch = (items as ClassifyItem[]).slice(0, 20);
