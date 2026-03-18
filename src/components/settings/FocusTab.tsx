@@ -320,7 +320,7 @@ export function FocusTab() {
                 onChange={(e) => setTitle(e.target.value)}
                 className="text-sm"
               />
-              <TagInput tags={tags} setTags={setTags} suggestions={existingLabels} />
+              <TagInput ref={tagInputRef} tags={tags} setTags={setTags} suggestions={existingLabels} />
               <Textarea
                 placeholder="Optional description..."
                 value={description}

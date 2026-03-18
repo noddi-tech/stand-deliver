@@ -60,7 +60,8 @@ export function FocusAlignment({ focusItems, classification, classificationLoadi
     );
   }
 
-  if (classificationLoading) {
+  // Only show skeleton on initial load when there's no data yet
+  if (classificationLoading && !classification) {
     return (
       <Card>
         <CardHeader>
