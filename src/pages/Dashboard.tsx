@@ -71,6 +71,7 @@ export default function Dashboard() {
   const [breakdownPeriod, setBreakdownPeriod] = useState<BreakdownPeriod>("week");
   const { data: badgeData } = useMemberBadgeCounts(teamId, PERIOD_DAYS[breakdownPeriod]);
   const { data: summaryData, isLoading: summaryLoading } = useTeamSummary(teamId);
+  const { data: memberStats, isLoading: memberStatsLoading } = useTeamMemberStats(teamId, PERIOD_DAYS[breakdownPeriod]);
   const { data: enriched } = useEnrichedTeamMetrics(teamId);
   const { data: focusItems } = useTeamFocusItems(teamId);
   const hasFocusItems = (focusItems?.length ?? 0) > 0;
