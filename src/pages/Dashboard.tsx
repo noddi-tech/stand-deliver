@@ -6,6 +6,7 @@ import { useTeamMetrics, useTodaySession } from "@/hooks/useTeamMetrics";
 import { useAttentionItems } from "@/hooks/useAttentionItems";
 import { useRecentActivity } from "@/hooks/useRecentActivity";
 import { useSkipStandup } from "@/hooks/useSkipStandup";
+import { useTeamMemberStats } from "@/hooks/useTeamMemberStats";
 import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
 import { useMemberBadgeCounts } from "@/hooks/useMemberBadgeCounts";
 import { type BreakdownPeriod, PERIOD_DAYS } from "@/components/team/MemberBreakdown";
