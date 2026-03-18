@@ -1219,6 +1219,7 @@ export type Database = {
           id: string
           is_active: boolean
           label: string
+          parent_id: string | null
           starts_at: string | null
           team_id: string
           title: string
@@ -1231,6 +1232,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           label: string
+          parent_id?: string | null
           starts_at?: string | null
           team_id: string
           title: string
@@ -1243,12 +1245,20 @@ export type Database = {
           id?: string
           is_active?: boolean
           label?: string
+          parent_id?: string | null
           starts_at?: string | null
           team_id?: string
           title?: string
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "team_focus_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "team_focus"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "team_focus_team_id_fkey"
             columns: ["team_id"]
