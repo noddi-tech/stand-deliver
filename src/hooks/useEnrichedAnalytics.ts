@@ -40,13 +40,30 @@ export interface PersonalEnrichedMetrics {
   reviewsReceivedTotal: number;
 }
 
-export function useEnrichedTeamMetrics(teamId: string | undefined) {
+/** Paginated fetch to bypass Supabase 1000-row default limit */
+async function fetchAllRows<T>(
+  buildQuery: (from: number, to: number) => any,
+): Promise<T[]> {
+  const PAGE = 1000;
+  let offset = 0;
+  const all: T[] = [];
+  while (true) {
+    const { data } = await buildQuery(offset, offset + PAGE - 1) as { data: T[] | null };
+    const rows = data ?? [];
+    all.push(...rows);
+    if (rows.length < PAGE) break;
+    offset += PAGE;
+  }
+  return all;
+}
+
+export function useEnrichedTeamMetrics(teamId: string | undefined, periodDays = 30) {
   return useQuery({
-    queryKey: ["enriched-team-metrics", teamId],
+    queryKey: ["enriched-team-metrics", teamId, periodDays],
     enabled: !!teamId,
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
-      const thirtyDaysAgo = subDays(new Date(), 30).toISOString();
+      const sinceDate = subDays(new Date(), periodDays).toISOString();
 
       // Fetch VIS impact scores
       const { data: visScores } = await supabase
