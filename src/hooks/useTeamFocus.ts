@@ -178,13 +178,22 @@ export function useReclassifyContributions(teamId: string | undefined) {
       };
 
       // Fetch recent external_activity with pagination
-      const extData = await fetchAllPaginated<any>(() =>
-        supabase
+      const extData: any[] = [];
+      let extFrom = 0;
+      const PAGE = 1000;
+      while (true) {
+        const { data, error } = await supabase
           .from("external_activity")
           .select("id, source, activity_type, title, member_id, metadata")
           .eq("team_id", teamId)
           .gte("occurred_at", since)
-      );
+          .range(extFrom, extFrom + PAGE - 1);
+        if (error) throw error;
+        const rows = data || [];
+        extData.push(...rows);
+        if (rows.length < PAGE) break;
+        extFrom += PAGE;
+      }
 
       // Fetch recent commitments
       const { data: commitData } = await supabase

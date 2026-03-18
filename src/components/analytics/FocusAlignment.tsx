@@ -169,12 +169,13 @@ export function FocusAlignment({ focusItems, classification, classificationLoadi
 
         <TooltipProvider>
           {memberBreakdowns.map((mb) => {
-            const entries = Object.entries(mb.breakdown).filter(([, v]) => v > 0);
+            const entries = Object.entries(mb.breakdown).filter(([, v]) => (v as number) > 0);
             return (
               <div key={mb.memberId} className="space-y-1">
                 <p className="text-xs font-medium text-foreground">{mb.memberName}</p>
                 <div className="flex h-5 w-full rounded-full overflow-hidden bg-muted">
                   {entries.map(([lbl, pct]) => {
+                    const pctNum = pct as number;
                     const color = colorMap[lbl] || UNALIGNED_COLOR;
                     const rationales = classification?.classifications
                       .filter((c) => c.focusLabel === lbl && c.memberId === mb.memberId)
@@ -185,14 +186,14 @@ export function FocusAlignment({ focusItems, classification, classificationLoadi
                           <div
                             className="h-full transition-all cursor-default"
                             style={{
-                              width: `${pct}%`,
+                              width: `${pctNum}%`,
                               backgroundColor: color,
-                              minWidth: pct > 0 ? "4px" : "0",
+                              minWidth: pctNum > 0 ? "4px" : "0",
                             }}
                           />
                         </TooltipTrigger>
                         <TooltipContent side="top" className="max-w-xs">
-                          <p className="font-medium text-xs">{lbl}: {pct}%</p>
+                          <p className="font-medium text-xs">{lbl}: {pctNum}%</p>
                           {rationales.length > 0 && (
                             <ul className="mt-1 space-y-0.5">
                               {rationales.map((r, i) => (
