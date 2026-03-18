@@ -130,6 +130,23 @@ export function useReclassifyContributions(teamId: string | undefined) {
       fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
       const since = fourteenDaysAgo.toISOString();
 
+      const parseDegradedMessage = (message: string) => {
+        const normalized = message.toLowerCase();
+        if (normalized.includes("credit")) {
+          return {
+            reason: "credits_exhausted" as const,
+            message: "AI credits exhausted. Add credits in Settings → Workspace → Usage.",
+          };
+        }
+        if (normalized.includes("rate")) {
+          return {
+            reason: "rate_limited" as const,
+            message: "AI rate limit reached. Please try again in a minute.",
+          };
+        }
+        return null;
+      };
+
       // Fetch recent external_activity
       const { data: extData } = await supabase
         .from("external_activity")
@@ -178,38 +195,56 @@ export function useReclassifyContributions(teamId: string | undefined) {
 
       if (items.length === 0) return { classified: 0 };
 
-      // Send in batches of 20, abort on credit/rate errors
+      // Send in batches of 20, stop gracefully on credit/rate limits
       let totalClassified = 0;
+      let degraded: { reason: "credits_exhausted" | "rate_limited"; message: string } | null = null;
+
       for (let i = 0; i < items.length; i += 20) {
         const batch = items.slice(i, i + 20);
         const { data, error } = await supabase.functions.invoke("ai-classify-contributions", {
           body: { team_id: teamId, items: batch },
         });
+
         if (error) {
-          // Check for 402/429 returned as FunctionsHttpError
           const status = (error as any)?.context?.status;
-          if (status === 402) {
-            throw new Error("AI credits exhausted. Please add credits in Settings → Workspace → Usage.");
-          }
-          if (status === 429) {
-            throw new Error("AI rate limit reached. Please try again in a minute.");
+          if (status === 402 || status === 429) {
+            degraded = {
+              reason: status === 402 ? "credits_exhausted" : "rate_limited",
+              message: status === 402
+                ? "AI credits exhausted. Add credits in Settings → Workspace → Usage."
+                : "AI rate limit reached. Please try again in a minute.",
+            };
+            break;
           }
           console.error("Reclassify batch error:", error);
-        } else {
-          // The edge function may return an error object in the body for 402/429
-          if (data?.error) {
-            if (data.error.includes("credits")) {
-              throw new Error("AI credits exhausted. Please add credits in Settings → Workspace → Usage.");
-            }
-            if (data.error.includes("Rate")) {
-              throw new Error("AI rate limit reached. Please try again in a minute.");
-            }
-          }
-          totalClassified += data?.classified || 0;
+          throw error;
         }
+
+        if (data?.degraded?.reason === "credits_exhausted" || data?.degraded?.reason === "rate_limited") {
+          degraded = {
+            reason: data.degraded.reason,
+            message: data.degraded.message || (data.degraded.reason === "credits_exhausted"
+              ? "AI credits exhausted. Add credits in Settings → Workspace → Usage."
+              : "AI rate limit reached. Please try again in a minute."),
+          };
+          break;
+        }
+
+        if (typeof data?.error === "string") {
+          const parsed = parseDegradedMessage(data.error);
+          if (parsed) {
+            degraded = parsed;
+            break;
+          }
+          throw new Error(data.error);
+        }
+
+        totalClassified += Number(data?.classified || 0);
       }
 
-      return { classified: totalClassified };
+      return degraded
+        ? { classified: totalClassified, degraded }
+        : { classified: totalClassified };
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["contribution-classification", teamId] });
