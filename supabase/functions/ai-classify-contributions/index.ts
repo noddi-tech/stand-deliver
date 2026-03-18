@@ -210,16 +210,25 @@ Classify each item by its index number.`;
     if (!response.ok) {
       const errText = await response.text();
       console.error("AI gateway error:", response.status, errText);
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limited, try again later" }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+
+      if (response.status === 402 || response.status === 429) {
+        const isCredits = response.status === 402;
+        return new Response(
+          JSON.stringify({
+            classified: 0,
+            total: batch.length,
+            degraded: {
+              reason: isCredits ? "credits_exhausted" : "rate_limited",
+              status: response.status,
+              message: isCredits
+                ? "AI credits exhausted. Add credits in Settings → Workspace → Usage."
+                : "AI rate limit reached. Please try again in a minute.",
+            },
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "AI credits exhausted" }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
+
       throw new Error(`AI error: ${response.status}`);
     }
 
