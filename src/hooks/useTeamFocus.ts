@@ -11,6 +11,7 @@ export interface TeamFocusItem {
   is_active: boolean;
   starts_at: string | null;
   ends_at: string | null;
+  parent_id: string | null;
   created_at: string;
   updated_at: string;
 }
