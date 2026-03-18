@@ -30,9 +30,10 @@ interface FocusAlignmentProps {
   onRefresh?: (mode: ReclassifyMode) => void;
   progress?: ReclassifyProgress;
   compact?: boolean;
+  periodLabel?: string;
 }
 
-export function FocusAlignment({ focusItems, classification, classificationLoading, onRefresh, progress, compact }: FocusAlignmentProps) {
+export function FocusAlignment({ focusItems, classification, classificationLoading, onRefresh, progress, compact, periodLabel }: FocusAlignmentProps) {
   const navigate = useNavigate();
   const isRunning = progress?.status === "running";
 
@@ -148,7 +149,7 @@ export function FocusAlignment({ focusItems, classification, classificationLoadi
         </div>
         {!compact && (
           <CardDescription className="text-xs">
-            How each member's recent work aligns with team focus areas
+            How each member's work aligns with team focus areas{periodLabel ? ` — ${periodLabel}` : ""}
           </CardDescription>
         )}
       </CardHeader>

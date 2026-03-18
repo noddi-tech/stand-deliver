@@ -101,3 +101,6 @@ verify_jwt = false
 
 [functions.ai-recommend-focus]
 verify_jwt = false
+
+[functions.snapshot-focus-alignment]
+verify_jwt = false
