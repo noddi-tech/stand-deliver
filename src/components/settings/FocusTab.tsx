@@ -163,6 +163,50 @@ export function FocusTab() {
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
 
+  // AI suggestions state
+  const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
+  const [aiLoading, setAiLoading] = useState(false);
+
+  const fetchAiSuggestions = async () => {
+    if (!teamId) return;
+    setAiLoading(true);
+    setAiSuggestions([]);
+    try {
+      const { data, error } = await supabase.functions.invoke("ai-recommend-focus", {
+        body: { team_id: teamId },
+      });
+      if (error) throw error;
+      if (data?.error) {
+        toast({ title: data.error, variant: "destructive" });
+        return;
+      }
+      setAiSuggestions(data?.suggestions || []);
+      if (!data?.suggestions?.length) {
+        toast({ title: "No suggestions — not enough recent activity data" });
+      }
+    } catch (err: any) {
+      const msg = err?.message || "Failed to get suggestions";
+      toast({ title: msg, variant: "destructive" });
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const addFromSuggestion = (suggestion: AISuggestion) => {
+    setTitle(suggestion.title);
+    setTags(suggestion.tags.split(",").map(t => t.trim()).filter(Boolean));
+    setDescription("");
+    setStartsAt("");
+    setEndsAt("");
+    setEditingId(null);
+    setShowForm(true);
+    setAiSuggestions(prev => prev.filter(s => s.title !== suggestion.title));
+  };
+
+  const dismissSuggestion = (title: string) => {
+    setAiSuggestions(prev => prev.filter(s => s.title !== title));
+  };
+
   // Debounced full reclassify: triggers 3s after last focus mutation
   const reclassifyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scheduleReclassify = useCallback(() => {
