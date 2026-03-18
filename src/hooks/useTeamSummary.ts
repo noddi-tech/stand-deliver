@@ -31,9 +31,9 @@ function getFunctionErrorStatus(error: unknown): number | undefined {
   const status = (error as { context?: { status?: unknown } })?.context?.status;
   if (typeof status === "number") return status;
 
-  const message = error instanceof Error ? error.message : String(error ?? "");
-  if (message.includes("402")) return 402;
-  if (message.includes("429")) return 429;
+  const message = (error instanceof Error ? error.message : String(error ?? "")).toLowerCase();
+  if (message.includes("402") || message.includes("credits exhausted")) return 402;
+  if (message.includes("429") || message.includes("rate limit")) return 429;
   return undefined;
 }
 
@@ -87,10 +87,8 @@ export function useTeamSummary(teamId: string | undefined, period = "7d") {
       }
 
       if (typeof data?.error === "string") {
-        const lower = data.error.toLowerCase();
-        if (lower.includes("credits") || lower.includes("rate limit")) {
-          return mapErrorToFallback(new Error(data.error))!;
-        }
+        const fallback = mapErrorToFallback(new Error(data.error));
+        if (fallback) return fallback;
         throw new Error(data.error);
       }
 
