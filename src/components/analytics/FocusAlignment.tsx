@@ -136,7 +136,7 @@ export function FocusAlignment({ focusItems, classification, classificationLoadi
                     const color = colorMap[lbl] || UNALIGNED_COLOR;
                     // Find rationales for this member+label
                     const rationales = classification.classifications
-                      .filter((c) => c.focusLabel === lbl)
+                      .filter((c) => c.focusLabel === lbl && c.memberId === mb.memberId)
                       .slice(0, 3);
                     return (
                       <Tooltip key={lbl}>

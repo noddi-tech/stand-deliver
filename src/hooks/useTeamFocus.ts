@@ -272,6 +272,7 @@ export function useContributionClassification(teamId: string | undefined, enable
           externalId: c.activity_id,
           focusLabel: label,
           rationale: c.reasoning || "",
+          memberId: c.member_id,
         });
 
         if (!memberTotals.has(c.member_id)) {
