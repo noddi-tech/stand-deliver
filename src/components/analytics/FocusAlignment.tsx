@@ -36,12 +36,12 @@ export function FocusAlignment({ focusItems, classification, classificationLoadi
   // Build color map from focus items
   const colorMap: Record<string, string> = {};
   focusItems.forEach((item, i) => {
-    colorMap[item.label] = getColorForIndex(i);
+    colorMap[item.title] = getColorForIndex(i);
   });
   colorMap["Unaligned"] = UNALIGNED_COLOR;
 
   // Get all unique labels across breakdowns
-  const allLabels = focusItems.map((f) => f.label);
+  const allLabels = focusItems.map((f) => f.title);
   const uniqueLabels = [...new Set(allLabels)];
 
   if (focusItems.length === 0) {
