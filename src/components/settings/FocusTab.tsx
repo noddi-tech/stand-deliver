@@ -1,11 +1,12 @@
-import { useState, useRef, useImperativeHandle, forwardRef, KeyboardEvent } from "react";
+import { useState, useRef, useImperativeHandle, forwardRef, KeyboardEvent, useCallback, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Target, Plus, Pencil, Archive, Trash2, RotateCcw, X } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { Target, Plus, Pencil, Archive, Trash2, RotateCcw, X, Loader2 } from "lucide-react";
 import { useUserTeam } from "@/hooks/useAnalytics";
 import {
   useAllTeamFocusItems,
