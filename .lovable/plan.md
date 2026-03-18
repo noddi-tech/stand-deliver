@@ -1,75 +1,83 @@
 
 
-# Integrate Activity Badges into VIS System + Update VIS Explained
+# Make Focus Alignment Period-Aware and Store Historical Snapshots
 
-## Concept
+## Current Issues
 
-Activity badges already classify *what type* of work was done (🐛 Bug Fix, 🚀 Feature, etc.). Integrating them into VIS makes the score more transparent: instead of just seeing "Impact: 72", you see *where* that impact came from — "40% from Features, 30% from Bug Fixes, 20% from Reviews." This gives actionable insight into who fixes what, who ships what, and whether that aligns with team priorities.
+1. **Hardcoded 7-day window**: `useContributionClassification` always queries the last 7 days of activity IDs, regardless of the period selector. The Focus Alignment chart never changes when you switch periods.
 
-## 1. Enrich `compute-weekly-vis` with Badge Distribution
+2. **Bar ordering confusion**: The stacked bar shows percentages. Stiffi has ~45% focus-aligned work (blue appears first, taking up half the bar). Others have ~1-3% aligned work, so the tiny blue sliver appears at the end after the large grey "Unaligned" segment. This is correct behavior but visually confusing — the bars should show focused work first (left) for everyone, which they do, but when the blue segment is tiny it just looks like a dot on the right edge.
 
-**`supabase/functions/compute-weekly-vis/index.ts`**
+3. **No historical storage**: Classification results are computed on-the-fly from `impact_classifications` rows. There's no snapshot mechanism to track how focus alignment evolves over time.
 
-After fetching `impact_classifications` (line 65), also fetch `activity_badges` for the same week/team. Join badge data to classifications by `activity_id` to build a per-member breakdown: `Record<string, number>` mapping badge_key to summed impact_score.
+## Plan
 
-Add to the existing `breakdown` jsonb (line 154):
-```ts
-breakdown: {
-  ...existingFields,
-  badgeDistribution: { feature: 45.2, bugfix: 22.1, refactor: 8.0, ... },
-  badgeImpactPct: { feature: 40, bugfix: 30, refactor: 10, ... },
-}
+### 1. Make `useContributionClassification` period-aware
+**File:** `src/hooks/useTeamFocus.ts`
+
+- Add `periodDays` parameter (default 7) to `useContributionClassification`
+- Replace hardcoded `7` with `periodDays` in the date filter
+- Include `periodDays` in the query key
+
+### 2. Pass period from Dashboard & Analytics
+**Files:** `src/pages/Dashboard.tsx`, `src/pages/Analytics.tsx`
+
+- Pass `PERIOD_DAYS[breakdownPeriod]` to `useContributionClassification(teamId, hasFocusItems, periodDays)`
+- This makes the Focus Alignment chart respond to the period selector
+
+### 3. Show period label on the Focus Alignment card
+**File:** `src/components/analytics/FocusAlignment.tsx`
+
+- Add optional `periodLabel` prop (e.g., "This Week", "This Quarter")
+- Display it in the CardDescription: "How each member's work aligns with team focus areas — This Quarter"
+
+### 4. Store historical focus alignment snapshots
+**New migration**: Create a `focus_alignment_snapshots` table to store periodic snapshots of per-member focus alignment percentages. This enables future trend analysis, AI summaries, and period-over-period comparisons.
+
+```sql
+create table public.focus_alignment_snapshots (
+  id uuid primary key default gen_random_uuid(),
+  team_id uuid not null references teams(id) on delete cascade,
+  member_id uuid not null references team_members(id) on delete cascade,
+  period_start date not null,
+  period_end date not null,
+  breakdown jsonb not null,          -- { "EonTyre integration": 45, "Unaligned": 55 }
+  total_activities int not null,
+  created_at timestamptz default now(),
+  unique(team_id, member_id, period_start, period_end)
+);
+alter table public.focus_alignment_snapshots enable row level security;
+create policy "Authenticated users can read focus snapshots"
+  on public.focus_alignment_snapshots for select to authenticated using (true);
 ```
 
-No schema migration needed — `breakdown` is already a `jsonb` column.
+### 5. Snapshot edge function
+**New file:** `supabase/functions/snapshot-focus-alignment/index.ts`
 
-## 2. Enrich `useWeeklyVIS` Client Hook
+- Accepts `team_id` and optional `period_start`/`period_end` (defaults to last 7 days)
+- Queries `impact_classifications` joined with `team_focus` for the period
+- Computes per-member breakdowns (same logic as the client hook)
+- Upserts into `focus_alignment_snapshots`
+- Can be called manually or via pg_cron weekly
 
-**`src/hooks/useWeeklyVIS.ts`**
+### 6. Update `supabase/config.toml`
+- Add `[functions.snapshot-focus-alignment]` entry
 
-- Add `badgeDistribution?: Record<string, number>` to `VISBreakdown` interface
-- For canonical (past) weeks: read from `breakdown.badgeDistribution`
-- For current week estimate: fetch `activity_badges` for the week alongside `impact_classifications`, join by `activity_id`, aggregate badge_key → impact_score sums
-
-## 3. Show Badge-Impact Distribution in Dashboard/MyAnalytics
-
-**New component: `src/components/analytics/BadgeImpactBreakdown.tsx`**
-
-A compact horizontal stacked bar or pill row showing what % of a member's impact came from each badge type. Uses `ALL_BADGES` for emoji lookup. Example rendering:
-
-```
-Impact sources: 🚀 40%  🐛 30%  🔧 15%  🔀 10%  🧹 5%
-```
-
-Wire into:
-- **Dashboard.tsx**: Show below VIS score in MemberBreakdown cards (via the `badgeCounts` prop or a new `badgeImpact` prop)
-- **MyAnalytics.tsx**: Add a "Where Your Impact Comes From" card using `useWeeklyVIS` badge distribution data
-
-## 4. Update VIS Explained Page
-
-**`src/pages/VISExplained.tsx`**
-
-Add two new sections:
-
-### "Activity Badges" section (after "Impact tiers")
-- Explain that every contribution is automatically tagged with an activity badge (🐛 Bug Fix, 🚀 Feature, 🔧 Refactor, etc.)
-- 4-layer priority: Manual > Deterministic rules > AI classification > Source defaults
-- Badges map to value types but are more granular — they show *what kind* of work within each tier
-- Include a subset grid of the most common badges with emoji + label
-
-### "Where Your Impact Comes From" section (after Activity Badges)
-- Explain that VIS now tracks which badge types contributed to your Impact score
-- "If 60% of your impact came from Bug Fixes and only 10% from Features, that's a signal — are you in a stabilization phase, or is new feature work getting stuck?"
-- Clarify this is informational, not a penalty — all badge types contribute equally to the score formula
-
-## Files Summary
+## Files to Change
 
 | File | Change |
-|---|---|
-| `supabase/functions/compute-weekly-vis/index.ts` | Fetch activity_badges, compute badge distribution, include in breakdown jsonb |
-| `src/hooks/useWeeklyVIS.ts` | Add `badgeDistribution` to VISBreakdown, compute in estimate path |
-| `src/components/analytics/BadgeImpactBreakdown.tsx` | Create — badge-impact pill/bar visualization |
-| `src/pages/MyAnalytics.tsx` | Add "Where Your Impact Comes From" card |
-| `src/pages/Dashboard.tsx` | Wire badge impact data to MemberBreakdown |
-| `src/pages/VISExplained.tsx` | Add "Activity Badges" and "Impact Sources" sections |
+|------|--------|
+| `src/hooks/useTeamFocus.ts` | Add `periodDays` param to `useContributionClassification` |
+| `src/pages/Dashboard.tsx` | Pass period to classification hook |
+| `src/pages/Analytics.tsx` | Pass period to classification hook |
+| `src/components/analytics/FocusAlignment.tsx` | Add period label display |
+| `supabase/migrations/` | New migration for `focus_alignment_snapshots` table |
+| `supabase/functions/snapshot-focus-alignment/index.ts` | New snapshot edge function |
+| `supabase/config.toml` | Register new function |
+
+## Result
+- Focus Alignment chart responds to the period selector
+- Period label shown so users know what timeframe they're viewing
+- Historical snapshots stored for future AI trend analysis and digests
+- Longer periods show cumulative alignment data (always ≥ shorter periods)
 
