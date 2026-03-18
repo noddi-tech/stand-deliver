@@ -155,6 +155,34 @@ export function FocusTab() {
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
 
+  // Debounced full reclassify: triggers 3s after last focus mutation
+  const reclassifyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleReclassify = useCallback(() => {
+    if (reclassifyTimerRef.current) clearTimeout(reclassifyTimerRef.current);
+    reclassifyTimerRef.current = setTimeout(() => {
+      reclassifyMutation.mutate({ mode: "full" }, {
+        onSuccess: (result) => {
+          if (result.classified > 0) {
+            toast({ title: `Re-classified ${result.classified} activities against updated focus areas` });
+          }
+          if ((result as any).degraded) {
+            toast({ title: (result as any).degraded.message, variant: "destructive" });
+          }
+        },
+        onError: (err: Error) => {
+          toast({ title: err.message || "Re-classification failed", variant: "destructive" });
+        },
+      });
+    }, 3000);
+  }, [reclassifyMutation]);
+
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
+      if (reclassifyTimerRef.current) clearTimeout(reclassifyTimerRef.current);
+    };
+  }, []);
+
   const activeItems = items?.filter((i) => i.is_active) || [];
   const archivedItems = items?.filter((i) => !i.is_active) || [];
   const existingLabels = [...new Set((items || []).flatMap((i) => splitLabels(i.label)))];
@@ -167,19 +195,6 @@ export function FocusTab() {
     setEndsAt("");
     setShowForm(false);
     setEditingId(null);
-  };
-
-  const triggerReclassify = () => {
-    reclassifyMutation.mutate(undefined, {
-      onSuccess: (result) => {
-        if (result.classified > 0) {
-          toast({ title: `Re-classified ${result.classified} activities against updated focus areas` });
-        }
-      },
-      onError: (err: Error) => {
-        toast({ title: err.message || "Re-classification failed", variant: "destructive" });
-      },
-    });
   };
 
   const handleSubmit = async () => {
@@ -201,7 +216,7 @@ export function FocusTab() {
         toast({ title: "Focus item added" });
       }
       resetForm();
-      triggerReclassify();
+      scheduleReclassify();
     } catch {
       toast({ title: "Error saving focus item", variant: "destructive" });
     }
