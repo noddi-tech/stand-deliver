@@ -84,6 +84,7 @@ export default function Dashboard() {
     });
   };
   const [sourceFilter, setSourceFilter] = useState<string>("all");
+  useRealtimeInvalidation(teamId);
 
   const handleSkip = () => {
     if (memberId && teamId) {
