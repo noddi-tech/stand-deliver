@@ -1,75 +1,70 @@
 
 
-# Integrate Activity Badges into VIS System + Update VIS Explained
+# Optimize Focus Alignment: Scalable Refresh + Auto-Update on New Focus Areas
 
-## Concept
+## Problems
 
-Activity badges already classify *what type* of work was done (🐛 Bug Fix, 🚀 Feature, etc.). Integrating them into VIS makes the score more transparent: instead of just seeing "Impact: 72", you see *where* that impact came from — "40% from Features, 30% from Bug Fixes, 20% from Reviews." This gives actionable insight into who fixes what, who ships what, and whether that aligns with team priorities.
+1. **Refresh is slow**: `useReclassifyContributions` sends all unclassified items (potentially 500+) in sequential batches of 20 to an AI endpoint that takes ~10-12s per call. Total: minutes.
+2. **Full reclassify impossible from UI**: When focus areas change, old classifications with wrong/null `focus_item_id` persist. The current skip-classified optimization prevents fixing them.
+3. **MemberBreakdown color bug**: `focusColorMap` uses `item.label` (the tags string) as keys, but classification breakdowns use `item.title`. Colors never match.
+4. **No scalable "add focus and go" flow**: Adding a new focus area triggers reclassify which is slow and provides no progress feedback. Adding several focus areas means triggering reclassify multiple times.
 
-## 1. Enrich `compute-weekly-vis` with Badge Distribution
+## Plan
 
-**`supabase/functions/compute-weekly-vis/index.ts`**
+### 1. Dual-mode reclassification with progress (`src/hooks/useTeamFocus.ts`)
 
-After fetching `impact_classifications` (line 65), also fetch `activity_badges` for the same week/team. Join badge data to classifications by `activity_id` to build a per-member breakdown: `Record<string, number>` mapping badge_key to summed impact_score.
+Update `useReclassifyContributions` to accept a `mode` parameter:
+- **`incremental`** (default): Current behavior -- skip items that already have an `impact_classifications` row. Fast for daily use.
+- **`full`**: Skip the filter step, re-send ALL items from the window. Used when focus areas change to repair stale `focus_item_id` values.
 
-Add to the existing `breakdown` jsonb (line 154):
-```ts
-breakdown: {
-  ...existingFields,
-  badgeDistribution: { feature: 45.2, bugfix: 22.1, refactor: 8.0, ... },
-  badgeImpactPct: { feature: 40, bugfix: 30, refactor: 10, ... },
-}
-```
+Add progress state returned from the mutation:
+- `{ processed: number, total: number, classified: number }` updated after each batch.
+- Exposed via a `progress` ref or state so the UI can show "Processing 40/120...".
 
-No schema migration needed — `breakdown` is already a `jsonb` column.
+Paginate the `external_activity` fetch (currently limited to 1000 rows by Supabase default) using range queries to capture all data.
 
-## 2. Enrich `useWeeklyVIS` Client Hook
+### 2. Focus Alignment UI: progress indicator + full rebuild action (`src/components/analytics/FocusAlignment.tsx`)
 
-**`src/hooks/useWeeklyVIS.ts`**
+- Show a progress bar/text when reclassification is running: "Classifying 40/120 items..."
+- Add a dropdown or secondary action on the refresh button:
+  - Default click = incremental (fast)
+  - "Rebuild all classifications" = full mode (with a confirmation toast warning about AI credit usage)
+- On credit exhaustion, show inline message instead of breaking.
 
-- Add `badgeDistribution?: Record<string, number>` to `VISBreakdown` interface
-- For canonical (past) weeks: read from `breakdown.badgeDistribution`
-- For current week estimate: fetch `activity_badges` for the week alongside `impact_classifications`, join by `activity_id`, aggregate badge_key → impact_score sums
+### 3. Fix MemberBreakdown focus color mapping (`src/components/team/MemberBreakdown.tsx`)
 
-## 3. Show Badge-Impact Distribution in Dashboard/MyAnalytics
+Change line 105 from `focusColorMap[item.label]` to `focusColorMap[item.title]` so colors match the classification breakdown keys.
 
-**New component: `src/components/analytics/BadgeImpactBreakdown.tsx`**
+### 4. FocusTab: smarter reclassify on focus changes (`src/components/settings/FocusTab.tsx`)
 
-A compact horizontal stacked bar or pill row showing what % of a member's impact came from each badge type. Uses `ALL_BADGES` for emoji lookup. Example rendering:
+- When adding/updating/restoring a focus item, trigger a **full** reclassify (not incremental), since old classifications need to be re-evaluated against new focus areas.
+- Show the progress state in a small banner within the FocusTab so users know it is working.
+- Debounce: if the user adds multiple focus items in quick succession, only trigger one reclassify after the last mutation settles (e.g., 3-second debounce).
 
-```
-Impact sources: 🚀 40%  🐛 30%  🔧 15%  🔀 10%  🧹 5%
-```
+### 5. Wire up Analytics page (`src/pages/Analytics.tsx`)
 
-Wire into:
-- **Dashboard.tsx**: Show below VIS score in MemberBreakdown cards (via the `badgeCounts` prop or a new `badgeImpact` prop)
-- **MyAnalytics.tsx**: Add a "Where Your Impact Comes From" card using `useWeeklyVIS` badge distribution data
+Pass the mode parameter through to the refresh handler, same as Dashboard.
 
-## 4. Update VIS Explained Page
+### 6. Reduce classification query filter to use source activity timestamp
 
-**`src/pages/VISExplained.tsx`**
+In `useContributionClassification`, join or cross-reference `external_activity.occurred_at` instead of filtering by `impact_classifications.created_at`. This prevents backfilled old data from appearing in the "recent" chart.
 
-Add two new sections:
-
-### "Activity Badges" section (after "Impact tiers")
-- Explain that every contribution is automatically tagged with an activity badge (🐛 Bug Fix, 🚀 Feature, 🔧 Refactor, etc.)
-- 4-layer priority: Manual > Deterministic rules > AI classification > Source defaults
-- Badges map to value types but are more granular — they show *what kind* of work within each tier
-- Include a subset grid of the most common badges with emoji + label
-
-### "Where Your Impact Comes From" section (after Activity Badges)
-- Explain that VIS now tracks which badge types contributed to your Impact score
-- "If 60% of your impact came from Bug Fixes and only 10% from Features, that's a signal — are you in a stabilization phase, or is new feature work getting stuck?"
-- Clarify this is informational, not a penalty — all badge types contribute equally to the score formula
-
-## Files Summary
+## Files to change
 
 | File | Change |
-|---|---|
-| `supabase/functions/compute-weekly-vis/index.ts` | Fetch activity_badges, compute badge distribution, include in breakdown jsonb |
-| `src/hooks/useWeeklyVIS.ts` | Add `badgeDistribution` to VISBreakdown, compute in estimate path |
-| `src/components/analytics/BadgeImpactBreakdown.tsx` | Create — badge-impact pill/bar visualization |
-| `src/pages/MyAnalytics.tsx` | Add "Where Your Impact Comes From" card |
-| `src/pages/Dashboard.tsx` | Wire badge impact data to MemberBreakdown |
-| `src/pages/VISExplained.tsx` | Add "Activity Badges" and "Impact Sources" sections |
+|------|--------|
+| `src/hooks/useTeamFocus.ts` | Add `mode` param, progress state, paginated fetch, full-mode bypass |
+| `src/components/analytics/FocusAlignment.tsx` | Progress indicator, dual-action refresh button |
+| `src/components/team/MemberBreakdown.tsx` | Fix `item.label` -> `item.title` in color map |
+| `src/components/settings/FocusTab.tsx` | Full-mode reclassify on focus changes, debounced trigger, progress banner |
+| `src/pages/Dashboard.tsx` | Pass mode to refresh handler |
+| `src/pages/Analytics.tsx` | Pass mode to refresh handler |
+
+## Result
+
+After implementation, adding new focus areas will automatically trigger a full reclassification with visible progress. The system scales to any number of focus areas because:
+- The AI prompt already receives all active focus items dynamically
+- The edge function validates `focus_item_id` against the current set
+- Colors are assigned by index, supporting unlimited focus areas
+- Incremental mode keeps daily refreshes fast; full mode is only used when focus areas change
 
