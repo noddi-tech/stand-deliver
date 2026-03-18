@@ -11,7 +11,7 @@ import { useMemberBadgeCounts } from "@/hooks/useMemberBadgeCounts";
 import { type BreakdownPeriod, PERIOD_DAYS } from "@/components/team/MemberBreakdown";
 import { useTeamMomentum } from "@/hooks/useTeamMomentum";
 import { MemberBreakdown } from "@/components/team/MemberBreakdown";
-import { useTeamFocusItems, useContributionClassification, useReclassifyContributions } from "@/hooks/useTeamFocus";
+import { useTeamFocusItems, useContributionClassification, useReclassifyContributions, type ReclassifyMode } from "@/hooks/useTeamFocus";
 import { FocusAlignment } from "@/components/analytics/FocusAlignment";
 import { ActivityBadgeChip } from "@/components/activity/ActivityBadgeChip";
 import { useRealtimeInvalidation } from "@/hooks/useRealtimeInvalidation";
