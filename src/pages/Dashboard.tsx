@@ -12,6 +12,7 @@ import { useTeamMomentum } from "@/hooks/useTeamMomentum";
 import { MemberBreakdown } from "@/components/team/MemberBreakdown";
 import { useTeamFocusItems, useContributionClassification } from "@/hooks/useTeamFocus";
 import { FocusAlignment } from "@/components/analytics/FocusAlignment";
+import { ActivityBadgeChip } from "@/components/activity/ActivityBadgeChip";
 
 import { useTeamSummary } from "@/hooks/useTeamSummary";
 import { useEnrichedTeamMetrics } from "@/hooks/useEnrichedAnalytics";
@@ -367,7 +368,10 @@ export default function Dashboard() {
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{a.title}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium truncate">{a.title}</p>
+                      {a.badgeKey && <ActivityBadgeChip badgeKey={a.badgeKey} />}
+                    </div>
                     <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
                       <span>{a.memberName || "Unknown"}</span>
                       <span>·</span>
