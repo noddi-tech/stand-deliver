@@ -181,8 +181,8 @@ export default function Dashboard() {
           <FocusAlignment
             focusItems={focusItems!}
             classification={classification}
-            classificationLoading={classificationLoading}
-            onRefresh={() => refetchClassification()}
+            classificationLoading={classificationLoading || reclassifyMutation.isPending}
+            onRefresh={handleRefreshClassification}
           />
         </section>
       )}

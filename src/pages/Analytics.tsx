@@ -173,8 +173,8 @@ export default function Analytics() {
       <FocusAlignment
         focusItems={focusItems || []}
         classification={classification}
-        classificationLoading={classificationLoading}
-        onRefresh={() => refetchClassification()}
+        classificationLoading={classificationLoading || reclassifyMutation.isPending}
+        onRefresh={handleRefreshClassification}
       />
 
       {/* Member Breakdown */}
