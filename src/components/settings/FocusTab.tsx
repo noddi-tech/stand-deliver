@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
-import { Target, Plus, Pencil, Archive, Trash2, RotateCcw, X, Loader2 } from "lucide-react";
+import { Target, Plus, Pencil, Archive, Trash2, RotateCcw, X, Loader2, Sparkles, Check } from "lucide-react";
 import { useUserTeam } from "@/hooks/useAnalytics";
 import {
   useAllTeamFocusItems,
@@ -18,6 +18,14 @@ import {
 } from "@/hooks/useTeamFocus";
 import { toast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { supabase } from "@/integrations/supabase/client";
+
+interface AISuggestion {
+  title: string;
+  tags: string;
+  reason: string;
+  priority: "high" | "medium" | "low";
+}
 
 function splitLabels(label: string): string[] {
   return label.split(",").map((t) => t.trim()).filter(Boolean);
@@ -154,6 +162,50 @@ export function FocusTab() {
   const [description, setDescription] = useState("");
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
+
+  // AI suggestions state
+  const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
+  const [aiLoading, setAiLoading] = useState(false);
+
+  const fetchAiSuggestions = async () => {
+    if (!teamId) return;
+    setAiLoading(true);
+    setAiSuggestions([]);
+    try {
+      const { data, error } = await supabase.functions.invoke("ai-recommend-focus", {
+        body: { team_id: teamId },
+      });
+      if (error) throw error;
+      if (data?.error) {
+        toast({ title: data.error, variant: "destructive" });
+        return;
+      }
+      setAiSuggestions(data?.suggestions || []);
+      if (!data?.suggestions?.length) {
+        toast({ title: "No suggestions — not enough recent activity data" });
+      }
+    } catch (err: any) {
+      const msg = err?.message || "Failed to get suggestions";
+      toast({ title: msg, variant: "destructive" });
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const addFromSuggestion = (suggestion: AISuggestion) => {
+    setTitle(suggestion.title);
+    setTags(suggestion.tags.split(",").map(t => t.trim()).filter(Boolean));
+    setDescription("");
+    setStartsAt("");
+    setEndsAt("");
+    setEditingId(null);
+    setShowForm(true);
+    setAiSuggestions(prev => prev.filter(s => s.title !== suggestion.title));
+  };
+
+  const dismissSuggestion = (title: string) => {
+    setAiSuggestions(prev => prev.filter(s => s.title !== title));
+  };
 
   // Debounced full reclassify: triggers 3s after last focus mutation
   const reclassifyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -292,9 +344,15 @@ export function FocusTab() {
               <Target className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
               <p className="text-sm text-muted-foreground mb-3">No focus areas defined yet</p>
               {isLead && (
-                <Button size="sm" onClick={() => setShowForm(true)}>
-                  <Plus className="h-4 w-4 mr-1" /> Add Focus Area
-                </Button>
+                <div className="flex gap-2 justify-center">
+                  <Button size="sm" onClick={() => setShowForm(true)}>
+                    <Plus className="h-4 w-4 mr-1" /> Add Focus Area
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={fetchAiSuggestions} disabled={aiLoading}>
+                    {aiLoading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1" />}
+                    Suggest with AI
+                  </Button>
+                </div>
               )}
             </div>
           )}
@@ -339,9 +397,60 @@ export function FocusTab() {
           })}
 
           {isLead && activeItems.length > 0 && !showForm && (
-            <Button size="sm" variant="outline" onClick={() => setShowForm(true)}>
-              <Plus className="h-4 w-4 mr-1" /> Add Focus Area
-            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => setShowForm(true)}>
+                <Plus className="h-4 w-4 mr-1" /> Add Focus Area
+              </Button>
+              <Button size="sm" variant="outline" onClick={fetchAiSuggestions} disabled={aiLoading}>
+                {aiLoading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1" />}
+                Suggest with AI
+              </Button>
+            </div>
+          )}
+
+          {/* AI Suggestions */}
+          {aiSuggestions.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="gap-1 text-xs">
+                  <Sparkles className="h-3 w-3" />
+                  AI-suggested focus areas
+                </Badge>
+                <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => setAiSuggestions([])}>
+                  Dismiss all
+                </Button>
+              </div>
+              {aiSuggestions.map((suggestion) => {
+                const suggestionTags = suggestion.tags.split(",").map(t => t.trim()).filter(Boolean);
+                const priorityColor = suggestion.priority === "high" ? "text-destructive" : suggestion.priority === "medium" ? "text-primary" : "text-muted-foreground";
+                return (
+                  <div key={suggestion.title} className="p-3 rounded-lg border border-dashed border-primary/30 bg-primary/[0.02] space-y-1.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <p className="text-sm font-medium text-foreground">{suggestion.title}</p>
+                          <Badge variant="outline" className={`text-[10px] ${priorityColor}`}>{suggestion.priority}</Badge>
+                        </div>
+                        <div className="flex gap-1 flex-wrap mb-1">
+                          {suggestionTags.map(t => (
+                            <Badge key={t} variant="secondary" className="text-[10px]">{t}</Badge>
+                          ))}
+                        </div>
+                        <p className="text-xs text-muted-foreground">{suggestion.reason}</p>
+                      </div>
+                      <div className="flex gap-1 shrink-0">
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-primary" onClick={() => addFromSuggestion(suggestion)} title="Add as focus area">
+                          <Check className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => dismissSuggestion(suggestion.title)} title="Dismiss">
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
 
           {showForm && (

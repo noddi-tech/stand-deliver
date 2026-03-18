@@ -98,3 +98,6 @@ verify_jwt = false
 
 [functions.backfill-activity-badges]
 verify_jwt = false
+
+[functions.ai-recommend-focus]
+verify_jwt = false
