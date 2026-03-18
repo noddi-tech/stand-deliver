@@ -4,7 +4,7 @@ import type { MemberStat } from "@/hooks/useTeamSummary";
 
 /** Paginated fetch to bypass Supabase 1000-row default limit */
 async function fetchAllRows<T>(
-  buildQuery: (from: number, to: number) => ReturnType<typeof supabase.from<any>["select"]>,
+  buildQuery: (from: number, to: number) => any,
 ): Promise<T[]> {
   const PAGE = 1000;
   let offset = 0;

@@ -65,15 +65,19 @@ export function useEnrichedTeamMetrics(teamId: string | undefined, periodDays = 
     queryFn: async () => {
       const sinceDate = subDays(new Date(), periodDays).toISOString();
 
-      // Fetch VIS impact scores
-      const { data: visScores } = await supabase
-        .from("impact_classifications")
-        .select("member_id, activity_id, impact_score")
-        .eq("team_id", teamId!)
-        .gte("created_at", thirtyDaysAgo);
+      // Fetch VIS impact scores — paginated
+      const visScores = await fetchAllRows<{ member_id: string; activity_id: string; impact_score: number }>(
+        (from, to) =>
+          supabase
+            .from("impact_classifications")
+            .select("member_id, activity_id, impact_score")
+            .eq("team_id", teamId!)
+            .gte("created_at", sinceDate)
+            .range(from, to),
+      );
 
       const visMap = new Map<string, number>();
-      for (const row of visScores || []) {
+      for (const row of visScores) {
         visMap.set(row.member_id, (visMap.get(row.member_id) || 0) + Number(row.impact_score));
       }
 
@@ -88,15 +92,18 @@ export function useEnrichedTeamMetrics(teamId: string | undefined, periodDays = 
         badgeLookup.set(b.activity_id, b.badge_key);
       }
 
-      // Fetch all external activity
-      const { data: activities } = await supabase
-        .from("external_activity")
-        .select("id, activity_type, title, member_id, occurred_at, metadata, member:team_members!inner(id, user_id, profile:profiles!inner(full_name))")
-        .eq("team_id", teamId!)
-        .eq("source", "github")
-        .gte("occurred_at", thirtyDaysAgo)
-        .order("occurred_at", { ascending: false })
-        .limit(1000);
+      // Fetch all external activity — paginated
+      const activities = await fetchAllRows<any>(
+        (from, to) =>
+          supabase
+            .from("external_activity")
+            .select("id, activity_type, title, member_id, occurred_at, metadata, member:team_members!inner(id, user_id, profile:profiles!inner(full_name))")
+            .eq("team_id", teamId!)
+            .eq("source", "github")
+            .gte("occurred_at", sinceDate)
+            .order("occurred_at", { ascending: false })
+            .range(from, to),
+      );
 
       const items = activities || [];
 
