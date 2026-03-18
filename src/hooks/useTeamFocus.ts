@@ -18,6 +18,7 @@ export interface ActivityClassification {
   externalId: string;
   focusLabel: string;
   rationale: string;
+  memberId: string;
 }
 
 export interface MemberValueBreakdown {
@@ -256,7 +257,7 @@ export function useContributionClassification(teamId: string | undefined, enable
 
       const focusLabelMap = new Map<string, string>();
       for (const f of (focusItems || []) as any[]) {
-        focusLabelMap.set(f.id, f.label);
+        focusLabelMap.set(f.id, f.title);
       }
 
       // Build per-member breakdowns
@@ -271,6 +272,7 @@ export function useContributionClassification(teamId: string | undefined, enable
           externalId: c.activity_id,
           focusLabel: label,
           rationale: c.reasoning || "",
+          memberId: c.member_id,
         });
 
         if (!memberTotals.has(c.member_id)) {
