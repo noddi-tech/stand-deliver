@@ -201,7 +201,7 @@ export default function Dashboard() {
       {/* Member Breakdown (AI-powered) */}
       <section>
         <MemberBreakdown
-          memberStats={summaryData?.memberStats || []}
+          memberStats={memberStats || []}
           highlights={summaryData?.analysis?.memberHighlights}
           teamBadges={teamBadges}
           badgeLookup={badgeLookup}
@@ -213,7 +213,7 @@ export default function Dashboard() {
           badgeImpactPct={badgeData?.impactPct}
           period={breakdownPeriod}
           onPeriodChange={setBreakdownPeriod}
-          loading={summaryLoading}
+          loading={memberStatsLoading}
         />
       </section>
 

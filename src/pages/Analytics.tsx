@@ -187,7 +187,7 @@ export default function Analytics() {
 
       {/* Member Breakdown */}
       <MemberBreakdown
-        memberStats={memberStats}
+        memberStats={memberStats || []}
         highlights={analysis?.memberHighlights}
         teamBadges={teamBadges}
         badgeLookup={badgeLookup}
@@ -197,7 +197,7 @@ export default function Analytics() {
         badgeCounts={badgeData?.counts}
         badgeCountPct={badgeData?.countPct}
         badgeImpactPct={badgeData?.impactPct}
-        loading={summaryLoading}
+        loading={memberStatsLoading}
         period={breakdownPeriod}
         onPeriodChange={setBreakdownPeriod}
       />
