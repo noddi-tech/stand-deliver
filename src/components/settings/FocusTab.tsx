@@ -344,9 +344,15 @@ export function FocusTab() {
               <Target className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
               <p className="text-sm text-muted-foreground mb-3">No focus areas defined yet</p>
               {isLead && (
-                <Button size="sm" onClick={() => setShowForm(true)}>
-                  <Plus className="h-4 w-4 mr-1" /> Add Focus Area
-                </Button>
+                <div className="flex gap-2 justify-center">
+                  <Button size="sm" onClick={() => setShowForm(true)}>
+                    <Plus className="h-4 w-4 mr-1" /> Add Focus Area
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={fetchAiSuggestions} disabled={aiLoading}>
+                    {aiLoading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1" />}
+                    Suggest with AI
+                  </Button>
+                </div>
               )}
             </div>
           )}
