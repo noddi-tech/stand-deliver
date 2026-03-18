@@ -33,7 +33,7 @@ interface FocusAlignmentProps {
   periodLabel?: string;
 }
 
-export function FocusAlignment({ focusItems, classification, classificationLoading, onRefresh, progress, compact }: FocusAlignmentProps) {
+export function FocusAlignment({ focusItems, classification, classificationLoading, onRefresh, progress, compact, periodLabel }: FocusAlignmentProps) {
   const navigate = useNavigate();
   const isRunning = progress?.status === "running";
 
