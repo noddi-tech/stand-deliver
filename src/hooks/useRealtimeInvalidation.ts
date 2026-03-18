@@ -26,6 +26,7 @@ export function useRealtimeInvalidation(teamId: string | undefined) {
           qc.invalidateQueries({ queryKey: ["recent-activity", teamId] });
           qc.invalidateQueries({ queryKey: ["contribution-classification", teamId] });
           qc.invalidateQueries({ queryKey: ["team-metrics", teamId] });
+          qc.invalidateQueries({ queryKey: ["team-member-stats", teamId] });
         }
       )
       .on(
