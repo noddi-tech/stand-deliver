@@ -165,6 +165,13 @@ CLASSIFICATION RULES:
   maps to a focus item, output "none". False "direct" is worse than missed
   "direct".
 
+- Focus alignment means the WORK ITSELF advances the focus objective,
+  not merely that it involves the same customer, partner, or project.
+  Example: If the focus is "EonTyre API integration for Trønderdekk",
+  then building API sync endpoints = "direct", but setting up payment
+  provider accounts for Trønderdekk = "none" (general onboarding, not
+  API integration work). Match on WHAT is being done, not WHO it's for.
+
 Classify each item by its index number.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
