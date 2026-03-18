@@ -206,6 +206,7 @@ export function FocusTab() {
   const handleRestore = async (id: string) => {
     await updateMutation.mutateAsync({ id, is_active: true });
     toast({ title: "Focus item restored" });
+    triggerReclassify();
   };
 
   const handleDelete = async (id: string) => {
