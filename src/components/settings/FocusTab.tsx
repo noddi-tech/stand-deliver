@@ -1,11 +1,12 @@
-import { useState, useRef, useImperativeHandle, forwardRef, KeyboardEvent } from "react";
+import { useState, useRef, useImperativeHandle, forwardRef, KeyboardEvent, useCallback, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Target, Plus, Pencil, Archive, Trash2, RotateCcw, X } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { Target, Plus, Pencil, Archive, Trash2, RotateCcw, X, Loader2 } from "lucide-react";
 import { useUserTeam } from "@/hooks/useAnalytics";
 import {
   useAllTeamFocusItems,
@@ -154,6 +155,34 @@ export function FocusTab() {
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
 
+  // Debounced full reclassify: triggers 3s after last focus mutation
+  const reclassifyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scheduleReclassify = useCallback(() => {
+    if (reclassifyTimerRef.current) clearTimeout(reclassifyTimerRef.current);
+    reclassifyTimerRef.current = setTimeout(() => {
+      reclassifyMutation.mutate({ mode: "full" }, {
+        onSuccess: (result) => {
+          if (result.classified > 0) {
+            toast({ title: `Re-classified ${result.classified} activities against updated focus areas` });
+          }
+          if ((result as any).degraded) {
+            toast({ title: (result as any).degraded.message, variant: "destructive" });
+          }
+        },
+        onError: (err: Error) => {
+          toast({ title: err.message || "Re-classification failed", variant: "destructive" });
+        },
+      });
+    }, 3000);
+  }, [reclassifyMutation]);
+
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
+      if (reclassifyTimerRef.current) clearTimeout(reclassifyTimerRef.current);
+    };
+  }, []);
+
   const activeItems = items?.filter((i) => i.is_active) || [];
   const archivedItems = items?.filter((i) => !i.is_active) || [];
   const existingLabels = [...new Set((items || []).flatMap((i) => splitLabels(i.label)))];
@@ -166,19 +195,6 @@ export function FocusTab() {
     setEndsAt("");
     setShowForm(false);
     setEditingId(null);
-  };
-
-  const triggerReclassify = () => {
-    reclassifyMutation.mutate(undefined, {
-      onSuccess: (result) => {
-        if (result.classified > 0) {
-          toast({ title: `Re-classified ${result.classified} activities against updated focus areas` });
-        }
-      },
-      onError: (err: Error) => {
-        toast({ title: err.message || "Re-classification failed", variant: "destructive" });
-      },
-    });
   };
 
   const handleSubmit = async () => {
@@ -200,7 +216,7 @@ export function FocusTab() {
         toast({ title: "Focus item added" });
       }
       resetForm();
-      triggerReclassify();
+      scheduleReclassify();
     } catch {
       toast({ title: "Error saving focus item", variant: "destructive" });
     }
@@ -224,7 +240,7 @@ export function FocusTab() {
   const handleRestore = async (id: string) => {
     await updateMutation.mutateAsync({ id, is_active: true });
     toast({ title: "Focus item restored" });
-    triggerReclassify();
+    scheduleReclassify();
   };
 
   const handleDelete = async (id: string) => {
@@ -258,6 +274,19 @@ export function FocusTab() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Reclassification progress banner */}
+          {reclassifyMutation.progress.status === "running" && (
+            <div className="rounded-lg border border-primary/20 bg-primary/[0.02] p-3 space-y-1.5">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                  Re-classifying activities against updated focus areas…
+                </span>
+                <span>{reclassifyMutation.progress.processed}/{reclassifyMutation.progress.total}</span>
+              </div>
+              <Progress value={reclassifyMutation.progress.total > 0 ? (reclassifyMutation.progress.processed / reclassifyMutation.progress.total) * 100 : 0} className="h-1.5" />
+            </div>
+          )}
           {activeItems.length === 0 && !showForm && (
             <div className="text-center py-8 border border-dashed border-border rounded-lg">
               <Target className="h-8 w-8 text-muted-foreground mx-auto mb-2" />

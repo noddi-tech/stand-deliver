@@ -102,7 +102,7 @@ export function MemberBreakdown({
   ];
   const focusColorMap: Record<string, string> = {};
   (focusItems || []).forEach((item, i) => {
-    focusColorMap[item.label] = FOCUS_COLORS[i % FOCUS_COLORS.length];
+    focusColorMap[item.title] = FOCUS_COLORS[i % FOCUS_COLORS.length];
   });
   focusColorMap["Unaligned"] = "hsl(215, 16%, 80%)";
 

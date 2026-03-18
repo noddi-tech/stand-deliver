@@ -19,7 +19,7 @@ import { useMemberBadgeCounts } from "@/hooks/useMemberBadgeCounts";
 import { type BreakdownPeriod, PERIOD_DAYS } from "@/components/team/MemberBreakdown";
 import { useTeamMomentum } from "@/hooks/useTeamMomentum";
 import { MemberBreakdown } from "@/components/team/MemberBreakdown";
-import { useTeamFocusItems, useContributionClassification, useReclassifyContributions } from "@/hooks/useTeamFocus";
+import { useTeamFocusItems, useContributionClassification, useReclassifyContributions, type ReclassifyMode } from "@/hooks/useTeamFocus";
 import { FocusAlignment } from "@/components/analytics/FocusAlignment";
 
 function TrendIcon({ direction, inverted }: { direction?: string; inverted?: boolean }) {
@@ -43,8 +43,8 @@ export default function Analytics() {
   const { data: focusItems } = useTeamFocusItems(teamId);
   const { data: classification, isLoading: classificationLoading, refetch: refetchClassification } = useContributionClassification(teamId, (focusItems?.length ?? 0) > 0);
   const reclassifyMutation = useReclassifyContributions(teamId);
-  const handleRefreshClassification = () => {
-    reclassifyMutation.mutate(undefined, {
+  const handleRefreshClassification = (mode: ReclassifyMode = "incremental") => {
+    reclassifyMutation.mutate({ mode }, {
       onSuccess: () => refetchClassification(),
       onError: (err: Error) => {
         toast({ title: err.message || "Re-classification failed", variant: "destructive" });
@@ -181,6 +181,7 @@ export default function Analytics() {
         classification={classification}
         classificationLoading={classificationLoading || reclassifyMutation.isPending}
         onRefresh={handleRefreshClassification}
+        progress={reclassifyMutation.progress}
       />
 
       {/* Member Breakdown */}

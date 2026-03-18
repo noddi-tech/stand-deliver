@@ -1,3 +1,4 @@
+import { useState, useCallback, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -32,6 +33,15 @@ export interface ClassificationResult {
   classifications: ActivityClassification[];
   generatedAt: string;
 }
+
+export interface ReclassifyProgress {
+  processed: number;
+  total: number;
+  classified: number;
+  status: "idle" | "running" | "done" | "error";
+}
+
+export type ReclassifyMode = "incremental" | "full";
 
 export function useTeamFocusItems(teamId: string | undefined) {
   return useQuery({
@@ -121,11 +131,20 @@ export function useDeleteFocusItem(teamId: string | undefined) {
   });
 }
 
+
 export function useReclassifyContributions(teamId: string | undefined) {
   const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async () => {
+  const [progress, setProgress] = useState<ReclassifyProgress>({
+    processed: 0, total: 0, classified: 0, status: "idle",
+  });
+  const abortRef = useRef(false);
+
+  const mutation = useMutation({
+    mutationFn: async (opts?: { mode?: ReclassifyMode }) => {
+      const mode = opts?.mode ?? "incremental";
       if (!teamId) throw new Error("No team");
+      abortRef.current = false;
+
       const fourteenDaysAgo = new Date();
       fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
       const since = fourteenDaysAgo.toISOString();
@@ -133,26 +152,31 @@ export function useReclassifyContributions(teamId: string | undefined) {
       const parseDegradedMessage = (message: string) => {
         const normalized = message.toLowerCase();
         if (normalized.includes("credit")) {
-          return {
-            reason: "credits_exhausted" as const,
-            message: "AI credits exhausted. Add credits in Settings → Workspace → Usage.",
-          };
+          return { reason: "credits_exhausted" as const, message: "AI credits exhausted. Add credits in Settings → Workspace → Usage." };
         }
         if (normalized.includes("rate")) {
-          return {
-            reason: "rate_limited" as const,
-            message: "AI rate limit reached. Please try again in a minute.",
-          };
+          return { reason: "rate_limited" as const, message: "AI rate limit reached. Please try again in a minute." };
         }
         return null;
       };
 
-      // Fetch recent external_activity
-      const { data: extData } = await supabase
-        .from("external_activity")
-        .select("id, source, activity_type, title, member_id, metadata")
-        .eq("team_id", teamId)
-        .gte("occurred_at", since);
+      // Fetch recent external_activity with pagination
+      const extData: any[] = [];
+      let extFrom = 0;
+      const PAGE = 1000;
+      while (true) {
+        const { data, error } = await supabase
+          .from("external_activity")
+          .select("id, source, activity_type, title, member_id, metadata")
+          .eq("team_id", teamId)
+          .gte("occurred_at", since)
+          .range(extFrom, extFrom + PAGE - 1);
+        if (error) throw error;
+        const rows = data || [];
+        extData.push(...rows);
+        if (rows.length < PAGE) break;
+        extFrom += PAGE;
+      }
 
       // Fetch recent commitments
       const { data: commitData } = await supabase
@@ -172,7 +196,7 @@ export function useReclassifyContributions(teamId: string | undefined) {
         member_id: string;
       }> = [];
 
-      for (const e of extData || []) {
+      for (const e of extData) {
         items.push({
           id: e.id,
           source_type: "external_activity",
@@ -193,29 +217,47 @@ export function useReclassifyContributions(teamId: string | undefined) {
         });
       }
 
-      if (items.length === 0) return { classified: 0 };
+      if (items.length === 0) {
+        setProgress({ processed: 0, total: 0, classified: 0, status: "done" });
+        return { classified: 0 };
+      }
 
-      // Filter out already-classified items to avoid re-processing
-      const allIds = items.map((it) => it.id);
-      const { data: existingClassifications } = await supabase
-        .from("impact_classifications" as any)
-        .select("activity_id")
-        .eq("team_id", teamId)
-        .in("activity_id", allIds as any);
+      let itemsToProcess = items;
 
-      const classifiedIds = new Set(
-        ((existingClassifications || []) as any[]).map((c: any) => c.activity_id)
-      );
-      const unclassifiedItems = items.filter((it) => !classifiedIds.has(it.id));
+      if (mode === "incremental") {
+        // Filter out already-classified items
+        const allIds = items.map((it) => it.id);
+        // Chunk IDs to avoid too-large IN clauses
+        const classifiedIds = new Set<string>();
+        for (let i = 0; i < allIds.length; i += 500) {
+          const chunk = allIds.slice(i, i + 500);
+          const { data: existingClassifications } = await supabase
+            .from("impact_classifications" as any)
+            .select("activity_id")
+            .eq("team_id", teamId)
+            .in("activity_id", chunk as any);
+          for (const c of (existingClassifications || []) as any[]) {
+            classifiedIds.add(c.activity_id);
+          }
+        }
+        itemsToProcess = items.filter((it) => !classifiedIds.has(it.id));
 
-      if (unclassifiedItems.length === 0) return { classified: 0, skipped: items.length };
+        if (itemsToProcess.length === 0) {
+          setProgress({ processed: 0, total: 0, classified: 0, status: "done" });
+          return { classified: 0, skipped: items.length };
+        }
+      }
 
-      // Send in batches of 20, stop gracefully on credit/rate limits
+      // Initialize progress
+      setProgress({ processed: 0, total: itemsToProcess.length, classified: 0, status: "running" });
+
+      // Send in batches of 20
       let totalClassified = 0;
       let degraded: { reason: "credits_exhausted" | "rate_limited"; message: string } | null = null;
 
-      for (let i = 0; i < unclassifiedItems.length; i += 20) {
-        const batch = unclassifiedItems.slice(i, i + 20);
+      for (let i = 0; i < itemsToProcess.length; i += 20) {
+        if (abortRef.current) break;
+        const batch = itemsToProcess.slice(i, i + 20);
         const { data, error } = await supabase.functions.invoke("ai-classify-contributions", {
           body: { team_id: teamId, items: batch },
         });
@@ -232,6 +274,7 @@ export function useReclassifyContributions(teamId: string | undefined) {
             break;
           }
           console.error("Reclassify batch error:", error);
+          setProgress((p) => ({ ...p, status: "error" }));
           throw error;
         }
 
@@ -251,11 +294,20 @@ export function useReclassifyContributions(teamId: string | undefined) {
             degraded = parsed;
             break;
           }
+          setProgress((p) => ({ ...p, status: "error" }));
           throw new Error(data.error);
         }
 
-        totalClassified += Number(data?.classified || 0);
+        const batchClassified = Number(data?.classified || 0);
+        totalClassified += batchClassified;
+        setProgress((p) => ({
+          ...p,
+          processed: Math.min(p.processed + batch.length, p.total),
+          classified: p.classified + batchClassified,
+        }));
       }
+
+      setProgress((p) => ({ ...p, status: "done" }));
 
       return degraded
         ? { classified: totalClassified, degraded }
@@ -265,26 +317,60 @@ export function useReclassifyContributions(teamId: string | undefined) {
       qc.invalidateQueries({ queryKey: ["contribution-classification", teamId] });
     },
   });
+
+  const resetProgress = useCallback(() => {
+    setProgress({ processed: 0, total: 0, classified: 0, status: "idle" });
+  }, []);
+
+  return { ...mutation, progress, resetProgress };
 }
 
 export function useContributionClassification(teamId: string | undefined, enabled = true) {
   return useQuery({
     queryKey: ["contribution-classification", teamId],
     enabled: !!teamId && enabled,
-    staleTime: 60 * 1000, // 60s — reads stored data, cheap query
+    staleTime: 60 * 1000,
     queryFn: async () => {
-      // Fetch recent classifications from the table (last 7 days)
+      // First fetch recent activity IDs (by occurred_at) to use as the recency filter
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      const sinceISO = sevenDaysAgo.toISOString();
 
-      const { data: classifications, error } = await supabase
-        .from("impact_classifications" as any)
-        .select("activity_id, member_id, value_type, focus_alignment, focus_item_id, reasoning, impact_tier")
+      // Fetch recent external_activity IDs
+      const { data: recentExt } = await supabase
+        .from("external_activity")
+        .select("id")
         .eq("team_id", teamId!)
-        .gte("created_at", sevenDaysAgo.toISOString());
+        .gte("occurred_at", sinceISO);
 
-      if (error) throw error;
-      const items = (classifications || []) as any[];
+      // Fetch recent commitment IDs
+      const { data: recentCom } = await supabase
+        .from("commitments")
+        .select("id")
+        .eq("team_id", teamId!)
+        .gte("created_at", sinceISO);
+
+      const recentIds = [
+        ...((recentExt || []).map((r) => r.id)),
+        ...((recentCom || []).map((r) => r.id)),
+      ];
+
+      if (recentIds.length === 0) {
+        return { memberBreakdowns: [], classifications: [], generatedAt: new Date().toISOString() } as ClassificationResult;
+      }
+
+      // Fetch classifications for those recent activity IDs (chunked)
+      const allClassifications: any[] = [];
+      for (let i = 0; i < recentIds.length; i += 500) {
+        const chunk = recentIds.slice(i, i + 500);
+        const { data: classifications, error } = await supabase
+          .from("impact_classifications" as any)
+          .select("activity_id, member_id, value_type, focus_alignment, focus_item_id, reasoning, impact_tier")
+          .eq("team_id", teamId!)
+          .in("activity_id", chunk as any);
+        if (error) throw error;
+        allClassifications.push(...((classifications || []) as any[]));
+      }
 
       // Fetch team members to map member_id -> name
       const { data: members } = await supabase
@@ -298,7 +384,7 @@ export function useContributionClassification(teamId: string | undefined, enable
         memberNameMap.set(m.id, m.profile?.full_name || "Unknown");
       }
 
-      // Fetch focus items to map focus_item_id -> label
+      // Fetch focus items to map focus_item_id -> title
       const { data: focusItems } = await supabase
         .from("team_focus" as any)
         .select("id, title")
@@ -314,7 +400,7 @@ export function useContributionClassification(teamId: string | undefined, enable
       const memberTotals = new Map<string, Map<string, number>>();
       const activityClassifications: ActivityClassification[] = [];
 
-      for (const c of items) {
+      for (const c of allClassifications) {
         const label = c.focus_item_id && focusLabelMap.has(c.focus_item_id)
           ? focusLabelMap.get(c.focus_item_id)!
           : "Unaligned";

@@ -1,11 +1,12 @@
-import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Target, RefreshCw, Loader2, Settings } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Target, RefreshCw, Loader2, Settings, ChevronDown, RotateCcw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import type { ClassificationResult, TeamFocusItem } from "@/hooks/useTeamFocus";
+import type { ClassificationResult, TeamFocusItem, ReclassifyProgress, ReclassifyMode } from "@/hooks/useTeamFocus";
 
 // Deterministic color palette for focus labels
 const FOCUS_COLORS = [
@@ -26,12 +27,14 @@ interface FocusAlignmentProps {
   focusItems: TeamFocusItem[];
   classification: ClassificationResult | undefined;
   classificationLoading: boolean;
-  onRefresh?: () => void;
+  onRefresh?: (mode: ReclassifyMode) => void;
+  progress?: ReclassifyProgress;
   compact?: boolean;
 }
 
-export function FocusAlignment({ focusItems, classification, classificationLoading, onRefresh, compact }: FocusAlignmentProps) {
+export function FocusAlignment({ focusItems, classification, classificationLoading, onRefresh, progress, compact }: FocusAlignmentProps) {
   const navigate = useNavigate();
+  const isRunning = progress?.status === "running";
 
   // Build color map from focus items
   const colorMap: Record<string, string> = {};
@@ -61,7 +64,7 @@ export function FocusAlignment({ focusItems, classification, classificationLoadi
   }
 
   // Only show skeleton on initial load when there's no data yet
-  if (classificationLoading && !classification) {
+  if (classificationLoading && !classification && !isRunning) {
     return (
       <Card>
         <CardHeader>
@@ -79,7 +82,7 @@ export function FocusAlignment({ focusItems, classification, classificationLoadi
     );
   }
 
-  if (!classification) {
+  if (!classification && !isRunning) {
     return (
       <Card>
         <CardHeader>
@@ -93,7 +96,7 @@ export function FocusAlignment({ focusItems, classification, classificationLoadi
             No classification data yet.
           </p>
           {onRefresh && (
-            <Button size="sm" variant="outline" onClick={onRefresh}>
+            <Button size="sm" variant="outline" onClick={() => onRefresh("incremental")}>
               <RefreshCw className="h-4 w-4 mr-1" /> Generate Classification
             </Button>
           )}
@@ -102,7 +105,7 @@ export function FocusAlignment({ focusItems, classification, classificationLoadi
     );
   }
 
-  const { memberBreakdowns } = classification;
+  const { memberBreakdowns } = classification || { memberBreakdowns: [] };
 
   return (
     <Card>
@@ -113,9 +116,34 @@ export function FocusAlignment({ focusItems, classification, classificationLoadi
             Focus Alignment
           </CardTitle>
           {onRefresh && (
-            <Button variant="ghost" size="sm" onClick={onRefresh} disabled={classificationLoading} className="h-7 text-xs">
-              {classificationLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-            </Button>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onRefresh("incremental")}
+                disabled={classificationLoading || isRunning}
+                className="h-7 text-xs"
+              >
+                {(classificationLoading || isRunning) ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-7 w-5 p-0" disabled={classificationLoading || isRunning}>
+                    <ChevronDown className="h-3 w-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => onRefresh("incremental")}>
+                    <RefreshCw className="h-3.5 w-3.5 mr-2" />
+                    Refresh new items
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onRefresh("full")}>
+                    <RotateCcw className="h-3.5 w-3.5 mr-2" />
+                    Rebuild all classifications
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           )}
         </div>
         {!compact && (
@@ -125,33 +153,47 @@ export function FocusAlignment({ focusItems, classification, classificationLoadi
         )}
       </CardHeader>
       <CardContent className="space-y-3">
+        {/* Progress indicator */}
+        {isRunning && progress && (
+          <div className="space-y-1.5 pb-1">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Classifying activities…
+              </span>
+              <span>{progress.processed}/{progress.total}</span>
+            </div>
+            <Progress value={progress.total > 0 ? (progress.processed / progress.total) * 100 : 0} className="h-1.5" />
+          </div>
+        )}
+
         <TooltipProvider>
           {memberBreakdowns.map((mb) => {
-            const entries = Object.entries(mb.breakdown).filter(([, v]) => v > 0);
+            const entries = Object.entries(mb.breakdown).filter(([, v]) => (v as number) > 0);
             return (
               <div key={mb.memberId} className="space-y-1">
                 <p className="text-xs font-medium text-foreground">{mb.memberName}</p>
                 <div className="flex h-5 w-full rounded-full overflow-hidden bg-muted">
                   {entries.map(([lbl, pct]) => {
+                    const pctNum = pct as number;
                     const color = colorMap[lbl] || UNALIGNED_COLOR;
-                    // Find rationales for this member+label
-                    const rationales = classification.classifications
+                    const rationales = classification?.classifications
                       .filter((c) => c.focusLabel === lbl && c.memberId === mb.memberId)
-                      .slice(0, 3);
+                      .slice(0, 3) || [];
                     return (
                       <Tooltip key={lbl}>
                         <TooltipTrigger asChild>
                           <div
                             className="h-full transition-all cursor-default"
                             style={{
-                              width: `${pct}%`,
+                              width: `${pctNum}%`,
                               backgroundColor: color,
-                              minWidth: pct > 0 ? "4px" : "0",
+                              minWidth: pctNum > 0 ? "4px" : "0",
                             }}
                           />
                         </TooltipTrigger>
                         <TooltipContent side="top" className="max-w-xs">
-                          <p className="font-medium text-xs">{lbl}: {pct}%</p>
+                          <p className="font-medium text-xs">{lbl}: {pctNum}%</p>
                           {rationales.length > 0 && (
                             <ul className="mt-1 space-y-0.5">
                               {rationales.map((r, i) => (
