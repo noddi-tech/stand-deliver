@@ -44,7 +44,7 @@ export default function Analytics() {
   const { data: badgeData } = useMemberBadgeCounts(teamId, PERIOD_DAYS[breakdownPeriod]);
   const { data: memberStats, isLoading: memberStatsLoading } = useTeamMemberStats(teamId, PERIOD_DAYS[breakdownPeriod]);
   const { data: focusItems } = useTeamFocusItems(teamId);
-  const { data: classification, isLoading: classificationLoading, refetch: refetchClassification } = useContributionClassification(teamId, (focusItems?.length ?? 0) > 0);
+  const { data: classification, isLoading: classificationLoading, refetch: refetchClassification } = useContributionClassification(teamId, (focusItems?.length ?? 0) > 0, PERIOD_DAYS[breakdownPeriod]);
   const reclassifyMutation = useReclassifyContributions(teamId);
   const handleRefreshClassification = (mode: ReclassifyMode = "incremental") => {
     reclassifyMutation.mutate({ mode }, {
