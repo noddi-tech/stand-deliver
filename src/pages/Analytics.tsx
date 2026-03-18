@@ -13,6 +13,7 @@ import BlockerHeatmap from "@/components/analytics/BlockerHeatmap";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useUserTeam, useAnalyticsMetrics } from "@/hooks/useAnalytics";
 import { useTeamSummary } from "@/hooks/useTeamSummary";
+import { useTeamMemberStats } from "@/hooks/useTeamMemberStats";
 import { useEnrichedTeamMetrics } from "@/hooks/useEnrichedAnalytics";
 import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
 import { useMemberBadgeCounts } from "@/hooks/useMemberBadgeCounts";
