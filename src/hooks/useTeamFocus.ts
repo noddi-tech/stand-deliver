@@ -177,15 +177,35 @@ export function useReclassifyContributions(teamId: string | undefined) {
 
       if (items.length === 0) return { classified: 0 };
 
-      // Send in batches of 20
+      // Send in batches of 20, abort on credit/rate errors
       let totalClassified = 0;
       for (let i = 0; i < items.length; i += 20) {
         const batch = items.slice(i, i + 20);
         const { data, error } = await supabase.functions.invoke("ai-classify-contributions", {
           body: { team_id: teamId, items: batch },
         });
-        if (error) console.error("Reclassify batch error:", error);
-        else totalClassified += data?.classified || 0;
+        if (error) {
+          // Check for 402/429 returned as FunctionsHttpError
+          const status = (error as any)?.context?.status;
+          if (status === 402) {
+            throw new Error("AI credits exhausted. Please add credits in Settings → Workspace → Usage.");
+          }
+          if (status === 429) {
+            throw new Error("AI rate limit reached. Please try again in a minute.");
+          }
+          console.error("Reclassify batch error:", error);
+        } else {
+          // The edge function may return an error object in the body for 402/429
+          if (data?.error) {
+            if (data.error.includes("credits")) {
+              throw new Error("AI credits exhausted. Please add credits in Settings → Workspace → Usage.");
+            }
+            if (data.error.includes("Rate")) {
+              throw new Error("AI rate limit reached. Please try again in a minute.");
+            }
+          }
+          totalClassified += data?.classified || 0;
+        }
       }
 
       return { classified: totalClassified };
