@@ -195,12 +195,27 @@ export function useReclassifyContributions(teamId: string | undefined) {
 
       if (items.length === 0) return { classified: 0 };
 
+      // Filter out already-classified items to avoid re-processing
+      const allIds = items.map((it) => it.id);
+      const { data: existingClassifications } = await supabase
+        .from("impact_classifications" as any)
+        .select("activity_id")
+        .eq("team_id", teamId)
+        .in("activity_id", allIds as any);
+
+      const classifiedIds = new Set(
+        ((existingClassifications || []) as any[]).map((c: any) => c.activity_id)
+      );
+      const unclassifiedItems = items.filter((it) => !classifiedIds.has(it.id));
+
+      if (unclassifiedItems.length === 0) return { classified: 0, skipped: items.length };
+
       // Send in batches of 20, stop gracefully on credit/rate limits
       let totalClassified = 0;
       let degraded: { reason: "credits_exhausted" | "rate_limited"; message: string } | null = null;
 
-      for (let i = 0; i < items.length; i += 20) {
-        const batch = items.slice(i, i + 20);
+      for (let i = 0; i < unclassifiedItems.length; i += 20) {
+        const batch = unclassifiedItems.slice(i, i + 20);
         const { data, error } = await supabase.functions.invoke("ai-classify-contributions", {
           body: { team_id: teamId, items: batch },
         });
