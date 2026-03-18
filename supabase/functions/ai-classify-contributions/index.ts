@@ -42,7 +42,15 @@ Deno.serve(async (req) => {
       .eq("is_active", true);
 
     const focusContext = (focusItems && focusItems.length > 0)
-      ? focusItems.map((f: any) => `- [${f.id}] "${f.title}" (label: ${f.label})${f.description ? ` — ${f.description}` : ""}`).join("\n")
+      ? focusItems.map((f: any) => {
+          let line = `- [${f.id}] "${f.title}" (label: ${f.label})`;
+          if (f.description) {
+            line += `\n  Objective: ${f.title}`;
+            line += `\n  Details: ${f.description}`;
+            line += `\n  → Only classify as "direct" if the work itself advances this objective, not just because it involves the same customer/partner.`;
+          }
+          return line;
+        }).join("\n")
       : "No focus areas defined. Classify all items as focus_alignment: 'none'.";
 
     const focusIds = (focusItems || []).map((f: any) => f.id);
@@ -156,6 +164,13 @@ CLASSIFICATION RULES:
 - Do NOT hallucinate focus alignment. If you're not confident a contribution
   maps to a focus item, output "none". False "direct" is worse than missed
   "direct".
+
+- Focus alignment means the WORK ITSELF advances the focus objective,
+  not merely that it involves the same customer, partner, or project.
+  Example: If the focus is "EonTyre API integration for Trønderdekk",
+  then building API sync endpoints = "direct", but setting up payment
+  provider accounts for Trønderdekk = "none" (general onboarding, not
+  API integration work). Match on WHAT is being done, not WHO it's for.
 
 Classify each item by its index number.`;
 
