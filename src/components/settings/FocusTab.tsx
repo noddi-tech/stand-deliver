@@ -1,4 +1,4 @@
-import { useState, useRef, KeyboardEvent } from "react";
+import { useState, useRef, useImperativeHandle, forwardRef, KeyboardEvent } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,17 +36,30 @@ function isPastEnd(item: TeamFocusItem) {
   return new Date(item.ends_at) < new Date();
 }
 
-function TagInput({
-  tags,
-  setTags,
-  suggestions,
-}: {
+export interface TagInputHandle {
+  flush: () => string[];
+}
+
+const TagInput = forwardRef<TagInputHandle, {
   tags: string[];
   setTags: (t: string[]) => void;
   suggestions: string[];
-}) {
+}>(function TagInput({ tags, setTags, suggestions }, ref) {
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useImperativeHandle(ref, () => ({
+    flush: () => {
+      const trimmed = input.trim();
+      if (trimmed && !tags.includes(trimmed)) {
+        const next = [...tags, trimmed];
+        setTags(next);
+        setInput("");
+        return next;
+      }
+      return tags;
+    },
+  }));
 
   const addTag = (raw: string) => {
     const tag = raw.trim();
@@ -120,7 +133,7 @@ function TagInput({
       )}
     </div>
   );
-}
+});
 
 export function FocusTab() {
   const { data: team } = useUserTeam();
@@ -132,6 +145,7 @@ export function FocusTab() {
   const deleteMutation = useDeleteFocusItem(teamId);
   const reclassifyMutation = useReclassifyContributions(teamId);
 
+  const tagInputRef = useRef<TagInputHandle>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -165,10 +179,11 @@ export function FocusTab() {
   };
 
   const handleSubmit = async () => {
-    if (!title.trim() || tags.length === 0) return;
+    const finalTags = tagInputRef.current?.flush() ?? tags;
+    if (!title.trim() || finalTags.length === 0) return;
     const payload = {
       title,
-      label: tags.join(", "),
+      label: finalTags.join(", "),
       description: description || undefined,
       starts_at: startsAt ? new Date(startsAt).toISOString() : null,
       ends_at: endsAt ? new Date(endsAt).toISOString() : null,
@@ -305,7 +320,7 @@ export function FocusTab() {
                 onChange={(e) => setTitle(e.target.value)}
                 className="text-sm"
               />
-              <TagInput tags={tags} setTags={setTags} suggestions={existingLabels} />
+              <TagInput ref={tagInputRef} tags={tags} setTags={setTags} suggestions={existingLabels} />
               <Textarea
                 placeholder="Optional description..."
                 value={description}
