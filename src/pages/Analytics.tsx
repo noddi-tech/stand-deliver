@@ -13,6 +13,7 @@ import BlockerHeatmap from "@/components/analytics/BlockerHeatmap";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useUserTeam, useAnalyticsMetrics } from "@/hooks/useAnalytics";
 import { useTeamSummary } from "@/hooks/useTeamSummary";
+import { useTeamMemberStats } from "@/hooks/useTeamMemberStats";
 import { useEnrichedTeamMetrics } from "@/hooks/useEnrichedAnalytics";
 import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
 import { useMemberBadgeCounts } from "@/hooks/useMemberBadgeCounts";
@@ -40,6 +41,7 @@ export default function Analytics() {
   const badgeLookup = useBadgeLookup();
   const [breakdownPeriod, setBreakdownPeriod] = useState<BreakdownPeriod>("week");
   const { data: badgeData } = useMemberBadgeCounts(teamId, PERIOD_DAYS[breakdownPeriod]);
+  const { data: memberStats, isLoading: memberStatsLoading } = useTeamMemberStats(teamId, PERIOD_DAYS[breakdownPeriod]);
   const { data: focusItems } = useTeamFocusItems(teamId);
   const { data: classification, isLoading: classificationLoading, refetch: refetchClassification } = useContributionClassification(teamId, (focusItems?.length ?? 0) > 0);
   const reclassifyMutation = useReclassifyContributions(teamId);
@@ -54,7 +56,6 @@ export default function Analytics() {
   const loading = teamLoading || isLoading;
 
   const analysis = summaryData?.analysis;
-  const memberStats = summaryData?.memberStats || [];
 
   if (!loading && !metrics) {
     return (
@@ -186,7 +187,7 @@ export default function Analytics() {
 
       {/* Member Breakdown */}
       <MemberBreakdown
-        memberStats={memberStats}
+        memberStats={memberStats || []}
         highlights={analysis?.memberHighlights}
         teamBadges={teamBadges}
         badgeLookup={badgeLookup}
@@ -196,7 +197,7 @@ export default function Analytics() {
         badgeCounts={badgeData?.counts}
         badgeCountPct={badgeData?.countPct}
         badgeImpactPct={badgeData?.impactPct}
-        loading={summaryLoading}
+        loading={memberStatsLoading}
         period={breakdownPeriod}
         onPeriodChange={setBreakdownPeriod}
       />
