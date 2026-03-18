@@ -72,6 +72,10 @@ export default function Dashboard() {
   const { data: focusItems } = useTeamFocusItems(teamId);
   const hasFocusItems = (focusItems?.length ?? 0) > 0;
   const { data: classification, isLoading: classificationLoading, refetch: refetchClassification } = useContributionClassification(teamId, hasFocusItems);
+  const reclassifyMutation = useReclassifyContributions(teamId);
+  const handleRefreshClassification = () => {
+    reclassifyMutation.mutate(undefined, { onSuccess: () => refetchClassification() });
+  };
   const [sourceFilter, setSourceFilter] = useState<string>("all");
 
   const handleSkip = () => {
