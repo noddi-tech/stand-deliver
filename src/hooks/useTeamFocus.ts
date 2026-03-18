@@ -286,7 +286,7 @@ export function useContributionClassification(teamId: string | undefined, enable
       // Fetch focus items to map focus_item_id -> label
       const { data: focusItems } = await supabase
         .from("team_focus" as any)
-        .select("id, label")
+        .select("id, title")
         .eq("team_id", teamId!)
         .eq("is_active", true);
 
