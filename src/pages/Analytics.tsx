@@ -41,6 +41,10 @@ export default function Analytics() {
   const { data: badgeData } = useMemberBadgeCounts(teamId, PERIOD_DAYS[breakdownPeriod]);
   const { data: focusItems } = useTeamFocusItems(teamId);
   const { data: classification, isLoading: classificationLoading, refetch: refetchClassification } = useContributionClassification(teamId, (focusItems?.length ?? 0) > 0);
+  const reclassifyMutation = useReclassifyContributions(teamId);
+  const handleRefreshClassification = () => {
+    reclassifyMutation.mutate(undefined, { onSuccess: () => refetchClassification() });
+  };
   const loading = teamLoading || isLoading;
 
   const analysis = summaryData?.analysis;
