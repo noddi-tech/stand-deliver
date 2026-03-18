@@ -325,16 +325,16 @@ export function useReclassifyContributions(teamId: string | undefined) {
   return { ...mutation, progress, resetProgress };
 }
 
-export function useContributionClassification(teamId: string | undefined, enabled = true) {
+export function useContributionClassification(teamId: string | undefined, enabled = true, periodDays = 7) {
   return useQuery({
-    queryKey: ["contribution-classification", teamId],
+    queryKey: ["contribution-classification", teamId, periodDays],
     enabled: !!teamId && enabled,
     staleTime: 60 * 1000,
     queryFn: async () => {
       // First fetch recent activity IDs (by occurred_at) to use as the recency filter
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      const sinceISO = sevenDaysAgo.toISOString();
+      const sinceDate = new Date();
+      sinceDate.setDate(sinceDate.getDate() - periodDays);
+      const sinceISO = sinceDate.toISOString();
 
       // Fetch recent external_activity IDs
       const { data: recentExt } = await supabase

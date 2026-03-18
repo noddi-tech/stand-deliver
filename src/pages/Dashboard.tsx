@@ -195,6 +195,7 @@ export default function Dashboard() {
             classificationLoading={classificationLoading || reclassifyMutation.isPending}
             onRefresh={handleRefreshClassification}
             progress={reclassifyMutation.progress}
+            periodLabel={breakdownPeriod === "week" ? "This Week" : breakdownPeriod === "month" ? "This Month" : breakdownPeriod === "quarter" ? "This Quarter" : "This Year"}
           />
         </section>
       )}

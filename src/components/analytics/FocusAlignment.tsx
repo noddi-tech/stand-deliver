@@ -149,7 +149,7 @@ export function FocusAlignment({ focusItems, classification, classificationLoadi
         </div>
         {!compact && (
           <CardDescription className="text-xs">
-            How each member's recent work aligns with team focus areas
+            How each member's work aligns with team focus areas{periodLabel ? ` — ${periodLabel}` : ""}
           </CardDescription>
         )}
       </CardHeader>

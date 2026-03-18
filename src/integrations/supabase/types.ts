@@ -510,6 +510,54 @@ export type Database = {
           },
         ]
       }
+      focus_alignment_snapshots: {
+        Row: {
+          breakdown: Json
+          created_at: string | null
+          id: string
+          member_id: string
+          period_end: string
+          period_start: string
+          team_id: string
+          total_activities: number
+        }
+        Insert: {
+          breakdown?: Json
+          created_at?: string | null
+          id?: string
+          member_id: string
+          period_end: string
+          period_start: string
+          team_id: string
+          total_activities?: number
+        }
+        Update: {
+          breakdown?: Json
+          created_at?: string | null
+          id?: string
+          member_id?: string
+          period_end?: string
+          period_start?: string
+          team_id?: string
+          total_activities?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "focus_alignment_snapshots_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "team_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "focus_alignment_snapshots_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       focus_recommendations: {
         Row: {
           created_at: string
