@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useRef, KeyboardEvent } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Target, Plus, Pencil, Archive, Trash2, RotateCcw } from "lucide-react";
+import { Target, Plus, Pencil, Archive, Trash2, RotateCcw, X } from "lucide-react";
 import { useUserTeam } from "@/hooks/useAnalytics";
 import {
   useAllTeamFocusItems,
@@ -16,6 +16,10 @@ import {
 } from "@/hooks/useTeamFocus";
 import { toast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+
+function splitLabels(label: string): string[] {
+  return label.split(",").map((t) => t.trim()).filter(Boolean);
+}
 
 function formatDateRange(item: TeamFocusItem) {
   const start = item.starts_at ? new Date(item.starts_at) : null;
@@ -31,6 +35,92 @@ function isPastEnd(item: TeamFocusItem) {
   return new Date(item.ends_at) < new Date();
 }
 
+function TagInput({
+  tags,
+  setTags,
+  suggestions,
+}: {
+  tags: string[];
+  setTags: (t: string[]) => void;
+  suggestions: string[];
+}) {
+  const [input, setInput] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const addTag = (raw: string) => {
+    const tag = raw.trim();
+    if (tag && !tags.includes(tag)) {
+      setTags([...tags, tag]);
+    }
+  };
+
+  const removeTag = (tag: string) => {
+    setTags(tags.filter((t) => t !== tag));
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if ((e.key === "," || e.key === "Enter") && input.trim()) {
+      e.preventDefault();
+      addTag(input);
+      setInput("");
+    } else if (e.key === "Backspace" && !input && tags.length > 0) {
+      setTags(tags.slice(0, -1));
+    }
+  };
+
+  const handleChange = (val: string) => {
+    if (val.includes(",")) {
+      const parts = val.split(",");
+      parts.slice(0, -1).forEach((p) => addTag(p));
+      setInput(parts[parts.length - 1]);
+    } else {
+      setInput(val);
+    }
+  };
+
+  const unusedSuggestions = suggestions.filter((s) => !tags.includes(s));
+
+  return (
+    <div className="space-y-1">
+      <div
+        className="flex flex-wrap gap-1 items-center min-h-[40px] rounded-md border border-input bg-background px-3 py-1.5 cursor-text"
+        onClick={() => inputRef.current?.focus()}
+      >
+        {tags.map((tag) => (
+          <Badge key={tag} variant="secondary" className="text-xs gap-1 pr-1">
+            {tag}
+            <button type="button" onClick={() => removeTag(tag)} className="hover:text-destructive">
+              <X className="h-3 w-3" />
+            </button>
+          </Badge>
+        ))}
+        <input
+          ref={inputRef}
+          value={input}
+          onChange={(e) => handleChange(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={tags.length === 0 ? "e.g. Short-term, Platform, Tech debt" : "Add tag…"}
+          className="flex-1 min-w-[80px] bg-transparent outline-none text-sm placeholder:text-muted-foreground"
+        />
+      </div>
+      {unusedSuggestions.length > 0 && (
+        <div className="flex gap-1 flex-wrap">
+          {unusedSuggestions.map((l) => (
+            <button
+              key={l}
+              type="button"
+              className="text-[10px] px-2 py-0.5 rounded-full border border-border bg-muted text-muted-foreground hover:bg-accent transition-colors"
+              onClick={() => addTag(l)}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function FocusTab() {
   const { data: team } = useUserTeam();
   const teamId = team?.team_id;
@@ -43,18 +133,18 @@ export function FocusTab() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
-  const [label, setLabel] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
   const [description, setDescription] = useState("");
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
 
   const activeItems = items?.filter((i) => i.is_active) || [];
   const archivedItems = items?.filter((i) => !i.is_active) || [];
-  const existingLabels = [...new Set(items?.map((i) => i.label) || [])];
+  const existingLabels = [...new Set((items || []).flatMap((i) => splitLabels(i.label)))];
 
   const resetForm = () => {
     setTitle("");
-    setLabel("");
+    setTags([]);
     setDescription("");
     setStartsAt("");
     setEndsAt("");
@@ -63,10 +153,10 @@ export function FocusTab() {
   };
 
   const handleSubmit = async () => {
-    if (!title.trim() || !label.trim()) return;
+    if (!title.trim() || tags.length === 0) return;
     const payload = {
       title,
-      label,
+      label: tags.join(", "),
       description: description || undefined,
       starts_at: startsAt ? new Date(startsAt).toISOString() : null,
       ends_at: endsAt ? new Date(endsAt).toISOString() : null,
@@ -88,7 +178,7 @@ export function FocusTab() {
   const startEdit = (item: TeamFocusItem) => {
     setEditingId(item.id);
     setTitle(item.title);
-    setLabel(item.label);
+    setTags(splitLabels(item.label));
     setDescription(item.description || "");
     setStartsAt(item.starts_at ? item.starts_at.split("T")[0] : "");
     setEndsAt(item.ends_at ? item.ends_at.split("T")[0] : "");
@@ -151,6 +241,7 @@ export function FocusTab() {
           {activeItems.map((item) => {
             const dateLabel = formatDateRange(item);
             const expired = isPastEnd(item);
+            const itemTags = splitLabels(item.label);
             return (
               <div
                 key={item.id}
@@ -159,7 +250,9 @@ export function FocusTab() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <p className="text-sm font-medium text-foreground">{item.title}</p>
-                    <Badge variant="secondary" className="text-[10px]">{item.label}</Badge>
+                    {itemTags.map((t) => (
+                      <Badge key={t} variant="secondary" className="text-[10px]">{t}</Badge>
+                    ))}
                     {dateLabel && (
                       <span className={`text-[10px] ${expired ? "text-destructive" : "text-muted-foreground"}`}>
                         {expired ? `Ended ${dateLabel.replace("Until ", "")}` : dateLabel}
@@ -198,28 +291,7 @@ export function FocusTab() {
                 onChange={(e) => setTitle(e.target.value)}
                 className="text-sm"
               />
-              <div className="space-y-1">
-                <Input
-                  placeholder="Category label, e.g. Short-term, Platform, Tech debt"
-                  value={label}
-                  onChange={(e) => setLabel(e.target.value)}
-                  className="text-sm"
-                />
-                {existingLabels.length > 0 && (
-                  <div className="flex gap-1 flex-wrap">
-                    {existingLabels.map((l) => (
-                      <button
-                        key={l}
-                        type="button"
-                        className="text-[10px] px-2 py-0.5 rounded-full border border-border bg-muted text-muted-foreground hover:bg-accent transition-colors"
-                        onClick={() => setLabel(l)}
-                      >
-                        {l}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              <TagInput tags={tags} setTags={setTags} suggestions={existingLabels} />
               <Textarea
                 placeholder="Optional description..."
                 value={description}
@@ -247,7 +319,7 @@ export function FocusTab() {
                 </div>
               </div>
               <div className="flex gap-2">
-                <Button size="sm" onClick={handleSubmit} disabled={!title.trim() || !label.trim()}>
+                <Button size="sm" onClick={handleSubmit} disabled={!title.trim() || tags.length === 0}>
                   {editingId ? "Update" : "Add"}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={resetForm}>Cancel</Button>
@@ -263,26 +335,31 @@ export function FocusTab() {
             <CardTitle className="text-sm text-muted-foreground">Archived</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {archivedItems.map((item) => (
-              <div key={item.id} className="flex items-center gap-3 p-2 rounded-lg border border-border opacity-60">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm text-foreground">{item.title}</p>
-                    <Badge variant="outline" className="text-[10px]">{item.label}</Badge>
+            {archivedItems.map((item) => {
+              const itemTags = splitLabels(item.label);
+              return (
+                <div key={item.id} className="flex items-center gap-3 p-2 rounded-lg border border-border opacity-60">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm text-foreground">{item.title}</p>
+                      {itemTags.map((t) => (
+                        <Badge key={t} variant="outline" className="text-[10px]">{t}</Badge>
+                      ))}
+                    </div>
                   </div>
+                  {isLead && (
+                    <div className="flex gap-1 shrink-0">
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => handleRestore(item.id)}>
+                        <RotateCcw className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive" onClick={() => handleDelete(item.id)}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
-                {isLead && (
-                  <div className="flex gap-1 shrink-0">
-                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => handleRestore(item.id)}>
-                      <RotateCcw className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-destructive" onClick={() => handleDelete(item.id)}>
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
       )}
