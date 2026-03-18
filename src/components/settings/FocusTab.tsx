@@ -154,6 +154,16 @@ export function FocusTab() {
     setEditingId(null);
   };
 
+  const triggerReclassify = () => {
+    reclassifyMutation.mutate(undefined, {
+      onSuccess: (result) => {
+        if (result.classified > 0) {
+          toast({ title: `Re-classified ${result.classified} activities against updated focus areas` });
+        }
+      },
+    });
+  };
+
   const handleSubmit = async () => {
     if (!title.trim() || tags.length === 0) return;
     const payload = {
@@ -172,6 +182,7 @@ export function FocusTab() {
         toast({ title: "Focus item added" });
       }
       resetForm();
+      triggerReclassify();
     } catch {
       toast({ title: "Error saving focus item", variant: "destructive" });
     }
