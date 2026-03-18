@@ -14,6 +14,7 @@ import { MemberBreakdown } from "@/components/team/MemberBreakdown";
 import { useTeamFocusItems, useContributionClassification, useReclassifyContributions } from "@/hooks/useTeamFocus";
 import { FocusAlignment } from "@/components/analytics/FocusAlignment";
 import { ActivityBadgeChip } from "@/components/activity/ActivityBadgeChip";
+import { useRealtimeInvalidation } from "@/hooks/useRealtimeInvalidation";
 
 import { useTeamSummary } from "@/hooks/useTeamSummary";
 import { useEnrichedTeamMetrics } from "@/hooks/useEnrichedAnalytics";
@@ -83,6 +84,7 @@ export default function Dashboard() {
     });
   };
   const [sourceFilter, setSourceFilter] = useState<string>("all");
+  useRealtimeInvalidation(teamId);
 
   const handleSkip = () => {
     if (memberId && teamId) {
