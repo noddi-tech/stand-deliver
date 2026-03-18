@@ -1,75 +1,73 @@
 
 
-# Integrate Activity Badges into VIS System + Update VIS Explained
+# Hierarchical Focus Areas: Groups and Sub-tasks
 
-## Concept
+## Problem
+Currently all focus items are flat. "EonTyre integration" and "Onboard Trønderdekk" would be siblings, but in reality onboarding Trønderdekk **depends on** the EonTyre integration. There's no way to express that relationship, which means the AI classifier can't understand that work on EonTyre ultimately serves the Trønderdekk onboarding goal.
 
-Activity badges already classify *what type* of work was done (🐛 Bug Fix, 🚀 Feature, etc.). Integrating them into VIS makes the score more transparent: instead of just seeing "Impact: 72", you see *where* that impact came from — "40% from Features, 30% from Bug Fixes, 20% from Reviews." This gives actionable insight into who fixes what, who ships what, and whether that aligns with team priorities.
+## Design
 
-## 1. Enrich `compute-weekly-vis` with Badge Distribution
+Add an optional `parent_id` column to `team_focus`. A focus item with children becomes a **Focus Group**. Children are **Focus Tasks**. The hierarchy is one level deep (no grandchildren).
 
-**`supabase/functions/compute-weekly-vis/index.ts`**
-
-After fetching `impact_classifications` (line 65), also fetch `activity_badges` for the same week/team. Join badge data to classifications by `activity_id` to build a per-member breakdown: `Record<string, number>` mapping badge_key to summed impact_score.
-
-Add to the existing `breakdown` jsonb (line 154):
-```ts
-breakdown: {
-  ...existingFields,
-  badgeDistribution: { feature: 45.2, bugfix: 22.1, refactor: 8.0, ... },
-  badgeImpactPct: { feature: 40, bugfix: 30, refactor: 10, ... },
-}
+```text
+┌─────────────────────────────────────────────┐
+│ 🎯 Onboard Trønderdekk        [Group]      │
+│    Creating a two-way API integration...    │
+│                                             │
+│   ├─ EonTyre integration       [Task]       │
+│   ├─ Set up Dintero accounts   [Task]       │
+│   └─ Configure Navio tenant    [Task]       │
+└─────────────────────────────────────────────┘
 ```
 
-No schema migration needed — `breakdown` is already a `jsonb` column.
+### Classification benefit
+When the AI sees a focus group with children, the prompt includes the hierarchy. Work on a child task counts as **indirect** alignment with the parent group, and **direct** alignment with the child. This solves the Dintero problem: "Set up Dintero" is direct to the Dintero onboarding task, but only indirect to EonTyre (or none, if it's unrelated to the API).
 
-## 2. Enrich `useWeeklyVIS` Client Hook
+## Changes
 
-**`src/hooks/useWeeklyVIS.ts`**
+### 1. Migration: add `parent_id` to `team_focus`
+```sql
+ALTER TABLE public.team_focus
+  ADD COLUMN parent_id uuid REFERENCES public.team_focus(id) ON DELETE SET NULL;
 
-- Add `badgeDistribution?: Record<string, number>` to `VISBreakdown` interface
-- For canonical (past) weeks: read from `breakdown.badgeDistribution`
-- For current week estimate: fetch `activity_badges` for the week alongside `impact_classifications`, join by `activity_id`, aggregate badge_key → impact_score sums
-
-## 3. Show Badge-Impact Distribution in Dashboard/MyAnalytics
-
-**New component: `src/components/analytics/BadgeImpactBreakdown.tsx`**
-
-A compact horizontal stacked bar or pill row showing what % of a member's impact came from each badge type. Uses `ALL_BADGES` for emoji lookup. Example rendering:
-
-```
-Impact sources: 🚀 40%  🐛 30%  🔧 15%  🔀 10%  🧹 5%
+CREATE INDEX idx_team_focus_parent ON public.team_focus(parent_id);
 ```
 
-Wire into:
-- **Dashboard.tsx**: Show below VIS score in MemberBreakdown cards (via the `badgeCounts` prop or a new `badgeImpact` prop)
-- **MyAnalytics.tsx**: Add a "Where Your Impact Comes From" card using `useWeeklyVIS` badge distribution data
+### 2. Update hooks (`src/hooks/useTeamFocus.ts`)
+- `TeamFocusItem` interface: add `parent_id: string | null`
+- `useAddFocusItem`: accept optional `parent_id`
+- No changes to queries — they already `SELECT *`
 
-## 4. Update VIS Explained Page
+### 3. Update FocusTab UI (`src/components/settings/FocusTab.tsx`)
+- Render items grouped: parent items shown as collapsible cards, children indented beneath
+- "Add Focus Area" form gets an optional "Parent" dropdown (populated with existing top-level items)
+- Top-level items without children look exactly as they do today
+- When a top-level item has children, show them nested with a subtle indent and connector line
 
-**`src/pages/VISExplained.tsx`**
+### 4. Update AI classifier prompt (`supabase/functions/ai-classify-contributions/index.ts`)
+- When building `focusContext`, render parent-child relationships:
+  ```
+  - [uuid] "Onboard Trønderdekk" (GROUP)
+    Objective: Onboard Trønderdekk as Navio customer
+    Children:
+      - [uuid] "EonTyre integration" — Two-way API integration
+      - [uuid] "Set up Dintero" — Payment provider setup
+    → Work on a child = "direct" to child, "indirect" to parent
+  ```
+- This gives the AI structural context to correctly distinguish EonTyre API work from general Trønderdekk onboarding tasks
 
-Add two new sections:
+### 5. Update FocusAlignment chart (`src/components/analytics/FocusAlignment.tsx`)
+- Group-level items aggregate their children's alignment percentages
+- Tooltip shows breakdown by child task within a group
 
-### "Activity Badges" section (after "Impact tiers")
-- Explain that every contribution is automatically tagged with an activity badge (🐛 Bug Fix, 🚀 Feature, 🔧 Refactor, etc.)
-- 4-layer priority: Manual > Deterministic rules > AI classification > Source defaults
-- Badges map to value types but are more granular — they show *what kind* of work within each tier
-- Include a subset grid of the most common badges with emoji + label
-
-### "Where Your Impact Comes From" section (after Activity Badges)
-- Explain that VIS now tracks which badge types contributed to your Impact score
-- "If 60% of your impact came from Bug Fixes and only 10% from Features, that's a signal — are you in a stabilization phase, or is new feature work getting stuck?"
-- Clarify this is informational, not a penalty — all badge types contribute equally to the score formula
-
-## Files Summary
+## Files to change
 
 | File | Change |
-|---|---|
-| `supabase/functions/compute-weekly-vis/index.ts` | Fetch activity_badges, compute badge distribution, include in breakdown jsonb |
-| `src/hooks/useWeeklyVIS.ts` | Add `badgeDistribution` to VISBreakdown, compute in estimate path |
-| `src/components/analytics/BadgeImpactBreakdown.tsx` | Create — badge-impact pill/bar visualization |
-| `src/pages/MyAnalytics.tsx` | Add "Where Your Impact Comes From" card |
-| `src/pages/Dashboard.tsx` | Wire badge impact data to MemberBreakdown |
-| `src/pages/VISExplained.tsx` | Add "Activity Badges" and "Impact Sources" sections |
+|------|--------|
+| `supabase/migrations/` | Add `parent_id` column |
+| `src/hooks/useTeamFocus.ts` | Add `parent_id` to interface and mutations |
+| `src/components/settings/FocusTab.tsx` | Grouped rendering, parent selector in form |
+| `supabase/functions/ai-classify-contributions/index.ts` | Hierarchical focus context in prompt |
+| `src/components/analytics/FocusAlignment.tsx` | Aggregate child alignment under parent |
+| `src/integrations/supabase/types.ts` | Add `parent_id` to type |
 
