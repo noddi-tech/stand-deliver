@@ -129,7 +129,7 @@ export function FocusTab() {
   const { data: items, isLoading } = useAllTeamFocusItems(teamId);
   const addMutation = useAddFocusItem(teamId);
   const updateMutation = useUpdateFocusItem(teamId);
-  const deleteMutation = useDeleteFocusItem(teamId);
+  const reclassifyMutation = useReclassifyContributions(teamId);
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
