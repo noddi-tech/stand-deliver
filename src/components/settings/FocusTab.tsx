@@ -36,17 +36,30 @@ function isPastEnd(item: TeamFocusItem) {
   return new Date(item.ends_at) < new Date();
 }
 
-function TagInput({
-  tags,
-  setTags,
-  suggestions,
-}: {
+export interface TagInputHandle {
+  flush: () => string[];
+}
+
+const TagInput = forwardRef<TagInputHandle, {
   tags: string[];
   setTags: (t: string[]) => void;
   suggestions: string[];
-}) {
+}>(function TagInput({ tags, setTags, suggestions }, ref) {
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useImperativeHandle(ref, () => ({
+    flush: () => {
+      const trimmed = input.trim();
+      if (trimmed && !tags.includes(trimmed)) {
+        const next = [...tags, trimmed];
+        setTags(next);
+        setInput("");
+        return next;
+      }
+      return tags;
+    },
+  }));
 
   const addTag = (raw: string) => {
     const tag = raw.trim();
