@@ -54,6 +54,7 @@ export function useRealtimeInvalidation(teamId: string | undefined) {
           qc.invalidateQueries({ queryKey: ["attention-items", teamId] });
           qc.invalidateQueries({ queryKey: ["recent-activity", teamId] });
           qc.invalidateQueries({ queryKey: ["today-session"] });
+          qc.invalidateQueries({ queryKey: ["team-member-stats", teamId] });
         }
       )
       .subscribe();
