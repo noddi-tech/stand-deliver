@@ -1,75 +1,57 @@
 
 
-# Integrate Activity Badges into VIS System + Update VIS Explained
+# Make Member Breakdown Update Continuously Across Periods
 
-## Concept
+## Problem
+The Member Breakdown looks like it supports week/month/quarter/year periods, but:
+1. **Core stats (commitments, participation, activity) always show 7 days** -- they come from `ai-team-summary` which is hardcoded to `period="7d"` and cached for 30 minutes
+2. **Only badge counts respond to the period selector** (via `useMemberBadgeCounts`)
+3. **No real-time updates** -- the `useRealtimeInvalidation` hook doesn't invalidate `team-summary`
+4. Switching periods gives a false impression of different data when it's the same 7-day snapshot
 
-Activity badges already classify *what type* of work was done (🐛 Bug Fix, 🚀 Feature, etc.). Integrating them into VIS makes the score more transparent: instead of just seeing "Impact: 72", you see *where* that impact came from — "40% from Features, 30% from Bug Fixes, 20% from Reviews." This gives actionable insight into who fixes what, who ships what, and whether that aligns with team priorities.
+## Plan
 
-## 1. Enrich `compute-weekly-vis` with Badge Distribution
+### 1. Create a new client-side hook: `useTeamMemberStats`
+**File:** `src/hooks/useTeamMemberStats.ts` (new)
 
-**`supabase/functions/compute-weekly-vis/index.ts`**
+Replace the AI-generated `memberStats` with a direct database query that:
+- Accepts `teamId` and `periodDays` parameters
+- Queries `commitments`, `blockers`, `standup_sessions`/`standup_responses`, and `external_activity` filtered by the selected period
+- Computes the same `MemberStat` shape (completion rate, participation rate, activity counts) purely from DB data
+- Uses a 30-second `staleTime` so it stays fresh
+- No AI call needed -- these are straightforward aggregations
 
-After fetching `impact_classifications` (line 65), also fetch `activity_badges` for the same week/team. Join badge data to classifications by `activity_id` to build a per-member breakdown: `Record<string, number>` mapping badge_key to summed impact_score.
+This makes the member stats **period-aware** and **fast** (no AI latency).
 
-Add to the existing `breakdown` jsonb (line 154):
-```ts
-breakdown: {
-  ...existingFields,
-  badgeDistribution: { feature: 45.2, bugfix: 22.1, refactor: 8.0, ... },
-  badgeImpactPct: { feature: 40, bugfix: 30, refactor: 10, ... },
-}
-```
+### 2. Keep AI summary for highlights only
+**Files:** `src/pages/Dashboard.tsx`, `src/pages/Analytics.tsx`
 
-No schema migration needed — `breakdown` is already a `jsonb` column.
+- Use the new `useTeamMemberStats(teamId, PERIOD_DAYS[breakdownPeriod])` for the `memberStats` prop
+- Keep `useTeamSummary` only for `analysis.memberHighlights` and `analysis.teamSummary` (the qualitative AI insights)
+- Pass `periodDays` to the hook so switching "This Week" / "This Month" / "This Quarter" / "This Year" actually changes the data
 
-## 2. Enrich `useWeeklyVIS` Client Hook
+### 3. Add realtime invalidation for member stats
+**File:** `src/hooks/useRealtimeInvalidation.ts`
 
-**`src/hooks/useWeeklyVIS.ts`**
+Add invalidation of the new `team-member-stats` query key when:
+- New `external_activity` rows arrive
+- `standup_responses` are inserted
+- `commitments` or `blockers` change (via `impact_classifications` channel already exists)
 
-- Add `badgeDistribution?: Record<string, number>` to `VISBreakdown` interface
-- For canonical (past) weeks: read from `breakdown.badgeDistribution`
-- For current week estimate: fetch `activity_badges` for the week alongside `impact_classifications`, join by `activity_id`, aggregate badge_key → impact_score sums
+### 4. No schema changes needed
+All data already exists in the DB with proper timestamps. The hook just queries with a dynamic date filter.
 
-## 3. Show Badge-Impact Distribution in Dashboard/MyAnalytics
-
-**New component: `src/components/analytics/BadgeImpactBreakdown.tsx`**
-
-A compact horizontal stacked bar or pill row showing what % of a member's impact came from each badge type. Uses `ALL_BADGES` for emoji lookup. Example rendering:
-
-```
-Impact sources: 🚀 40%  🐛 30%  🔧 15%  🔀 10%  🧹 5%
-```
-
-Wire into:
-- **Dashboard.tsx**: Show below VIS score in MemberBreakdown cards (via the `badgeCounts` prop or a new `badgeImpact` prop)
-- **MyAnalytics.tsx**: Add a "Where Your Impact Comes From" card using `useWeeklyVIS` badge distribution data
-
-## 4. Update VIS Explained Page
-
-**`src/pages/VISExplained.tsx`**
-
-Add two new sections:
-
-### "Activity Badges" section (after "Impact tiers")
-- Explain that every contribution is automatically tagged with an activity badge (🐛 Bug Fix, 🚀 Feature, 🔧 Refactor, etc.)
-- 4-layer priority: Manual > Deterministic rules > AI classification > Source defaults
-- Badges map to value types but are more granular — they show *what kind* of work within each tier
-- Include a subset grid of the most common badges with emoji + label
-
-### "Where Your Impact Comes From" section (after Activity Badges)
-- Explain that VIS now tracks which badge types contributed to your Impact score
-- "If 60% of your impact came from Bug Fixes and only 10% from Features, that's a signal — are you in a stabilization phase, or is new feature work getting stuck?"
-- Clarify this is informational, not a penalty — all badge types contribute equally to the score formula
-
-## Files Summary
-
+## Files to Change
 | File | Change |
-|---|---|
-| `supabase/functions/compute-weekly-vis/index.ts` | Fetch activity_badges, compute badge distribution, include in breakdown jsonb |
-| `src/hooks/useWeeklyVIS.ts` | Add `badgeDistribution` to VISBreakdown, compute in estimate path |
-| `src/components/analytics/BadgeImpactBreakdown.tsx` | Create — badge-impact pill/bar visualization |
-| `src/pages/MyAnalytics.tsx` | Add "Where Your Impact Comes From" card |
-| `src/pages/Dashboard.tsx` | Wire badge impact data to MemberBreakdown |
-| `src/pages/VISExplained.tsx` | Add "Activity Badges" and "Impact Sources" sections |
+|------|--------|
+| `src/hooks/useTeamMemberStats.ts` | New hook: period-aware member stats from DB |
+| `src/pages/Dashboard.tsx` | Use new hook for `memberStats`, keep AI for highlights |
+| `src/pages/Analytics.tsx` | Same as Dashboard |
+| `src/hooks/useRealtimeInvalidation.ts` | Invalidate `team-member-stats` on relevant changes |
+
+## Result
+- Period selector actually changes the data (7d / 30d / 90d / 365d)
+- Stats update within 30 seconds of new activity (commits, standups, etc.)
+- Realtime channel pushes instant cache invalidation
+- No extra AI calls or DB migrations needed
 
