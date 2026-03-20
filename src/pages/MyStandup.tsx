@@ -1068,7 +1068,7 @@ export default function MyStandup() {
         <CardContent className="space-y-3">
           <div className={`flex gap-2 ${showStandupForm && !allResolved ? "opacity-50 pointer-events-none" : ""}`}>
             <Input
-              placeholder="What will you work on?"
+              placeholder="What will you focus on going forward?"
               value={newFocusTitle}
               onChange={(e) => setNewFocusTitle(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && addTodayCommitment()}
