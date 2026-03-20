@@ -13,6 +13,30 @@ function median(values: number[]): number {
   return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
+/** Paginate a Supabase query to bypass the 1000-row default limit */
+async function fetchAllRows<T>(
+  buildQuery: (from: number, to: number) => any,
+): Promise<T[]> {
+  const PAGE = 1000;
+  let offset = 0;
+  const all: T[] = [];
+  while (true) {
+    const { data } = await buildQuery(offset, offset + PAGE - 1) as { data: T[] | null };
+    const rows = data ?? [];
+    all.push(...rows);
+    if (rows.length < PAGE) break;
+    offset += PAGE;
+  }
+  return all;
+}
+
+function periodLabel(days: number): string {
+  if (days <= 7) return "this week";
+  if (days <= 31) return "this month";
+  if (days <= 92) return "this quarter";
+  return "this year";
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -32,21 +56,22 @@ serve(async (req) => {
     const since = new Date(Date.now() - days * 86400000).toISOString();
     const sinceDate = since.split("T")[0];
 
-    // Fetch all data in parallel
-    const [membersRes, commitmentsRes, blockersRes, sessionsRes, activityRes, badgesRes] = await Promise.all([
+    // Fetch all data in parallel (external_activity is paginated to bypass 1000-row limit)
+    const [membersRes, commitmentsRes, blockersRes, sessionsRes, badgesRes, activity] = await Promise.all([
       supabase.from("team_members").select("id, user_id, role, profile:profiles(full_name)").eq("team_id", team_id).eq("is_active", true),
       supabase.from("commitments").select("*").eq("team_id", team_id).gte("created_at", since),
       supabase.from("blockers").select("*").eq("team_id", team_id).gte("created_at", since),
       supabase.from("standup_sessions").select("id, session_date").eq("team_id", team_id).gte("session_date", sinceDate),
-      supabase.from("external_activity").select("*").eq("team_id", team_id).gte("occurred_at", since),
       supabase.from("member_badges").select("member_id, badge_id").eq("team_id", team_id),
+      fetchAllRows<any>((from, to) =>
+        supabase.from("external_activity").select("*").eq("team_id", team_id).gte("occurred_at", since).range(from, to)
+      ),
     ]);
 
     const members = membersRes.data || [];
     const commitments = commitmentsRes.data || [];
     const blockers = blockersRes.data || [];
     const sessions = sessionsRes.data || [];
-    const activity = activityRes.data || [];
     const allBadges = badgesRes.data || [];
 
     // Get badge definitions for names
@@ -172,15 +197,17 @@ serve(async (req) => {
       };
     });
 
-    const prompt = `You are a direct, insightful team performance analyst for a standup tool called StandFlow. Analyze the following ${days}-day team data and provide honest, actionable insights.
+    const label = periodLabel(days);
+    const prompt = `You are a direct, insightful team performance analyst for a standup tool called StandFlow. Analyze the following team data for ${label} (${days} days) and provide honest, actionable insights.
 
 CRITICAL RULES:
 1. Engineering output (commits, PRs, LOC, reviews, PR cycle times) is the PRIMARY signal of productivity — weigh it heavily. A member with high commit/PR output is productive even if standup participation is low.
-2. You MUST return exactly one highlight for every member listed below. No exceptions. Even if a member has zero activity, say something like "No standup or code activity this period — may need a check-in."
+2. You MUST return exactly one highlight for every member listed below. No exceptions. Even if a member has zero activity, say something like "No standup or code activity ${label} — may need a check-in."
 3. It's OK to celebrate wins explicitly ("crushing it", "strong velocity") AND flag concerns directly ("needs to step up", "going quiet").
 4. Be specific with names, numbers, and engineering metrics (LOC, PR count, cycle times).
+5. Always use the phrase "${label}" when referring to the time period. Never say "this week" if the period is longer.
 
-Team data (${days} days):
+Team data (${label}, ${days} days):
 ${JSON.stringify(memberStats, null, 2)}
 
 Total sessions in period: ${sessions.length}
