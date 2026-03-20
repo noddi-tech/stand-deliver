@@ -54,21 +54,22 @@ function periodLabel(days: number): string {
     const since = new Date(Date.now() - days * 86400000).toISOString();
     const sinceDate = since.split("T")[0];
 
-    // Fetch all data in parallel
-    const [membersRes, commitmentsRes, blockersRes, sessionsRes, activityRes, badgesRes] = await Promise.all([
+    // Fetch all data in parallel (external_activity is paginated to bypass 1000-row limit)
+    const [membersRes, commitmentsRes, blockersRes, sessionsRes, badgesRes, activity] = await Promise.all([
       supabase.from("team_members").select("id, user_id, role, profile:profiles(full_name)").eq("team_id", team_id).eq("is_active", true),
       supabase.from("commitments").select("*").eq("team_id", team_id).gte("created_at", since),
       supabase.from("blockers").select("*").eq("team_id", team_id).gte("created_at", since),
       supabase.from("standup_sessions").select("id, session_date").eq("team_id", team_id).gte("session_date", sinceDate),
-      supabase.from("external_activity").select("*").eq("team_id", team_id).gte("occurred_at", since),
       supabase.from("member_badges").select("member_id, badge_id").eq("team_id", team_id),
+      fetchAllRows<any>((from, to) =>
+        supabase.from("external_activity").select("*").eq("team_id", team_id).gte("occurred_at", since).range(from, to)
+      ),
     ]);
 
     const members = membersRes.data || [];
     const commitments = commitmentsRes.data || [];
     const blockers = blockersRes.data || [];
     const sessions = sessionsRes.data || [];
-    const activity = activityRes.data || [];
     const allBadges = badgesRes.data || [];
 
     // Get badge definitions for names
