@@ -158,11 +158,13 @@ export function MemberBreakdown({
                     </div>
                     <div className="flex items-center gap-2">
                       <MemberBadgeIcons badges={getMemberBadges(m.name)} lookup={badgeLookup} max={3} />
-                      {sentimentConfig && (
+                      {sentimentConfig ? (
                         <Badge variant="outline" className={`text-[10px] ${sentimentConfig.className}`}>
                           {sentimentConfig.label}
                         </Badge>
-                      )}
+                      ) : highlightsLoading ? (
+                        <Skeleton className="h-5 w-20 rounded-full" />
+                      ) : null}
                     </div>
                   </div>
 
