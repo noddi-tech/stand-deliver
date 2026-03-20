@@ -216,6 +216,7 @@ export default function Dashboard() {
           period={breakdownPeriod}
           onPeriodChange={setBreakdownPeriod}
           loading={memberStatsLoading}
+          highlightsLoading={summaryLoading}
         />
       </section>
 

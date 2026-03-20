@@ -221,11 +221,16 @@ export function MemberBreakdown({
                     <InlineFocusBar breakdown={getMemberBreakdown(m.name)!} colorMap={focusColorMap} />
                   )}
 
-                  {highlight && (
+                  {highlight ? (
                     <p className="text-xs text-muted-foreground italic leading-snug">
                       "{highlight.highlight}"
                     </p>
-                  )}
+                  ) : highlightsLoading ? (
+                    <div className="space-y-1.5">
+                      <Skeleton className="h-3 w-full" />
+                      <Skeleton className="h-3 w-2/3" />
+                    </div>
+                  ) : null}
 
                   <div className="flex flex-wrap gap-2 text-[10px] text-muted-foreground">
                     {(m.externalActivity?.githubCommits ?? 0) > 0 && <span>🐙 {m.externalActivity.githubCommits}</span>}
