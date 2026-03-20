@@ -13,7 +13,29 @@ function median(values: number[]): number {
   return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-serve(async (req) => {
+/** Paginate a Supabase query to bypass the 1000-row default limit */
+async function fetchAllRows<T>(
+  buildQuery: (from: number, to: number) => any,
+): Promise<T[]> {
+  const PAGE = 1000;
+  let offset = 0;
+  const all: T[] = [];
+  while (true) {
+    const { data } = await buildQuery(offset, offset + PAGE - 1) as { data: T[] | null };
+    const rows = data ?? [];
+    all.push(...rows);
+    if (rows.length < PAGE) break;
+    offset += PAGE;
+  }
+  return all;
+}
+
+function periodLabel(days: number): string {
+  if (days <= 7) return "this week";
+  if (days <= 31) return "this month";
+  if (days <= 92) return "this quarter";
+  return "this year";
+}
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
