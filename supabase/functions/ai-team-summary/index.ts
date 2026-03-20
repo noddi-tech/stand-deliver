@@ -195,15 +195,17 @@ function periodLabel(days: number): string {
       };
     });
 
-    const prompt = `You are a direct, insightful team performance analyst for a standup tool called StandFlow. Analyze the following ${days}-day team data and provide honest, actionable insights.
+    const label = periodLabel(days);
+    const prompt = `You are a direct, insightful team performance analyst for a standup tool called StandFlow. Analyze the following team data for ${label} (${days} days) and provide honest, actionable insights.
 
 CRITICAL RULES:
 1. Engineering output (commits, PRs, LOC, reviews, PR cycle times) is the PRIMARY signal of productivity — weigh it heavily. A member with high commit/PR output is productive even if standup participation is low.
-2. You MUST return exactly one highlight for every member listed below. No exceptions. Even if a member has zero activity, say something like "No standup or code activity this period — may need a check-in."
+2. You MUST return exactly one highlight for every member listed below. No exceptions. Even if a member has zero activity, say something like "No standup or code activity ${label} — may need a check-in."
 3. It's OK to celebrate wins explicitly ("crushing it", "strong velocity") AND flag concerns directly ("needs to step up", "going quiet").
 4. Be specific with names, numbers, and engineering metrics (LOC, PR count, cycle times).
+5. Always use the phrase "${label}" when referring to the time period. Never say "this week" if the period is longer.
 
-Team data (${days} days):
+Team data (${label}, ${days} days):
 ${JSON.stringify(memberStats, null, 2)}
 
 Total sessions in period: ${sessions.length}
