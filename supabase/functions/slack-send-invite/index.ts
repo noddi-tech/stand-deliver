@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { getSiteUrl } from "../_shared/routes.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -41,7 +42,7 @@ serve(async (req) => {
       );
     }
 
-    const siteUrl = app_url || Deno.env.get("SITE_URL") || "https://standup-flow-app.lovable.app";
+    const siteUrl = app_url || getSiteUrl();
 
     // Look up user info for display name
     const userInfoRes = await fetch(`https://slack.com/api/users.info?user=${slack_user_id}`, {
