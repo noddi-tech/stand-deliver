@@ -468,8 +468,8 @@ export default function MyStandup() {
   };
 
   const requestCoachReview = async () => {
-    if (todayCommitments.length === 0) {
-      toast.error("Add at least one focus item for today");
+    if (todayCommitments.length < 2) {
+      toast.error("Add at least 2 focus items to keep your standup actionable");
       return;
     }
     setCoachLoading(true);
