@@ -45,6 +45,7 @@ interface MemberBreakdownProps {
   badgeCountPct?: MemberBadgeCountPct;
   badgeImpactPct?: MemberBadgeImpactPct;
   loading?: boolean;
+  highlightsLoading?: boolean;
   period?: BreakdownPeriod;
   onPeriodChange?: (period: BreakdownPeriod) => void;
 }
