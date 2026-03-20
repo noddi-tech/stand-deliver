@@ -36,6 +36,8 @@ function periodLabel(days: number): string {
   if (days <= 92) return "this quarter";
   return "this year";
 }
+
+serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
