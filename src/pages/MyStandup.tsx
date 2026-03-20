@@ -1057,7 +1057,7 @@ export default function MyStandup() {
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             {showStandupForm && !allResolved && <Lock className="h-4 w-4 text-muted-foreground" />}
-            {showStandupForm ? "Today's Focus" : "Add Focus Item"}
+            {showStandupForm ? "Focus" : "Add Focus Item"}
           </CardTitle>
           {showStandupForm && !allResolved && (
             <p className="text-xs text-muted-foreground">
@@ -1068,7 +1068,7 @@ export default function MyStandup() {
         <CardContent className="space-y-3">
           <div className={`flex gap-2 ${showStandupForm && !allResolved ? "opacity-50 pointer-events-none" : ""}`}>
             <Input
-              placeholder="What will you work on?"
+              placeholder="What will you focus on going forward?"
               value={newFocusTitle}
               onChange={(e) => setNewFocusTitle(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && addTodayCommitment()}
