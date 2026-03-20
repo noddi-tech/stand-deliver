@@ -11,7 +11,7 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const siteUrl = Deno.env.get("SITE_URL") || "https://standup-flow-app.lovable.app";
+  const siteUrl = getSiteUrl();
 
   try {
     const url = new URL(req.url);

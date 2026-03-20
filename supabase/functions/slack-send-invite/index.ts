@@ -42,7 +42,7 @@ serve(async (req) => {
       );
     }
 
-    const siteUrl = app_url || Deno.env.get("SITE_URL") || "https://standup-flow-app.lovable.app";
+    const siteUrl = app_url || getSiteUrl();
 
     // Look up user info for display name
     const userInfoRes = await fetch(`https://slack.com/api/users.info?user=${slack_user_id}`, {
