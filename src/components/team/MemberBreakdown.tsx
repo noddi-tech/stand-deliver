@@ -45,6 +45,7 @@ interface MemberBreakdownProps {
   badgeCountPct?: MemberBadgeCountPct;
   badgeImpactPct?: MemberBadgeImpactPct;
   loading?: boolean;
+  highlightsLoading?: boolean;
   period?: BreakdownPeriod;
   onPeriodChange?: (period: BreakdownPeriod) => void;
 }
@@ -61,6 +62,7 @@ export function MemberBreakdown({
   badgeCountPct,
   badgeImpactPct,
   loading,
+  highlightsLoading,
   period = "week",
   onPeriodChange,
 }: MemberBreakdownProps) {
@@ -156,11 +158,13 @@ export function MemberBreakdown({
                     </div>
                     <div className="flex items-center gap-2">
                       <MemberBadgeIcons badges={getMemberBadges(m.name)} lookup={badgeLookup} max={3} />
-                      {sentimentConfig && (
+                      {sentimentConfig ? (
                         <Badge variant="outline" className={`text-[10px] ${sentimentConfig.className}`}>
                           {sentimentConfig.label}
                         </Badge>
-                      )}
+                      ) : highlightsLoading ? (
+                        <Skeleton className="h-5 w-20 rounded-full" />
+                      ) : null}
                     </div>
                   </div>
 
@@ -217,11 +221,16 @@ export function MemberBreakdown({
                     <InlineFocusBar breakdown={getMemberBreakdown(m.name)!} colorMap={focusColorMap} />
                   )}
 
-                  {highlight && (
+                  {highlight ? (
                     <p className="text-xs text-muted-foreground italic leading-snug">
                       "{highlight.highlight}"
                     </p>
-                  )}
+                  ) : highlightsLoading ? (
+                    <div className="space-y-1.5">
+                      <Skeleton className="h-3 w-full" />
+                      <Skeleton className="h-3 w-2/3" />
+                    </div>
+                  ) : null}
 
                   <div className="flex flex-wrap gap-2 text-[10px] text-muted-foreground">
                     {(m.externalActivity?.githubCommits ?? 0) > 0 && <span>🐙 {m.externalActivity.githubCommits}</span>}

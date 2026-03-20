@@ -200,6 +200,7 @@ export default function Analytics() {
         badgeCountPct={badgeData?.countPct}
         badgeImpactPct={badgeData?.impactPct}
         loading={memberStatsLoading}
+        highlightsLoading={summaryLoading}
         period={breakdownPeriod}
         onPeriodChange={setBreakdownPeriod}
       />
