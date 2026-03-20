@@ -62,6 +62,7 @@ export function MemberBreakdown({
   badgeCountPct,
   badgeImpactPct,
   loading,
+  highlightsLoading,
   period = "week",
   onPeriodChange,
 }: MemberBreakdownProps) {
