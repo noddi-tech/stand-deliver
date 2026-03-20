@@ -104,3 +104,6 @@ verify_jwt = false
 
 [functions.snapshot-focus-alignment]
 verify_jwt = false
+
+[functions.slack-followup-cron]
+verify_jwt = false

@@ -1107,6 +1107,51 @@ export type Database = {
           },
         ]
       }
+      standup_reminders: {
+        Row: {
+          created_at: string
+          id: string
+          last_sent_at: string
+          member_id: string
+          reminder_count: number
+          session_date: string
+          team_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_sent_at?: string
+          member_id: string
+          reminder_count?: number
+          session_date: string
+          team_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_sent_at?: string
+          member_id?: string
+          reminder_count?: number
+          session_date?: string
+          team_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "standup_reminders_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "team_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "standup_reminders_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       standup_responses: {
         Row: {
           blockers_text: string | null

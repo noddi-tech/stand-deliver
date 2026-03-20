@@ -5,5 +5,5 @@ export const ROUTES = {
 } as const;
 
 export function getSiteUrl(): string {
-  return Deno.env.get("SITE_URL") || "https://standup-flow-app.lovable.app";
+  return Deno.env.get("SITE_URL") || "https://standflow.naviosolutions.com";
 }
