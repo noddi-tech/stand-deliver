@@ -1,39 +1,26 @@
 
 
-# Fix Member Breakdown for Non-Week Periods
+# Add Skeleton Loading for AI Highlights in Member Breakdown
 
 ## Problem
-Two issues cause the Member Breakdown to appear stale or empty for Month/Quarter/Year:
+When switching periods or on initial load, the member cards show stats immediately (from `useTeamMemberStats`) but the AI-generated highlights (sentiment badges and italic quote text) appear blank until the slower AI summary returns. There's no loading indicator for this.
 
-1. **1000-row limit**: The `ai-team-summary` edge function fetches `external_activity` without pagination (line 41). For longer periods, this silently truncates data, producing misleading or empty highlights.
-2. **AI prompt says "days" not period name**: The prompt (line 175) says `${days}-day team data` but never tells the AI "this month" or "this quarter", so highlights always use week-centric language.
+## Solution
+Pass `summaryLoading` to `MemberBreakdown` and show skeleton placeholders where highlights will appear while the AI is loading.
 
 ## Changes
 
-### 1. Edge function: paginate external_activity + add period label
-**File:** `supabase/functions/ai-team-summary/index.ts`
+### 1. `src/components/team/MemberBreakdown.tsx`
+- Add `highlightsLoading?: boolean` prop
+- When `highlightsLoading` is true and no highlight exists for a member, render:
+  - A small skeleton pill where the sentiment badge appears (top-right)
+  - A skeleton text block (2 lines) where the highlight quote appears (bottom of card)
 
-- Add a `fetchAllRows` helper (same pattern as `useTeamMemberStats`) to paginate the `external_activity` query
-- Map period days to a human label ("this week", "this month", "this quarter", "this year") and inject it into the AI prompt so highlights use correct phrasing
+### 2. `src/pages/Dashboard.tsx`
+- Pass `highlightsLoading={summaryLoading}` to `MemberBreakdown`
 
-### 2. Deploy
-Redeploy `ai-team-summary` edge function.
+### 3. `src/pages/Analytics.tsx`
+- Pass `highlightsLoading={summaryLoading}` to `MemberBreakdown` (if it also renders one)
 
-## Technical detail
-
-```text
-Current (line 41):
-  supabase.from("external_activity").select("*")...  // max 1000 rows
-
-Fixed:
-  fetchAllRows(offset => supabase...range(offset, offset+999))  // all rows
-
-Prompt change (line 175):
-  "Analyze the following data for {periodLabel} ({days} days)..."
-  + "Use the phrase '{periodLabel}' when referring to the time period."
-```
-
-| File | Change |
-|------|--------|
-| `supabase/functions/ai-team-summary/index.ts` | Paginate external_activity, add period label to prompt |
+Two files changed, minimal additions — just skeleton elements gated on a new boolean prop.
 
