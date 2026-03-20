@@ -1057,7 +1057,7 @@ export default function MyStandup() {
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
             {showStandupForm && !allResolved && <Lock className="h-4 w-4 text-muted-foreground" />}
-            {showStandupForm ? "Today's Focus" : "Add Focus Item"}
+            {showStandupForm ? "Focus" : "Add Focus Item"}
           </CardTitle>
           {showStandupForm && !allResolved && (
             <p className="text-xs text-muted-foreground">
