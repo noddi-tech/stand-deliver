@@ -1184,6 +1184,55 @@ export default function MyStandup() {
         </>
       )}
 
+      {/* AI Review Modal */}
+      <Dialog open={reviewModalOpen} onOpenChange={(open) => {
+        if (!open && !submitting) {
+          setReviewModalOpen(false);
+          setShowCoach(false);
+          setCoachLoading(false);
+          setFakeProgress(0);
+        }
+      }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-primary" />
+              {coachLoading ? "Reviewing your standup..." : "AI Review Complete"}
+            </DialogTitle>
+            <DialogDescription>
+              {coachLoading
+                ? "Analyzing your focus items for clarity and accountability."
+                : "Review the suggestions below, then submit your standup."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {coachLoading ? (
+            <div className="space-y-4 py-4">
+              <Progress value={Math.min(fakeProgress, 100)} className="h-2" />
+              <p className="text-sm text-muted-foreground text-center animate-pulse">
+                Checking focus items with AI...
+              </p>
+            </div>
+          ) : showCoach ? (
+            <div className="max-h-[60vh] overflow-y-auto">
+              <StandupCoachCard
+                suggestions={coachSuggestions}
+                overallTip={coachTip}
+                onApply={handleCoachApply}
+                onDismiss={handleCoachDismiss}
+                onApplyAll={handleCoachApplyAll}
+                onSubmitAnyway={() => {
+                  setShowCoach(false);
+                  setReviewModalOpen(false);
+                  handleSubmit();
+                }}
+                submitting={submitting}
+              />
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
       {/* Drop confirmation dialog */}
       <AlertDialog open={!!dropDialogId} onOpenChange={(open) => !open && setDropDialogId(null)}>
         <AlertDialogContent>
