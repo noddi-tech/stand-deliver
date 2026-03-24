@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, CheckCircle2, Target, AlertCircle, PenSquare } from "lucide-react";
+import { Loader2, CheckCircle2, Target, AlertCircle, PenSquare, RotateCcw } from "lucide-react";
 import { Link } from "react-router-dom";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
