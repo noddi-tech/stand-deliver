@@ -306,8 +306,9 @@ export default function TeamFeed() {
                         </span>
                         <ul className="space-y-0.5">
                           {carriedItems.map((item, i) => {
-                            const { text, status } = parseItemStatus(item);
-                            const cfg = status ? STATUS_CONFIG[status] : undefined;
+                            const { text } = parseItemStatus(item);
+                            const liveStatus = resolveStatus(item);
+                            const cfg = liveStatus ? STATUS_CONFIG[liveStatus] : undefined;
                             return (
                               <li key={i} className="text-sm text-foreground/80 pl-4 flex items-center gap-1.5 flex-wrap">
                                 <span>• {text}</span>
