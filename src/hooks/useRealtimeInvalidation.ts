@@ -57,6 +57,18 @@ export function useRealtimeInvalidation(teamId: string | undefined) {
           qc.invalidateQueries({ queryKey: ["team-member-stats", teamId] });
         }
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "commitments",
+          filter: `team_id=eq.${teamId}`,
+        },
+        () => {
+          qc.invalidateQueries({ queryKey: ["team-feed-commitments"] });
+        }
+      )
       .subscribe();
 
     return () => {
