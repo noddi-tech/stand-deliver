@@ -1,53 +1,58 @@
 
+# Surgical Plan: Fix live Slack links resolving to `/settings/standup`
 
-# Three Surgical Fixes
+## What I found (from code inspection)
+- The “Start Standup” button is generated in exactly two places:
+  - `supabase/functions/slack-send-reminder/index.ts`
+  - `supabase/functions/slack-followup-cron/index.ts`
+- Both build URL as:
+  - ```${getSiteUrl()}${ROUTES.standup}```
+- `ROUTES.standup` is correct (`/standup`), so `/settings/standup` can only happen if `SITE_URL` includes a path like `/settings`.
+- There are no hardcoded `/settings/standup` strings in the repo.
 
-## 1. Fix all Slack URLs to prevent 404s
+## Likely root cause
+`SITE_URL` is currently set (or was recently set) with a path segment (e.g. `https://standflow.naviosolutions.com/settings`) instead of just origin.  
+That makes Slack buttons become `https://standflow.naviosolutions.com/settings/standup` in new messages too.
 
-**Problem:** The `SITE_URL` secret and `_shared/routes.ts` fallback may point to the old Lovable preview domain instead of the production domain (`standflow.naviosolutions.com`). Also, any hardcoded or stale URLs in edge functions would cause 404s.
+## Implementation plan
 
-**Fix:**
-- **`supabase/functions/_shared/routes.ts`** — Update the fallback URL from `https://standup-flow-app.lovable.app` to the production domain
-- **Verify `SITE_URL` secret** is set to `https://standflow.naviosolutions.com` (per memory, it should already be)
-- **`src/App.tsx`** — Add a redirect route `<Route path="/my-standup" element={<Navigate to="/standup" replace />} />` as a safety net for any old bookmarks or cached Slack messages (this is a one-liner that prevents 404s for legacy links — not a feature, just a redirect)
+1. **Harden URL generation at source**
+   - File: `supabase/functions/_shared/routes.ts`
+   - Update `getSiteUrl()` to normalize to URL origin only (strip pathname/query/hash), with safe fallback to `https://standflow.naviosolutions.com`.
+   - Add a small helper (e.g. `buildAppUrl(route)`) so route joining is always normalized and slash-safe.
 
-Files: `supabase/functions/_shared/routes.ts`, `src/App.tsx`
+2. **Use normalized builder everywhere Slack sends links**
+   - Files:
+     - `supabase/functions/slack-send-reminder/index.ts`
+     - `supabase/functions/slack-followup-cron/index.ts`
+     - `supabase/functions/slack-send-invite/index.ts` (consistency)
+     - `supabase/functions/slack-oauth-callback/index.ts` (consistency for redirects)
+   - Replace string concatenation with shared helper to prevent future divergence.
 
----
+3. **Add immediate safety redirect for already-bad links**
+   - File: `src/App.tsx`
+   - Add route redirect:
+     - `/settings/standup` → `/standup`
+   - This removes 404 even if any bad link still exists in already-sent Slack messages.
 
-## 2. Require minimum 2 focus items on standup submission
+4. **Add minimal observability**
+   - In reminder/follow-up functions, log computed standup URL once per invocation (domain/path only, no secrets) so we can quickly verify what Slack is receiving.
 
-**Problem:** Users can submit with just 1 focus item, which is too high-level for accountability.
+5. **Verification pass**
+   - Confirm no `my-standup` or `/settings/standup` link builders remain.
+   - Trigger one reminder and one follow-up and verify generated button URL is exactly:
+     - `https://standflow.naviosolutions.com/standup`
+   - Confirm clicking legacy `/settings/standup` now lands on `/standup` (no 404).
 
-**Fix in `src/pages/MyStandup.tsx`:**
-- Change validation in `handleSubmit` and `requestCoachReview` from `todayCommitments.length === 0` to `todayCommitments.length < 2`
-- Update error message to: `"Add at least 2 focus items to keep your standup actionable"`
-- Show a helper hint near the focus input when there are 0-1 items
+## Technical details
+- This fix makes the system resilient even if `SITE_URL` is misconfigured with a path later.
+- It also keeps all Slack URL creation centralized in one helper, so route changes don’t drift across functions.
+- Redirect route is a backward-compatibility guardrail; normalized URL builder is the true root-cause fix.
 
-File: `src/pages/MyStandup.tsx`
-
----
-
-## 3. Hourly follow-up reminders with public escalation after 3rd
-
-**Problem:** Members who miss the initial reminder get no follow-up. No accountability mechanism.
-
-**Design:**
-- Create a new edge function `slack-followup-cron` that runs every hour (via pg_cron)
-- For each team with an active session today, check which members have NOT submitted a response
-- Track reminder count per member per day in a new `standup_reminders` table
-- Send DM reminders (1st and 2nd) with escalating urgency
-- On the 3rd reminder, post a message to the team's `slack_channel_id` naming the missing members publicly
-
-**Changes:**
-1. **New migration** — Create `standup_reminders` table: `id, team_id, member_id, session_date, reminder_count, last_sent_at`
-2. **New edge function `slack-followup-cron`** — Runs hourly, queries members without responses, increments reminder count, sends DM or channel post
-3. **`supabase/config.toml`** — Add `[functions.slack-followup-cron]` with `verify_jwt = false`
-4. **New pg_cron job** — Schedule hourly invocation (separate SQL insert, not a migration)
-
-| Reminder # | Action | Message tone |
-|-----------|--------|-------------|
-| 1 | DM | "Friendly nudge — standup is waiting" |
-| 2 | DM | "Second reminder — please submit your standup" |
-| 3+ | Post to #standup channel | "⚠️ @Member still hasn't posted their standup today" |
-
+## Files to change
+- `supabase/functions/_shared/routes.ts`
+- `supabase/functions/slack-send-reminder/index.ts`
+- `supabase/functions/slack-followup-cron/index.ts`
+- `supabase/functions/slack-send-invite/index.ts`
+- `supabase/functions/slack-oauth-callback/index.ts`
+- `src/App.tsx`
