@@ -63,6 +63,8 @@ const App = () => (
                 <Route path="/weekly-digest" element={<WeeklyDigest />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/vis-explained" element={<VISExplained />} />
+                <Route path="/my-standup" element={<Navigate to="/standup" replace />} />
+                <Route path="/settings/standup" element={<Navigate to="/standup" replace />} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Routes>
