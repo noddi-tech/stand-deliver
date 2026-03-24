@@ -29,6 +29,21 @@ function parseTextToList(text: string): string[] {
   return text.split("\n").map((s) => s.trim()).filter(Boolean);
 }
 
+const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
+  done: { label: "Done", className: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/20" },
+  active: { label: "Active", className: "bg-primary/10 text-primary border-primary/20" },
+  in_progress: { label: "In Progress", className: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/20" },
+  carried: { label: "Carried", className: "bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/20" },
+  blocked: { label: "Blocked", className: "bg-destructive/10 text-destructive border-destructive/20" },
+  dropped: { label: "Dropped", className: "bg-muted text-muted-foreground border-border" },
+};
+
+function parseItemStatus(item: string): { text: string; status?: string } {
+  const match = item.match(/^(.+?)\s*→\s*(\w+)\s*$/);
+  if (!match) return { text: item };
+  return { text: match[1].trim(), status: match[2].toLowerCase() };
+}
+
 export default function TeamFeed() {
   const { data: teamData, isLoading: teamLoading } = useUserTeam();
   const teamId = teamData?.team_id;
@@ -227,9 +242,16 @@ export default function TeamFeed() {
                           <CheckCircle2 className="h-3 w-3" /> Resolved
                         </span>
                         <ul className="space-y-0.5">
-                          {yesterdayItems.map((item, i) => (
-                            <li key={i} className="text-sm text-foreground/80 pl-4">• {item}</li>
-                          ))}
+                          {yesterdayItems.map((item, i) => {
+                            const { text, status } = parseItemStatus(item);
+                            const cfg = status ? STATUS_CONFIG[status] : undefined;
+                            return (
+                              <li key={i} className="text-sm text-foreground/80 pl-4 flex items-center gap-1.5 flex-wrap">
+                                <span>• {text}</span>
+                                {cfg && <Badge className={`text-[10px] px-1.5 py-0 font-medium border ${cfg.className}`}>{cfg.label}</Badge>}
+                              </li>
+                            );
+                          })}
                         </ul>
                       </div>
                     )}
@@ -239,9 +261,16 @@ export default function TeamFeed() {
                           <Target className="h-3 w-3" /> Focusing on
                         </span>
                         <ul className="space-y-0.5">
-                          {todayItems.map((item, i) => (
-                            <li key={i} className="text-sm text-foreground/80 pl-4">• {item}</li>
-                          ))}
+                          {todayItems.map((item, i) => {
+                            const { text, status } = parseItemStatus(item);
+                            const cfg = status ? STATUS_CONFIG[status] : undefined;
+                            return (
+                              <li key={i} className="text-sm text-foreground/80 pl-4 flex items-center gap-1.5 flex-wrap">
+                                <span>• {text}</span>
+                                {cfg && <Badge className={`text-[10px] px-1.5 py-0 font-medium border ${cfg.className}`}>{cfg.label}</Badge>}
+                              </li>
+                            );
+                          })}
                         </ul>
                       </div>
                     )}
