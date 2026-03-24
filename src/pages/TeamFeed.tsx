@@ -251,6 +251,17 @@ export default function TeamFeed() {
                 return status && !["done", "dropped"].includes(status);
               });
 
+              // Find completed commitments from DB that are missing from yesterday_text
+              const extraCompleted = commitments.filter(c =>
+                c.member_id === r.member_id &&
+                c.current_session_id === session.id &&
+                (c.status === "done" || c.status === "dropped") &&
+                !completedItems.some(item => {
+                  const { text } = parseItemStatus(item);
+                  return text.trim().toLowerCase() === c.title.trim().toLowerCase();
+                })
+              );
+
               return (
                 <Card key={r.id}>
                   <CardContent className="p-4 space-y-3">
