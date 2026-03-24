@@ -1171,31 +1171,16 @@ export default function MyStandup() {
           </Card>
 
 
-          {/* AI Coach Review */}
-          {showCoach && (
-            <StandupCoachCard
-              suggestions={coachSuggestions}
-              overallTip={coachTip}
-              onApply={handleCoachApply}
-              onDismiss={handleCoachDismiss}
-              onApplyAll={handleCoachApplyAll}
-              onSubmitAnyway={() => { setShowCoach(false); handleSubmit(); }}
-              submitting={submitting}
-            />
-          )}
-
-          {/* Submit */}
-          {!showCoach && (
-            <Button
-              onClick={requestCoachReview}
-              disabled={submitting || coachLoading || (!isEditing && !allResolved)}
-              className="w-full"
-              size="lg"
-            >
-              {(submitting || coachLoading) ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              {coachLoading ? "AI reviewing..." : isEditing ? "Update Standup" : "Submit Standup"}
-            </Button>
-          )}
+          {/* Submit — opens review modal */}
+          <Button
+            onClick={requestCoachReview}
+            disabled={submitting || coachLoading || (!isEditing && !allResolved)}
+            className="w-full"
+            size="lg"
+          >
+            {coachLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sparkles className="h-4 w-4 mr-2" />}
+            {isEditing ? "Review & Update" : "Review & Submit"}
+          </Button>
         </>
       )}
 
