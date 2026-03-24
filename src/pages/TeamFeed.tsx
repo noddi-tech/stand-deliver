@@ -251,6 +251,17 @@ export default function TeamFeed() {
                 return status && !["done", "dropped"].includes(status);
               });
 
+              // Find completed commitments from DB that are missing from yesterday_text
+              const extraCompleted = commitments.filter(c =>
+                c.member_id === r.member_id &&
+                c.current_session_id === session.id &&
+                (c.status === "done" || c.status === "dropped") &&
+                !completedItems.some(item => {
+                  const { text } = parseItemStatus(item);
+                  return text.trim().toLowerCase() === c.title.trim().toLowerCase();
+                })
+              );
+
               return (
                 <Card key={r.id}>
                   <CardContent className="p-4 space-y-3">
@@ -279,7 +290,7 @@ export default function TeamFeed() {
                       </span>
                     </div>
 
-                    {completedItems.length > 0 && (
+                    {(completedItems.length > 0 || extraCompleted.length > 0) && (
                       <div>
                         <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1 mb-1">
                           <CheckCircle2 className="h-3 w-3" /> Completed
@@ -292,6 +303,15 @@ export default function TeamFeed() {
                             return (
                               <li key={i} className="text-sm text-foreground/80 pl-4 flex items-center gap-1.5 flex-wrap">
                                 <span>• {text}</span>
+                                {cfg && <Badge className={`text-[10px] px-1.5 py-0 font-medium border ${cfg.className}`}>{cfg.label}</Badge>}
+                              </li>
+                            );
+                          })}
+                          {extraCompleted.map((c, i) => {
+                            const cfg = STATUS_CONFIG[c.status];
+                            return (
+                              <li key={`extra-${i}`} className="text-sm text-foreground/80 pl-4 flex items-center gap-1.5 flex-wrap">
+                                <span>• {c.title}</span>
                                 {cfg && <Badge className={`text-[10px] px-1.5 py-0 font-medium border ${cfg.className}`}>{cfg.label}</Badge>}
                               </li>
                             );
