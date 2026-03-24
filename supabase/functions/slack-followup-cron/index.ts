@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getSiteUrl, ROUTES } from "../_shared/routes.ts";
+import { buildAppUrl, ROUTES } from "../_shared/routes.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -158,7 +158,7 @@ Deno.serve(async (req) => {
                   type: "button",
                   text: { type: "plain_text", text: "▶️ Start Standup" },
                   style: "primary",
-                  url: `${getSiteUrl()}${ROUTES.standup}`,
+                  url: buildAppUrl(ROUTES.standup),
                 },
               ],
             },
