@@ -113,6 +113,8 @@ export default function MyStandup() {
   const [coachLoading, setCoachLoading] = useState(false);
   const [coachSuggestions, setCoachSuggestions] = useState<CoachSuggestion[]>([]);
   const [coachTip, setCoachTip] = useState<string | null>(null);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [fakeProgress, setFakeProgress] = useState(0);
 
   // ClickUp import state
   const [showClickUpDialog, setShowClickUpDialog] = useState(false);
@@ -472,26 +474,40 @@ export default function MyStandup() {
       toast.error("Add at least 2 focus items to keep your standup actionable");
       return;
     }
+    // Open modal and start fake progress
+    setReviewModalOpen(true);
+    setShowCoach(false);
     setCoachLoading(true);
+    setFakeProgress(0);
+
+    // Animate fake progress 0→90 over ~3s
+    const interval = setInterval(() => {
+      setFakeProgress((prev) => {
+        if (prev >= 90) { clearInterval(interval); return 90; }
+        return prev + Math.random() * 15;
+      });
+    }, 300);
+
     try {
       const { data, error } = await supabase.functions.invoke("ai-coach-standup", {
         body: { commitments: todayCommitments.map((c) => ({ title: c.title })) },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
+      clearInterval(interval);
+      setFakeProgress(100);
       setCoachSuggestions(data?.suggestions || []);
       setCoachTip(data?.overall_tip || null);
       setShowCoach(true);
     } catch (err: any) {
       console.error("Coach review failed:", err);
-      // Fail gracefully — let them submit without review
+      clearInterval(interval);
+      setFakeProgress(100);
+      // Show fallback in modal
+      setCoachSuggestions([]);
+      setCoachTip(null);
+      setShowCoach(true); // Show modal with submit-anyway option
       toast.info("AI coach unavailable — you can submit directly");
-      try {
-        await handleSubmit();
-      } catch (submitErr: any) {
-        console.error("Submit after coach failure:", submitErr);
-        toast.error(submitErr.message || "Failed to submit standup");
-      }
     } finally {
       setCoachLoading(false);
     }
@@ -1155,33 +1171,67 @@ export default function MyStandup() {
           </Card>
 
 
-          {/* AI Coach Review */}
-          {showCoach && (
-            <StandupCoachCard
-              suggestions={coachSuggestions}
-              overallTip={coachTip}
-              onApply={handleCoachApply}
-              onDismiss={handleCoachDismiss}
-              onApplyAll={handleCoachApplyAll}
-              onSubmitAnyway={() => { setShowCoach(false); handleSubmit(); }}
-              submitting={submitting}
-            />
-          )}
-
-          {/* Submit */}
-          {!showCoach && (
-            <Button
-              onClick={requestCoachReview}
-              disabled={submitting || coachLoading || (!isEditing && !allResolved)}
-              className="w-full"
-              size="lg"
-            >
-              {(submitting || coachLoading) ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-              {coachLoading ? "AI reviewing..." : isEditing ? "Update Standup" : "Submit Standup"}
-            </Button>
-          )}
+          {/* Submit — opens review modal */}
+          <Button
+            onClick={requestCoachReview}
+            disabled={submitting || coachLoading || (!isEditing && !allResolved)}
+            className="w-full"
+            size="lg"
+          >
+            {coachLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sparkles className="h-4 w-4 mr-2" />}
+            {isEditing ? "Review & Update" : "Review & Submit"}
+          </Button>
         </>
       )}
+
+      {/* AI Review Modal */}
+      <Dialog open={reviewModalOpen} onOpenChange={(open) => {
+        if (!open && !submitting) {
+          setReviewModalOpen(false);
+          setShowCoach(false);
+          setCoachLoading(false);
+          setFakeProgress(0);
+        }
+      }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-primary" />
+              {coachLoading ? "Reviewing your standup..." : "AI Review Complete"}
+            </DialogTitle>
+            <DialogDescription>
+              {coachLoading
+                ? "Analyzing your focus items for clarity and accountability."
+                : "Review the suggestions below, then submit your standup."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {coachLoading ? (
+            <div className="space-y-4 py-4">
+              <Progress value={Math.min(fakeProgress, 100)} className="h-2" />
+              <p className="text-sm text-muted-foreground text-center animate-pulse">
+                Checking focus items with AI...
+              </p>
+            </div>
+          ) : showCoach ? (
+            <div className="max-h-[60vh] overflow-y-auto">
+              <StandupCoachCard
+                suggestions={coachSuggestions}
+                overallTip={coachTip}
+                onApply={handleCoachApply}
+                onDismiss={handleCoachDismiss}
+                onApplyAll={handleCoachApplyAll}
+                onSubmitAnyway={() => {
+                  setShowCoach(false);
+                  setReviewModalOpen(false);
+                  handleSubmit();
+                }}
+                submitting={submitting}
+              />
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
       {/* Drop confirmation dialog */}
       <AlertDialog open={!!dropDialogId} onOpenChange={(open) => !open && setDropDialogId(null)}>
