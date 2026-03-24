@@ -235,12 +235,19 @@ export default function TeamFeed() {
               const yesterdayItems = r.yesterday_text ? parseTextToList(r.yesterday_text) : [];
               const todayItems = r.today_text ? parseTextToList(r.today_text) : [];
 
+              // Resolve live status for each item
+              const resolveStatus = (item: string) => {
+                const { text, status: textStatus } = parseItemStatus(item);
+                const liveKey = `${r.member_id}::${text.trim().toLowerCase()}`;
+                return commitmentStatusLookup.get(liveKey) || textStatus;
+              };
+
               const completedItems = yesterdayItems.filter((item) => {
-                const { status } = parseItemStatus(item);
+                const status = resolveStatus(item);
                 return !status || status === "done" || status === "dropped";
               });
               const carriedItems = yesterdayItems.filter((item) => {
-                const { status } = parseItemStatus(item);
+                const status = resolveStatus(item);
                 return status && !["done", "dropped"].includes(status);
               });
 
