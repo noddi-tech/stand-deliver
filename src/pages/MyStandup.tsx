@@ -474,26 +474,40 @@ export default function MyStandup() {
       toast.error("Add at least 2 focus items to keep your standup actionable");
       return;
     }
+    // Open modal and start fake progress
+    setReviewModalOpen(true);
+    setShowCoach(false);
     setCoachLoading(true);
+    setFakeProgress(0);
+
+    // Animate fake progress 0→90 over ~3s
+    const interval = setInterval(() => {
+      setFakeProgress((prev) => {
+        if (prev >= 90) { clearInterval(interval); return 90; }
+        return prev + Math.random() * 15;
+      });
+    }, 300);
+
     try {
       const { data, error } = await supabase.functions.invoke("ai-coach-standup", {
         body: { commitments: todayCommitments.map((c) => ({ title: c.title })) },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
+      clearInterval(interval);
+      setFakeProgress(100);
       setCoachSuggestions(data?.suggestions || []);
       setCoachTip(data?.overall_tip || null);
       setShowCoach(true);
     } catch (err: any) {
       console.error("Coach review failed:", err);
-      // Fail gracefully — let them submit without review
+      clearInterval(interval);
+      setFakeProgress(100);
+      // Show fallback in modal
+      setCoachSuggestions([]);
+      setCoachTip(null);
+      setShowCoach(true); // Show modal with submit-anyway option
       toast.info("AI coach unavailable — you can submit directly");
-      try {
-        await handleSubmit();
-      } catch (submitErr: any) {
-        console.error("Submit after coach failure:", submitErr);
-        toast.error(submitErr.message || "Failed to submit standup");
-      }
     } finally {
       setCoachLoading(false);
     }
