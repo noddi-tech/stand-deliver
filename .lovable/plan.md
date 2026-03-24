@@ -1,30 +1,63 @@
 
 
-# Fix: `/settings/standup` Redirect Lands on Dashboard
+# Modal-Based AI Review Flow for Standup Submission
 
-## Problem
-The redirect `<Route path="/settings/standup" element={<Navigate to="/standup" replace />} />` is on line 46, **outside** the `<ProtectedRoute>` wrapper. When an unauthenticated user clicks the Slack link:
+## Overview
+Replace the inline coach card with a full modal dialog that opens when the user clicks "Review & Submit". The modal shows a progress animation during AI review, then displays the results with a clear "Submit Standup" button. This makes it impossible to miss that submission hasn't happened yet.
 
-1. Route matches line 46 → redirects to `/standup`
-2. `/standup` is inside the protected layout → `ProtectedRoute` checks auth
-3. User isn't authenticated yet → redirects to `/auth`
-4. After auth, `AuthCallback` redirects to `/dashboard` (not back to `/standup`)
+## UX Flow
+```text
+User clicks "Review & Submit"
+        ↓
+  ┌─────────────────────────────┐
+  │  Modal opens                │
+  │  ┌───────────────────────┐  │
+  │  │ ✨ Reviewing with AI  │  │
+  │  │ ████████░░░░  67%     │  │
+  │  │ Analyzing focus items… │  │
+  │  └───────────────────────┘  │
+  └─────────────────────────────┘
+        ↓  (AI returns)
+  ┌─────────────────────────────┐
+  │  AI Review Complete         │
+  │                             │
+  │  💡 Overall tip             │
+  │                             │
+  │  ┌─ Suggestion 1 ────────┐ │
+  │  │ Apply / Dismiss        │ │
+  │  └────────────────────────┘ │
+  │  ┌─ Suggestion 2 ────────┐ │
+  │  │ Looks good ✓           │ │
+  │  └────────────────────────┘ │
+  │                             │
+  │  [Apply All]  [Submit ████] │
+  └─────────────────────────────┘
+```
 
-The redirect chain loses the original destination.
+## Changes
 
-## Fix
-Move the `/settings/standup` redirect **inside** the protected layout route, so it's a sibling of `/standup`. This way auth happens first (via the parent layout's `ProtectedRoute`), then the redirect fires after the user is already authenticated.
+### 1. `src/pages/MyStandup.tsx`
+- Rename button from "Submit Standup" to **"Review & Submit"**
+- On click, open a `Dialog` modal and trigger `requestCoachReview` inside it
+- Add state: `reviewModalOpen` (boolean)
+- Remove inline `showCoach` rendering of `StandupCoachCard`
+- Modal has two phases:
+  - **Loading phase**: Sparkles icon, animated progress bar (fake progress 0→90% over ~3s), "Reviewing your focus items with AI..." text
+  - **Results phase**: Render `StandupCoachCard` content inside modal with prominent "Submit Standup" button
+- On submit, close modal and run `handleSubmit()`
+- On coach failure (AI unavailable), modal shows fallback message with direct "Submit without review" button
 
-### `src/App.tsx`
-- **Remove** line 46 (`/settings/standup` redirect outside layout)
-- **Add** inside the layout route block (after line 67):
-  ```tsx
-  <Route path="/settings/standup" element={<Navigate to="/standup" replace />} />
-  ```
+### 2. `src/components/ai/StandupCoachCard.tsx`
+- No structural changes needed — it already renders suggestions, apply/dismiss, and submit buttons
+- It will now be rendered inside the modal instead of inline
 
-One line moved. The `/my-standup` redirect on line 45 should also move inside for the same reason.
+### 3. Button label in non-coach state
+- Change `"Submit Standup"` → `"Review & Submit"`
+- Loading state: `"Opening review..."` (brief, before modal appears)
+
+## Files to change
 
 | File | Change |
 |------|--------|
-| `src/App.tsx` | Move `/settings/standup` and `/my-standup` redirects inside the protected layout route |
+| `src/pages/MyStandup.tsx` | Add review modal with loading animation + coach results, rename button |
 
