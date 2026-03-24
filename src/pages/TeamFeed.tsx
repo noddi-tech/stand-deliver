@@ -261,9 +261,16 @@ export default function TeamFeed() {
                           <Target className="h-3 w-3" /> Focusing on
                         </span>
                         <ul className="space-y-0.5">
-                          {todayItems.map((item, i) => (
-                            <li key={i} className="text-sm text-foreground/80 pl-4">• {item}</li>
-                          ))}
+                          {todayItems.map((item, i) => {
+                            const { text, status } = parseItemStatus(item);
+                            const cfg = status ? STATUS_CONFIG[status] : undefined;
+                            return (
+                              <li key={i} className="text-sm text-foreground/80 pl-4 flex items-center gap-1.5 flex-wrap">
+                                <span>• {text}</span>
+                                {cfg && <Badge className={`text-[10px] px-1.5 py-0 font-medium border ${cfg.className}`}>{cfg.label}</Badge>}
+                              </li>
+                            );
+                          })}
                         </ul>
                       </div>
                     )}
