@@ -104,6 +104,33 @@ export default function TeamFeed() {
     },
   });
 
+  // Fetch live commitment statuses for these sessions
+  const { data: commitments = [] } = useQuery({
+    queryKey: ["team-feed-commitments", sessionIds],
+    enabled: sessionIds.length > 0,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("commitments")
+        .select("id, title, status, member_id, origin_session_id, current_session_id")
+        .or(
+          sessionIds.map(id => `origin_session_id.eq.${id}`).join(",") +
+          "," +
+          sessionIds.map(id => `current_session_id.eq.${id}`).join(",")
+        );
+      return data || [];
+    },
+  });
+
+  // Build lookup: member_id + normalized title → live status
+  const commitmentStatusLookup = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of commitments) {
+      const key = `${c.member_id}::${c.title.trim().toLowerCase()}`;
+      map.set(key, c.status);
+    }
+    return map;
+  }, [commitments]);
+
   // Group by session date
   const grouped = useMemo(() => {
     return sessions.map((session) => {
@@ -208,12 +235,19 @@ export default function TeamFeed() {
               const yesterdayItems = r.yesterday_text ? parseTextToList(r.yesterday_text) : [];
               const todayItems = r.today_text ? parseTextToList(r.today_text) : [];
 
+              // Resolve live status for each item
+              const resolveStatus = (item: string) => {
+                const { text, status: textStatus } = parseItemStatus(item);
+                const liveKey = `${r.member_id}::${text.trim().toLowerCase()}`;
+                return commitmentStatusLookup.get(liveKey) || textStatus;
+              };
+
               const completedItems = yesterdayItems.filter((item) => {
-                const { status } = parseItemStatus(item);
+                const status = resolveStatus(item);
                 return !status || status === "done" || status === "dropped";
               });
               const carriedItems = yesterdayItems.filter((item) => {
-                const { status } = parseItemStatus(item);
+                const status = resolveStatus(item);
                 return status && !["done", "dropped"].includes(status);
               });
 
@@ -252,8 +286,9 @@ export default function TeamFeed() {
                         </span>
                         <ul className="space-y-0.5">
                           {completedItems.map((item, i) => {
-                            const { text, status } = parseItemStatus(item);
-                            const cfg = status ? STATUS_CONFIG[status] : undefined;
+                            const { text } = parseItemStatus(item);
+                            const liveStatus = resolveStatus(item);
+                            const cfg = liveStatus ? STATUS_CONFIG[liveStatus] : undefined;
                             return (
                               <li key={i} className="text-sm text-foreground/80 pl-4 flex items-center gap-1.5 flex-wrap">
                                 <span>• {text}</span>
@@ -271,8 +306,9 @@ export default function TeamFeed() {
                         </span>
                         <ul className="space-y-0.5">
                           {carriedItems.map((item, i) => {
-                            const { text, status } = parseItemStatus(item);
-                            const cfg = status ? STATUS_CONFIG[status] : undefined;
+                            const { text } = parseItemStatus(item);
+                            const liveStatus = resolveStatus(item);
+                            const cfg = liveStatus ? STATUS_CONFIG[liveStatus] : undefined;
                             return (
                               <li key={i} className="text-sm text-foreground/80 pl-4 flex items-center gap-1.5 flex-wrap">
                                 <span>• {text}</span>
@@ -290,8 +326,9 @@ export default function TeamFeed() {
                         </span>
                         <ul className="space-y-0.5">
                           {todayItems.map((item, i) => {
-                            const { text, status } = parseItemStatus(item);
-                            const cfg = status ? STATUS_CONFIG[status] : undefined;
+                            const { text } = parseItemStatus(item);
+                            const liveStatus = resolveStatus(item);
+                            const cfg = liveStatus ? STATUS_CONFIG[liveStatus] : undefined;
                             return (
                               <li key={i} className="text-sm text-foreground/80 pl-4 flex items-center gap-1.5 flex-wrap">
                                 <span>• {text}</span>
