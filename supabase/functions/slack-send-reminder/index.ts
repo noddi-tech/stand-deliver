@@ -12,6 +12,9 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const standupUrl = buildAppUrl(ROUTES.standup);
+    console.log("[slack-send-reminder] Standup URL:", standupUrl);
+
     const { team_id, day_mode } = await req.json();
     if (!team_id) throw new Error("team_id required");
     const isPhysical = day_mode === "physical";

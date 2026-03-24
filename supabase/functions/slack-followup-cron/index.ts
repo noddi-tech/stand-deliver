@@ -12,6 +12,9 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const standupUrl = buildAppUrl(ROUTES.standup);
+    console.log("[slack-followup-cron] Standup URL:", standupUrl);
+
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
