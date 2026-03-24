@@ -1193,7 +1193,7 @@ export default function MyStandup() {
           setFakeProgress(0);
         }
       }}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-primary" />
