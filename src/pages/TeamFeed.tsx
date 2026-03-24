@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, CheckCircle2, Target, AlertCircle, PenSquare } from "lucide-react";
+import { Loader2, CheckCircle2, Target, AlertCircle, PenSquare, RotateCcw } from "lucide-react";
 import { Link } from "react-router-dom";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useTeamBadges, useBadgeLookup } from "@/hooks/useBadges";
@@ -208,6 +208,15 @@ export default function TeamFeed() {
               const yesterdayItems = r.yesterday_text ? parseTextToList(r.yesterday_text) : [];
               const todayItems = r.today_text ? parseTextToList(r.today_text) : [];
 
+              const completedItems = yesterdayItems.filter((item) => {
+                const { status } = parseItemStatus(item);
+                return !status || status === "done" || status === "dropped";
+              });
+              const carriedItems = yesterdayItems.filter((item) => {
+                const { status } = parseItemStatus(item);
+                return status && !["done", "dropped"].includes(status);
+              });
+
               return (
                 <Card key={r.id}>
                   <CardContent className="p-4 space-y-3">
@@ -236,13 +245,32 @@ export default function TeamFeed() {
                       </span>
                     </div>
 
-                    {yesterdayItems.length > 0 && (
+                    {completedItems.length > 0 && (
                       <div>
-                        <span className="text-xs font-medium text-muted-foreground flex items-center gap-1 mb-1">
-                          <CheckCircle2 className="h-3 w-3" /> Resolved
+                        <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1 mb-1">
+                          <CheckCircle2 className="h-3 w-3" /> Completed
                         </span>
                         <ul className="space-y-0.5">
-                          {yesterdayItems.map((item, i) => {
+                          {completedItems.map((item, i) => {
+                            const { text, status } = parseItemStatus(item);
+                            const cfg = status ? STATUS_CONFIG[status] : undefined;
+                            return (
+                              <li key={i} className="text-sm text-foreground/80 pl-4 flex items-center gap-1.5 flex-wrap">
+                                <span>• {text}</span>
+                                {cfg && <Badge className={`text-[10px] px-1.5 py-0 font-medium border ${cfg.className}`}>{cfg.label}</Badge>}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    )}
+                    {carriedItems.length > 0 && (
+                      <div>
+                        <span className="text-xs font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1 mb-1">
+                          <RotateCcw className="h-3 w-3" /> Carried forward
+                        </span>
+                        <ul className="space-y-0.5">
+                          {carriedItems.map((item, i) => {
                             const { text, status } = parseItemStatus(item);
                             const cfg = status ? STATUS_CONFIG[status] : undefined;
                             return (
