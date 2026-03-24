@@ -104,6 +104,33 @@ export default function TeamFeed() {
     },
   });
 
+  // Fetch live commitment statuses for these sessions
+  const { data: commitments = [] } = useQuery({
+    queryKey: ["team-feed-commitments", sessionIds],
+    enabled: sessionIds.length > 0,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("commitments")
+        .select("id, title, status, member_id, origin_session_id, current_session_id")
+        .or(
+          sessionIds.map(id => `origin_session_id.eq.${id}`).join(",") +
+          "," +
+          sessionIds.map(id => `current_session_id.eq.${id}`).join(",")
+        );
+      return data || [];
+    },
+  });
+
+  // Build lookup: member_id + normalized title → live status
+  const commitmentStatusLookup = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of commitments) {
+      const key = `${c.member_id}::${c.title.trim().toLowerCase()}`;
+      map.set(key, c.status);
+    }
+    return map;
+  }, [commitments]);
+
   // Group by session date
   const grouped = useMemo(() => {
     return sessions.map((session) => {
