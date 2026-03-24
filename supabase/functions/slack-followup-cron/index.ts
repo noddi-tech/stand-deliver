@@ -158,7 +158,7 @@ Deno.serve(async (req) => {
                   type: "button",
                   text: { type: "plain_text", text: "▶️ Start Standup" },
                   style: "primary",
-                  url: `${getSiteUrl()}${ROUTES.standup}`,
+                  url: buildAppUrl(ROUTES.standup),
                 },
               ],
             },
