@@ -1,48 +1,53 @@
 
 
-# Fix: Team Feed Shows Live Commitment Statuses
+# Fix: Show Completed Items on Today's Standup in Team Feed
 
-## Problem
-Team Feed reads statuses from the `yesterday_text` field in `standup_responses`, which is a static snapshot written at submit time. When a user updates commitment statuses after submitting (e.g., marking items done later), the Team Feed never reflects those changes because it only parses the frozen text.
+## Root Cause
 
-Additionally, if items were marked done during the standup flow, the snapshot may not have captured the correct status due to timing.
+Items marked `done` during standup submission are correctly stored in the `commitments` table with `current_session_id` pointing to today's session. The Team Feed already queries these commitments. However, the **rendering logic** only shows items parsed from `yesterday_text` — it never adds completed commitments that exist in the DB but are missing from the text snapshot.
+
+The `yesterday_text` field only contains items that were still `active`/`in_progress` when the standup form loaded (`previousCommitments` query filters out `done` items). Items checked done during the form ARE in `statusOverrides`, and their text appears with `→ done`, but items that were already resolved before the form loaded are excluded entirely.
+
+Additionally, `todayItems` (focus items) show live statuses from the commitments table, but there's no dedicated "Recently Completed" section showing items resolved since submission.
 
 ## Solution
-Make Team Feed pull live commitment statuses from the `commitments` table instead of parsing `yesterday_text` for status arrows.
+
+For each response card in Team Feed, merge two sources of completed items:
+
+1. **From `yesterday_text`** — items with `→ done` or `→ dropped` status (already working)
+2. **From `commitments` table** — any commitment for this member with `status = 'done'` or `'dropped'` AND `current_session_id` matching this session, that is NOT already in the `yesterday_text` list
+
+This ensures items resolved before the form loaded (and thus excluded from `yesterday_text`) still appear under "Completed" on the correct day.
 
 ## Changes
 
-### 1. `src/pages/TeamFeed.tsx`
+### `src/pages/TeamFeed.tsx`
 
-**Add a new query** to fetch commitments for the displayed sessions:
-- Query `commitments` table where `origin_session_id` or `current_session_id` matches the session IDs we already have
-- This gives us live `status` values per commitment
+1. After computing `completedItems` from `yesterday_text`, find additional done/dropped commitments from the `commitments` array where:
+   - `member_id` matches `r.member_id`
+   - `current_session_id` matches `session.id`  
+   - `status` is `done` or `dropped`
+   - Title is NOT already in the `completedItems` list (dedup)
 
-**Update rendering logic:**
-- For each response's `yesterday_text`, still parse the text for item titles (strip `→ status` suffix)
-- But look up the **live** status from the `commitments` query instead of the text suffix
-- Match by title + member_id
-- Fall back to the text-parsed status if no commitment match is found (backward compat for old data)
+2. Merge these extra items into the "Completed" section rendering
 
-### 2. Query structure
+3. Each extra commitment renders as `• {title}` with the appropriate status badge, same as existing items
 
-```text
-commitments table query:
-  SELECT id, title, status, member_id, origin_session_id, current_session_id
-  WHERE current_session_id IN (sessionIds)
-     OR origin_session_id IN (sessionIds)
+## Technical detail
+
+```tsx
+// After computing completedItems from yesterday_text:
+const extraCompleted = commitments.filter(c =>
+  c.member_id === r.member_id &&
+  c.current_session_id === session.id &&
+  (c.status === "done" || c.status === "dropped") &&
+  !completedItems.some(item => {
+    const { text } = parseItemStatus(item);
+    return text.trim().toLowerCase() === c.title.trim().toLowerCase();
+  })
+);
+// Render both completedItems (from text) and extraCompleted (from DB)
 ```
 
-Then build a lookup map: `Map<member_id + title, status>` for O(1) access during render.
-
-### 3. Realtime (optional but recommended)
-The existing `useRealtimeInvalidation` pattern already invalidates on `commitments` changes. Add the new query key to the invalidation list so Team Feed updates live when someone marks an item done.
-
-## Files to change
-
-| File | Change |
-|------|--------|
-| `src/pages/TeamFeed.tsx` | Add commitments query, use live status in render, keep text fallback |
-
-One file, no schema changes. The `yesterday_text` field continues to be written as-is for backward compatibility.
+One file changed, rendering logic only. No schema or query changes needed — the data is already fetched.
 
