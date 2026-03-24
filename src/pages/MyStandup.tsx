@@ -113,6 +113,8 @@ export default function MyStandup() {
   const [coachLoading, setCoachLoading] = useState(false);
   const [coachSuggestions, setCoachSuggestions] = useState<CoachSuggestion[]>([]);
   const [coachTip, setCoachTip] = useState<string | null>(null);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [fakeProgress, setFakeProgress] = useState(0);
 
   // ClickUp import state
   const [showClickUpDialog, setShowClickUpDialog] = useState(false);
