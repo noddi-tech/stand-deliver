@@ -33,7 +33,7 @@ export function useAttentionItems(teamId: string | undefined) {
     queryFn: async () => {
       const today = format(new Date(), "yyyy-MM-dd");
 
-      const [carryOvers, oldBlockers, membersRes, sessionRes] = await Promise.all([
+      const [carryOvers, oldBlockers, membersRes, sessionRes, teamRes] = await Promise.all([
         supabase
           .from("commitments")
           .select("id, title, carry_count, status, member:team_members!inner(profile:profiles!inner(full_name, avatar_url))")
@@ -58,7 +58,23 @@ export function useAttentionItems(teamId: string | undefined) {
           .eq("session_date", today)
           .limit(1)
           .maybeSingle(),
+        supabase
+          .from("teams")
+          .select("standup_days, standup_timezone")
+          .eq("id", teamId!)
+          .single(),
       ]);
+
+      const teamConfig = teamRes.data as { standup_days: string[]; standup_timezone: string } | null;
+
+      // Determine if today is a standup day in the team's timezone
+      const DAY_CODES = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+      let isStandupDay = true; // default to true if we can't determine
+      if (teamConfig?.standup_days) {
+        const nowInTz = new Date(new Date().toLocaleString("en-US", { timeZone: teamConfig.standup_timezone || "UTC" }));
+        const todayCode = DAY_CODES[nowInTz.getDay()];
+        isStandupDay = teamConfig.standup_days.includes(todayCode);
+      }
 
       const commitments: AttentionCommitment[] = (carryOvers.data || []).map((c: any) => ({
         id: c.id,
@@ -78,9 +94,9 @@ export function useAttentionItems(teamId: string | undefined) {
 
       const allMembers = (membersRes.data || []) as any[];
 
-      // Missing standups today
+      // Missing standups today — only flag on scheduled standup days
       let missingStandups: AttentionMember[] = [];
-      if (sessionRes.data) {
+      if (sessionRes.data && isStandupDay) {
         const { data: todayResps } = await supabase
           .from("standup_responses")
           .select("member_id")
