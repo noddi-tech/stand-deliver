@@ -33,7 +33,7 @@ export function useAttentionItems(teamId: string | undefined) {
     queryFn: async () => {
       const today = format(new Date(), "yyyy-MM-dd");
 
-      const [carryOvers, oldBlockers, membersRes, sessionRes] = await Promise.all([
+      const [carryOvers, oldBlockers, membersRes, sessionRes, teamRes] = await Promise.all([
         supabase
           .from("commitments")
           .select("id, title, carry_count, status, member:team_members!inner(profile:profiles!inner(full_name, avatar_url))")
