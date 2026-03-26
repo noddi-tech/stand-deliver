@@ -558,6 +558,106 @@ export type Database = {
           },
         ]
       }
+      focus_gap_analyses: {
+        Row: {
+          created_at: string | null
+          id: string
+          suggestions: Json
+          team_id: string
+          v1_focus_id: string
+          v2_focus_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          suggestions?: Json
+          team_id: string
+          v1_focus_id: string
+          v2_focus_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          suggestions?: Json
+          team_id?: string
+          v1_focus_id?: string
+          v2_focus_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "focus_gap_analyses_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "focus_gap_analyses_v1_focus_id_fkey"
+            columns: ["v1_focus_id"]
+            isOneToOne: false
+            referencedRelation: "team_focus"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "focus_gap_analyses_v2_focus_id_fkey"
+            columns: ["v2_focus_id"]
+            isOneToOne: false
+            referencedRelation: "team_focus"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      focus_insights: {
+        Row: {
+          confidence: number
+          created_at: string | null
+          description: string
+          focus_item_id: string | null
+          id: string
+          insight_type: string
+          is_dismissed: boolean
+          team_id: string
+          title: string
+        }
+        Insert: {
+          confidence?: number
+          created_at?: string | null
+          description: string
+          focus_item_id?: string | null
+          id?: string
+          insight_type: string
+          is_dismissed?: boolean
+          team_id: string
+          title: string
+        }
+        Update: {
+          confidence?: number
+          created_at?: string | null
+          description?: string
+          focus_item_id?: string | null
+          id?: string
+          insight_type?: string
+          is_dismissed?: boolean
+          team_id?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "focus_insights_focus_item_id_fkey"
+            columns: ["focus_item_id"]
+            isOneToOne: false
+            referencedRelation: "team_focus"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "focus_insights_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       focus_recommendations: {
         Row: {
           created_at: string
@@ -612,6 +712,60 @@ export type Database = {
           },
           {
             foreignKeyName: "focus_recommendations_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      focus_retrospectives: {
+        Row: {
+          ai_narrative: string | null
+          ai_recommendations: Json | null
+          completed_by: string | null
+          created_at: string | null
+          focus_item_id: string
+          id: string
+          metrics: Json
+          status: string
+          team_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          ai_narrative?: string | null
+          ai_recommendations?: Json | null
+          completed_by?: string | null
+          created_at?: string | null
+          focus_item_id: string
+          id?: string
+          metrics?: Json
+          status?: string
+          team_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          ai_narrative?: string | null
+          ai_recommendations?: Json | null
+          completed_by?: string | null
+          created_at?: string | null
+          focus_item_id?: string
+          id?: string
+          metrics?: Json
+          status?: string
+          team_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "focus_retrospectives_focus_item_id_fkey"
+            columns: ["focus_item_id"]
+            isOneToOne: false
+            referencedRelation: "team_focus"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "focus_retrospectives_team_id_fkey"
             columns: ["team_id"]
             isOneToOne: false
             referencedRelation: "teams"
@@ -1258,6 +1412,7 @@ export type Database = {
       }
       team_focus: {
         Row: {
+          completed_at: string | null
           created_at: string
           description: string | null
           ends_at: string | null
@@ -1265,12 +1420,14 @@ export type Database = {
           is_active: boolean
           label: string
           parent_id: string | null
+          predecessor_id: string | null
           starts_at: string | null
           team_id: string
           title: string
           updated_at: string
         }
         Insert: {
+          completed_at?: string | null
           created_at?: string
           description?: string | null
           ends_at?: string | null
@@ -1278,12 +1435,14 @@ export type Database = {
           is_active?: boolean
           label: string
           parent_id?: string | null
+          predecessor_id?: string | null
           starts_at?: string | null
           team_id: string
           title: string
           updated_at?: string
         }
         Update: {
+          completed_at?: string | null
           created_at?: string
           description?: string | null
           ends_at?: string | null
@@ -1291,6 +1450,7 @@ export type Database = {
           is_active?: boolean
           label?: string
           parent_id?: string | null
+          predecessor_id?: string | null
           starts_at?: string | null
           team_id?: string
           title?: string
@@ -1300,6 +1460,13 @@ export type Database = {
           {
             foreignKeyName: "team_focus_parent_id_fkey"
             columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "team_focus"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "team_focus_predecessor_id_fkey"
+            columns: ["predecessor_id"]
             isOneToOne: false
             referencedRelation: "team_focus"
             referencedColumns: ["id"]
@@ -1513,6 +1680,22 @@ export type Database = {
       create_org_and_join: {
         Args: { p_name: string; p_slack_workspace_id?: string; p_slug: string }
         Returns: Json
+      }
+      find_similar_focus_areas: {
+        Args: {
+          p_exclude_id?: string
+          p_limit?: number
+          p_search_text: string
+          p_team_id: string
+        }
+        Returns: {
+          completed_at: string
+          description: string
+          id: string
+          label: string
+          similarity: number
+          title: string
+        }[]
       }
       get_team_org: { Args: { _team_id: string }; Returns: string }
       is_org_member: {

@@ -107,3 +107,12 @@ verify_jwt = false
 
 [functions.slack-followup-cron]
 verify_jwt = false
+
+[functions.ai-focus-retrospective]
+verify_jwt = false
+
+[functions.ai-focus-gap-analysis]
+verify_jwt = false
+
+[functions.focus-insight-cron]
+verify_jwt = false
