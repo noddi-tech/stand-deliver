@@ -116,3 +116,6 @@ verify_jwt = false
 
 [functions.focus-insight-cron]
 verify_jwt = false
+
+[functions.ai-embed-focus]
+verify_jwt = false
