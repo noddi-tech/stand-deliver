@@ -152,7 +152,8 @@ export function useFocusRetrospective(focusItemId: string | undefined) {
 
 // ============================================================
 // useSimilarFocusAreas
-// Tries pgvector semantic search first, falls back to pg_trgm.
+// Tries pgvector semantic search first via edge function,
+// falls back to pg_trgm if no embeddings exist yet.
 // ============================================================
 
 export function useSimilarFocusAreas(teamId: string | undefined, searchText: string, excludeId?: string) {
@@ -163,21 +164,20 @@ export function useSimilarFocusAreas(teamId: string | undefined, searchText: str
     queryFn: async () => {
       // Try pgvector semantic search first
       try {
-        const { data: embedData } = await supabase.functions.invoke("ai-embed-focus", {
+        const { data: searchResult } = await supabase.functions.invoke("search-focus-embeddings", {
           body: {
-            focus_item_id: "00000000-0000-0000-0000-000000000000", // dummy, we just need the embedding
+            search_text: searchText,
             team_id: teamId,
-            content_override: searchText,
-            content_type_override: "query",
+            exclude_id: excludeId || null,
+            limit: 5,
           },
         });
 
-        // If embedding worked, we can query match_focus_embeddings
-        // But since ai-embed-focus stores the embedding, we need a different approach:
-        // Call OpenAI directly from the hook isn't ideal, so fall through to pg_trgm
-        // and use pgvector results if available via an RPC that embeds inline.
+        if (searchResult && !searchResult.fallback && searchResult.results?.length > 0) {
+          return searchResult.results as SimilarFocusArea[];
+        }
       } catch {
-        // Semantic search not available, fall through
+        // Semantic search unavailable, fall through to pg_trgm
       }
 
       // Fallback: pg_trgm similarity search (always works)
