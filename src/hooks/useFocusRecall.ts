@@ -15,6 +15,7 @@ export interface FocusRetrospective {
   ai_narrative: string | null;
   ai_recommendations: any[];
   completed_by: string | null;
+  error_message: string | null;
   created_at: string;
   updated_at: string;
 }
