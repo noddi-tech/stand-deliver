@@ -265,7 +265,7 @@ Generate a JSON response with these exact fields:
         ai_recommendations: recommendations,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", retrospective_id);
+      .eq("id", retroId);
 
     if (updateErr) throw updateErr;
 
