@@ -15,6 +15,7 @@ export interface FocusRetrospective {
   ai_narrative: string | null;
   ai_recommendations: any[];
   completed_by: string | null;
+  error_message: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -151,7 +152,8 @@ export function useFocusRetrospective(focusItemId: string | undefined) {
 
 // ============================================================
 // useSimilarFocusAreas
-// Calls find_similar_focus_areas RPC for pg_trgm similarity matching.
+// Tries pgvector semantic search first via edge function,
+// falls back to pg_trgm if no embeddings exist yet.
 // ============================================================
 
 export function useSimilarFocusAreas(teamId: string | undefined, searchText: string, excludeId?: string) {
@@ -160,6 +162,25 @@ export function useSimilarFocusAreas(teamId: string | undefined, searchText: str
     enabled: !!teamId && searchText.length >= 3,
     staleTime: 60 * 1000,
     queryFn: async () => {
+      // Try pgvector semantic search first
+      try {
+        const { data: searchResult } = await supabase.functions.invoke("search-focus-embeddings", {
+          body: {
+            search_text: searchText,
+            team_id: teamId,
+            exclude_id: excludeId || null,
+            limit: 5,
+          },
+        });
+
+        if (searchResult && !searchResult.fallback && searchResult.results?.length > 0) {
+          return searchResult.results as SimilarFocusArea[];
+        }
+      } catch {
+        // Semantic search unavailable, fall through to pg_trgm
+      }
+
+      // Fallback: pg_trgm similarity search (always works)
       const { data, error } = await supabase.rpc("find_similar_focus_areas" as any, {
         p_team_id: teamId,
         p_search_text: searchText,

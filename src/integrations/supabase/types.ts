@@ -558,6 +558,51 @@ export type Database = {
           },
         ]
       }
+      focus_embeddings: {
+        Row: {
+          content: string
+          content_type: string
+          created_at: string | null
+          embedding: string | null
+          focus_item_id: string
+          id: string
+          team_id: string
+        }
+        Insert: {
+          content: string
+          content_type?: string
+          created_at?: string | null
+          embedding?: string | null
+          focus_item_id: string
+          id?: string
+          team_id: string
+        }
+        Update: {
+          content?: string
+          content_type?: string
+          created_at?: string | null
+          embedding?: string | null
+          focus_item_id?: string
+          id?: string
+          team_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "focus_embeddings_focus_item_id_fkey"
+            columns: ["focus_item_id"]
+            isOneToOne: false
+            referencedRelation: "team_focus"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "focus_embeddings_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       focus_gap_analyses: {
         Row: {
           created_at: string | null
@@ -725,6 +770,7 @@ export type Database = {
           ai_recommendations: Json | null
           completed_by: string | null
           created_at: string | null
+          error_message: string | null
           focus_item_id: string
           id: string
           metrics: Json
@@ -737,6 +783,7 @@ export type Database = {
           ai_recommendations?: Json | null
           completed_by?: string | null
           created_at?: string | null
+          error_message?: string | null
           focus_item_id: string
           id?: string
           metrics?: Json
@@ -749,6 +796,7 @@ export type Database = {
           ai_recommendations?: Json | null
           completed_by?: string | null
           created_at?: string | null
+          error_message?: string | null
           focus_item_id?: string
           id?: string
           metrics?: Json
@@ -1709,6 +1757,20 @@ export type Database = {
       is_team_member: {
         Args: { _team_id: string; _user_id: string }
         Returns: boolean
+      }
+      match_focus_embeddings: {
+        Args: {
+          match_count?: number
+          match_team_id: string
+          match_threshold?: number
+          query_embedding: string
+        }
+        Returns: {
+          content: string
+          content_type: string
+          focus_item_id: string
+          similarity: number
+        }[]
       }
       upsert_activity_badge: {
         Args: {

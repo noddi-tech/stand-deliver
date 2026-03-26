@@ -16,15 +16,17 @@ Deno.serve(async (req) => {
   const lovableKey = Deno.env.get("LOVABLE_API_KEY");
   const sb = createClient(supabaseUrl, serviceKey);
 
+  let retroId: string | undefined;
+
   try {
     const { focus_item_id, team_id, retrospective_id, create_row } = await req.json();
     if (!focus_item_id || !team_id) {
       throw new Error("Missing focus_item_id or team_id");
     }
 
-    let retroId = retrospective_id;
+    retroId = retrospective_id;
 
-    // If create_row is true, create the retrospective row first
+    // Phase 0: Create or find the retrospective row
     if (create_row && !retroId) {
       const { data: newRow, error: insertErr } = await sb
         .from("focus_retrospectives")
@@ -35,20 +37,37 @@ Deno.serve(async (req) => {
       retroId = newRow.id;
     }
 
-    if (!retroId) throw new Error("Missing retrospective_id");
+    if (!retroId) {
+      // Check if one already exists
+      const { data: existing } = await sb
+        .from("focus_retrospectives")
+        .select("id")
+        .eq("focus_item_id", focus_item_id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (existing) {
+        retroId = existing.id;
+      } else {
+        throw new Error("Missing retrospective_id and no existing row found");
+      }
+    }
 
     // Update status to generating
-    await sb.from("focus_retrospectives").update({ status: "generating", updated_at: new Date().toISOString() }).eq("id", retroId);
+    await sb.from("focus_retrospectives").update({
+      status: "generating",
+      error_message: null,
+      updated_at: new Date().toISOString(),
+    }).eq("id", retroId);
 
     // ============================================================
     // PHASE 1: SQL Aggregation via focus_item_id joins
     // ============================================================
 
-    // Get the focus item details
     const { data: focusItem } = await sb.from("team_focus").select("*").eq("id", focus_item_id).single();
     if (!focusItem) throw new Error("Focus item not found");
 
-    // Get classifications linked to this focus item
+    // Get classifications linked to this focus item via focus_item_id
     const { data: classifications } = await sb
       .from("impact_classifications")
       .select("activity_id, member_id, value_type, impact_tier, source_type, reasoning")
@@ -56,75 +75,68 @@ Deno.serve(async (req) => {
       .eq("focus_item_id", focus_item_id);
 
     const classificationList = classifications || [];
-    const classifiedActivityIds = classificationList.map((c: any) => c.activity_id);
 
-    // Get commitments linked via classifications
+    // Split by source_type
     const commitmentIds = classificationList
       .filter((c: any) => c.source_type === "commitment")
       .map((c: any) => c.activity_id);
 
-    let commitmentsByStatus: Record<string, number> = {};
-    let totalCommitments = 0;
-    let carryForwardCount = 0;
-
-    if (commitmentIds.length > 0) {
-      // Fetch commitments in chunks
-      for (let i = 0; i < commitmentIds.length; i += 500) {
-        const chunk = commitmentIds.slice(i, i + 500);
-        const { data: commitments } = await sb
-          .from("commitments")
-          .select("id, status, carry_count")
-          .in("id", chunk);
-        for (const c of commitments || []) {
-          totalCommitments++;
-          commitmentsByStatus[c.status] = (commitmentsByStatus[c.status] || 0) + 1;
-          if (c.carry_count > 0) carryForwardCount++;
-        }
-      }
-    }
-
-    // Blockers linked to classified commitments
-    let blockerCategories: Record<string, number> = {};
-    let totalBlockerDays = 0;
-    let blockerCount = 0;
-
-    if (commitmentIds.length > 0) {
-      for (let i = 0; i < commitmentIds.length; i += 500) {
-        const chunk = commitmentIds.slice(i, i + 500);
-        const { data: blockers } = await sb
-          .from("blockers")
-          .select("category, days_open, is_resolved")
-          .eq("team_id", team_id)
-          .in("commitment_id", chunk);
-        for (const b of blockers || []) {
-          blockerCount++;
-          blockerCategories[b.category] = (blockerCategories[b.category] || 0) + 1;
-          totalBlockerDays += b.days_open;
-        }
-      }
-    }
-
-    // External activity counts by source
     const extActivityIds = classificationList
       .filter((c: any) => c.source_type === "external_activity")
       .map((c: any) => c.activity_id);
 
-    let activityBySrc: Record<string, number> = {};
-    if (extActivityIds.length > 0) {
-      for (let i = 0; i < extActivityIds.length; i += 500) {
-        const chunk = extActivityIds.slice(i, i + 500);
-        const { data: extActs } = await sb
-          .from("external_activity")
-          .select("source, activity_type")
-          .in("id", chunk);
-        for (const a of extActs || []) {
-          const key = `${a.source}:${a.activity_type}`;
-          activityBySrc[key] = (activityBySrc[key] || 0) + 1;
-        }
+    // Commitment stats (chunked for >500)
+    let commitmentsByStatus: Record<string, number> = {};
+    let totalCommitments = 0;
+    let carryForwardCount = 0;
+
+    for (let i = 0; i < commitmentIds.length; i += 500) {
+      const chunk = commitmentIds.slice(i, i + 500);
+      const { data: commitments } = await sb
+        .from("commitments")
+        .select("id, status, carry_count")
+        .in("id", chunk);
+      for (const c of commitments || []) {
+        totalCommitments++;
+        commitmentsByStatus[c.status] = (commitmentsByStatus[c.status] || 0) + 1;
+        if (c.carry_count > 0) carryForwardCount++;
       }
     }
 
-    // Effort distribution by impact_tier
+    // Blocker stats (linked to classified commitments)
+    let blockerCategories: Record<string, number> = {};
+    let totalBlockerDays = 0;
+    let blockerCount = 0;
+
+    for (let i = 0; i < commitmentIds.length; i += 500) {
+      const chunk = commitmentIds.slice(i, i + 500);
+      const { data: blockers } = await sb
+        .from("blockers")
+        .select("category, days_open, is_resolved")
+        .eq("team_id", team_id)
+        .in("commitment_id", chunk);
+      for (const b of blockers || []) {
+        blockerCount++;
+        blockerCategories[b.category] = (blockerCategories[b.category] || 0) + 1;
+        totalBlockerDays += b.days_open;
+      }
+    }
+
+    // External activity breakdown
+    let activityBySrc: Record<string, number> = {};
+    for (let i = 0; i < extActivityIds.length; i += 500) {
+      const chunk = extActivityIds.slice(i, i + 500);
+      const { data: extActs } = await sb
+        .from("external_activity")
+        .select("source, activity_type")
+        .in("id", chunk);
+      for (const a of extActs || []) {
+        const key = `${a.source}:${a.activity_type}`;
+        activityBySrc[key] = (activityBySrc[key] || 0) + 1;
+      }
+    }
+
+    // Effort distribution
     const effortByTier: Record<string, number> = {};
     const effortByValueType: Record<string, number> = {};
     for (const c of classificationList) {
@@ -132,7 +144,7 @@ Deno.serve(async (req) => {
       effortByValueType[c.value_type] = (effortByValueType[c.value_type] || 0) + 1;
     }
 
-    // Get team member names for narrative
+    // Contributor names
     const memberIds = [...new Set(classificationList.map((c: any) => c.member_id))];
     let memberNames: Record<string, string> = {};
     if (memberIds.length > 0) {
@@ -225,6 +237,13 @@ Generate a JSON response with these exact fields:
           }),
         });
 
+        if (resp.status === 429) {
+          throw new Error("Rate limited — please try again later");
+        }
+        if (resp.status === 402) {
+          throw new Error("Credits exhausted — please add funds in workspace settings");
+        }
+
         if (resp.ok) {
           const aiResult = await resp.json();
           const content = aiResult.choices?.[0]?.message?.content;
@@ -240,14 +259,20 @@ Generate a JSON response with these exact fields:
             narrative = sections.join("\n\n");
             recommendations = parsed.recommendations || [];
           }
+        } else {
+          const errText = await resp.text();
+          console.error("AI gateway error:", resp.status, errText);
         }
-      } catch (aiErr) {
+      } catch (aiErr: any) {
+        // If it's a rate limit or credit error, re-throw to mark as failed
+        if (aiErr.message?.includes("Rate limited") || aiErr.message?.includes("Credits exhausted")) {
+          throw aiErr;
+        }
         console.error("AI narrative generation failed:", aiErr);
-        // Continue with metrics-only retrospective
       }
     }
 
-    // If no narrative was generated, create a basic one from metrics
+    // Fallback narrative from metrics
     if (!narrative) {
       narrative = `## Executive Summary\nThis focus area had ${metrics.total_commitments} commitments with a ${metrics.completion_rate}% completion rate. ${metrics.blocker_count} blockers were encountered.`;
     }
@@ -263,11 +288,50 @@ Generate a JSON response with these exact fields:
         metrics,
         ai_narrative: narrative,
         ai_recommendations: recommendations,
+        error_message: null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", retroId);
 
     if (updateErr) throw updateErr;
+
+    // ============================================================
+    // PHASE 4: Embed the retrospective narrative for semantic search
+    // ============================================================
+    try {
+      const embedUrl = `${supabaseUrl}/functions/v1/ai-embed-focus`;
+      await fetch(embedUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${serviceKey}`,
+        },
+        body: JSON.stringify({
+          focus_item_id,
+          team_id,
+          content_override: `${focusItem.title} | ${narrative}`,
+          content_type_override: "retrospective",
+        }),
+      });
+    } catch (embedErr) {
+      // Non-critical: log but don't fail the retrospective
+      console.error("Embedding retrospective failed (non-critical):", embedErr);
+    }
+
+    // Also embed the focus area description if not already done
+    try {
+      const embedUrl = `${supabaseUrl}/functions/v1/ai-embed-focus`;
+      await fetch(embedUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${serviceKey}`,
+        },
+        body: JSON.stringify({ focus_item_id, team_id }),
+      });
+    } catch (embedErr) {
+      console.error("Embedding focus description failed (non-critical):", embedErr);
+    }
 
     return new Response(JSON.stringify({ success: true, retrospective_id: retroId }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -275,12 +339,16 @@ Generate a JSON response with these exact fields:
   } catch (err: any) {
     console.error("ai-focus-retrospective error:", err);
 
-    // Try to mark as failed
-    try {
-      if (typeof retroId === "string") {
-        await sb.from("focus_retrospectives").update({ status: "failed", updated_at: new Date().toISOString() }).eq("id", retroId);
-      }
-    } catch {}
+    // Mark as failed with error message
+    if (retroId) {
+      try {
+        await sb.from("focus_retrospectives").update({
+          status: "failed",
+          error_message: err.message || "Unknown error",
+          updated_at: new Date().toISOString(),
+        }).eq("id", retroId);
+      } catch {}
+    }
 
     return new Response(JSON.stringify({ error: err.message }), {
       status: 500,
