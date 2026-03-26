@@ -119,3 +119,6 @@ verify_jwt = false
 
 [functions.ai-embed-focus]
 verify_jwt = false
+
+[functions.search-focus-embeddings]
+verify_jwt = false
