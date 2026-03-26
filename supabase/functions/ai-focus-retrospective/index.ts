@@ -269,7 +269,7 @@ Generate a JSON response with these exact fields:
 
     if (updateErr) throw updateErr;
 
-    return new Response(JSON.stringify({ success: true, retrospective_id }), {
+    return new Response(JSON.stringify({ success: true, retrospective_id: retroId }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err: any) {
@@ -277,9 +277,8 @@ Generate a JSON response with these exact fields:
 
     // Try to mark as failed
     try {
-      const { retrospective_id } = await req.clone().json().catch(() => ({}));
-      if (retrospective_id) {
-        await sb.from("focus_retrospectives").update({ status: "failed", updated_at: new Date().toISOString() }).eq("id", retrospective_id);
+      if (typeof retroId === "string") {
+        await sb.from("focus_retrospectives").update({ status: "failed", updated_at: new Date().toISOString() }).eq("id", retroId);
       }
     } catch {}
 
