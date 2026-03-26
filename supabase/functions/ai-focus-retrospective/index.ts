@@ -17,13 +17,28 @@ Deno.serve(async (req) => {
   const sb = createClient(supabaseUrl, serviceKey);
 
   try {
-    const { focus_item_id, team_id, retrospective_id } = await req.json();
-    if (!focus_item_id || !team_id || !retrospective_id) {
-      throw new Error("Missing focus_item_id, team_id, or retrospective_id");
+    const { focus_item_id, team_id, retrospective_id, create_row } = await req.json();
+    if (!focus_item_id || !team_id) {
+      throw new Error("Missing focus_item_id or team_id");
     }
 
+    let retroId = retrospective_id;
+
+    // If create_row is true, create the retrospective row first
+    if (create_row && !retroId) {
+      const { data: newRow, error: insertErr } = await sb
+        .from("focus_retrospectives")
+        .insert({ focus_item_id, team_id, status: "pending" })
+        .select("id")
+        .single();
+      if (insertErr) throw insertErr;
+      retroId = newRow.id;
+    }
+
+    if (!retroId) throw new Error("Missing retrospective_id");
+
     // Update status to generating
-    await sb.from("focus_retrospectives").update({ status: "generating", updated_at: new Date().toISOString() }).eq("id", retrospective_id);
+    await sb.from("focus_retrospectives").update({ status: "generating", updated_at: new Date().toISOString() }).eq("id", retroId);
 
     // ============================================================
     // PHASE 1: SQL Aggregation via focus_item_id joins
