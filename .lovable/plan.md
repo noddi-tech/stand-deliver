@@ -1,27 +1,35 @@
 
+# AI-Powered Recall: Focus Area Versioning with Institutional Memory
 
-# Fix: "Needs Attention" Showing on Non-Standup Days
+## Status: Implemented
 
-## Problem
-The "Needs Attention" section flags everyone as "Hasn't submitted today's standup" even when today is not a configured standup day. This happens because a `standup_session` row exists for today in the database, and the hook blindly flags all members who haven't responded to it — without checking whether today is actually a standup day per the team's schedule.
+## What was built
 
-## Solution
-In `useAttentionItems`, fetch the team's `standup_days` and `standup_timezone`, then skip the "missing standups" logic entirely if today isn't a scheduled standup day.
+### Database
+- `focus_retrospectives` table (with status field: pending/generating/complete/failed)
+- `focus_gap_analyses` table (with stable suggestion_id UUIDs in JSONB)
+- `focus_insights` table (for proactive pattern detection)
+- `team_focus` extended with `predecessor_id` and `completed_at`
+- `pg_trgm` extension + `find_similar_focus_areas` RPC for similarity search
+- All tables have proper RLS (SELECT for team members; writes via service_role)
 
-## Changes
+### Edge Functions
+- `ai-focus-retrospective`: Two-phase async pipeline (SQL aggregation via focus_item_id joins + LLM narrative via Lovable AI gateway)
+- `ai-focus-gap-analysis`: Persisted gap analysis with accept/reject per suggestion
+- `focus-insight-cron`: Weekly pattern detection (carry-forward rates, recurring blockers)
 
-### `src/hooks/useAttentionItems.ts`
+### Frontend Hooks (`src/hooks/useFocusRecall.ts`)
+- `useCompleteFocusArea` — instant completion + async retrospective
+- `useFocusRetrospective` — with Supabase Realtime subscription
+- `useSimilarFocusAreas` — pg_trgm similarity search
+- `useCreateFocusV2` — create with predecessor_id
+- `useFocusGapAnalysis` — fetch/create gap analysis
+- `useUpdateGapSuggestion` — accept/reject by suggestion_id
+- `useFocusInsights` — active insights
+- `useDismissInsight` — dismiss insights
 
-1. Add a query for the team's `standup_days` and `standup_timezone` from the `teams` table
-2. Determine the current day in the team's timezone (e.g., `"wed"`)
-3. Only populate `missingStandups` if today's day code is in `standup_days`
-4. If it's not a standup day, return an empty `missingStandups` array regardless of whether a session exists
-
-```text
-Logic change:
-  Before: if (sessionRes.data) → flag missing members
-  After:  if (sessionRes.data && isStandupDay) → flag missing members
-```
-
-This is a one-file fix with no UI or schema changes.
-
+### UI Components
+- `FocusRetrospectivePanel` — Sheet with accordion sections (narrative, metrics, recommendations)
+- `FocusPredecessorPicker` — Search completed focus areas by similarity
+- `FocusGapAnalysisCard` — Accept/reject AI suggestions
+- `FocusTab` updated with: Complete action, Completed section, v2 creation dialog, predecessor badges, insights banner
