@@ -333,47 +333,47 @@ export default function Activity() {
               <div className="space-y-1.5">
                 {items.map(a => (
                   <Card key={a.id}>
-                    <CardContent className="p-3 flex items-center gap-3">
-                      <span className="text-lg shrink-0">{SOURCE_ICONS[a.source] || "📌"}</span>
-                      <Avatar className="h-7 w-7 shrink-0">
-                        <AvatarImage src={a.memberAvatar || undefined} />
-                        <AvatarFallback className="text-[10px]">
-                          {(a.memberName || "?").charAt(0).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <p className="text-sm font-medium truncate">{a.title}</p>
-                          {a.badgeKey && teamId && (
-                            <BadgePicker
-                              onSelect={(badgeKey) => {
-                                overrideBadge({
-                                  activityId: a.id,
-                                  sourceType: a.type === "external" ? "external_activity" : "standup_response",
-                                  badgeKey,
-                                  teamId,
-                                });
-                              }}
-                            >
-                              <span><ActivityBadgeChip badgeKey={a.badgeKey} onClick={() => {}} /></span>
-                            </BadgePicker>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                          <span>{a.memberName || "Unknown"}</span>
-                          <span>·</span>
-                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-                            {ACTIVITY_LABELS[a.activityType] || a.activityType}
-                          </Badge>
-                          <span>·</span>
-                          <span>{formatDistanceToNow(new Date(a.timestamp), { addSuffix: true })}</span>
-                        </div>
+                    <CardContent className="p-3 space-y-1.5">
+                      {/* Row 1: Avatar + Title + Badge */}
+                      <div className="flex items-start gap-2">
+                        <Avatar className="h-7 w-7 shrink-0 mt-0.5">
+                          <AvatarImage src={a.memberAvatar || undefined} />
+                          <AvatarFallback className="text-[10px]">
+                            {(a.memberName || "?").charAt(0).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <p className="text-sm font-medium text-foreground flex-1 min-w-0 break-words">{a.title}</p>
+                        {a.badgeKey && teamId && (
+                          <BadgePicker
+                            onSelect={(badgeKey) => {
+                              overrideBadge({
+                                activityId: a.id,
+                                sourceType: a.type === "external" ? "external_activity" : "standup_response",
+                                badgeKey,
+                                teamId,
+                              });
+                            }}
+                          >
+                            <span className="shrink-0"><ActivityBadgeChip badgeKey={a.badgeKey} onClick={() => {}} /></span>
+                          </BadgePicker>
+                        )}
                       </div>
-                      {a.externalUrl && (
-                        <a href={a.externalUrl} target="_blank" rel="noopener noreferrer" className="shrink-0">
-                          <ExternalLink className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
-                        </a>
-                      )}
+                      {/* Row 2: Source + Member + Type + Time + Link */}
+                      <div className="flex items-center gap-2 pl-9 text-[11px] text-muted-foreground">
+                        <span>{SOURCE_ICONS[a.source] || "📌"}</span>
+                        <span>{a.memberName || "Unknown"}</span>
+                        <span>·</span>
+                        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
+                          {ACTIVITY_LABELS[a.activityType] || a.activityType}
+                        </Badge>
+                        <span>·</span>
+                        <span>{formatDistanceToNow(new Date(a.timestamp), { addSuffix: true })}</span>
+                        {a.externalUrl && (
+                          <a href={a.externalUrl} target="_blank" rel="noopener noreferrer" className="ml-auto shrink-0">
+                            <ExternalLink className="h-3.5 w-3.5 text-muted-foreground hover:text-foreground" />
+                          </a>
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
                 ))}
