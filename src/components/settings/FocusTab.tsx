@@ -627,11 +627,20 @@ export function FocusTab() {
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span className="flex items-center gap-1.5">
                   <Loader2 className="h-3 w-3 animate-spin text-primary" />
-                  Re-classifying activities against updated focus areas…
+                  {reclassifyMutation.progress.total > 0
+                    ? "Re-classifying activities against updated focus areas…"
+                    : "Preparing re-classification…"}
                 </span>
-                <span>{reclassifyMutation.progress.processed}/{reclassifyMutation.progress.total}</span>
+                {reclassifyMutation.progress.total > 0 && (
+                  <span>{reclassifyMutation.progress.processed}/{reclassifyMutation.progress.total}</span>
+                )}
               </div>
-              <Progress value={reclassifyMutation.progress.total > 0 ? (reclassifyMutation.progress.processed / reclassifyMutation.progress.total) * 100 : 0} className="h-1.5" />
+              <Progress
+                value={reclassifyMutation.progress.total > 0
+                  ? (reclassifyMutation.progress.processed / reclassifyMutation.progress.total) * 100
+                  : undefined}
+                className="h-1.5"
+              />
             </div>
           )}
 
@@ -761,6 +770,20 @@ export function FocusTab() {
               <Button size="sm" variant="outline" onClick={fetchAiSuggestions} disabled={aiLoading}>
                 {aiLoading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1" />}
                 Suggest with AI
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => reclassifyMutation.mutate({ mode: "full" }, {
+                  onSuccess: () => toast({ title: "Re-classification started in background" }),
+                  onError: (err: Error) => toast({ title: err.message || "Re-classification failed", variant: "destructive" }),
+                })}
+                disabled={reclassifyMutation.progress.status === "running"}
+              >
+                {reclassifyMutation.progress.status === "running"
+                  ? <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  : <RotateCcw className="h-4 w-4 mr-1" />}
+                Re-classify
               </Button>
             </div>
           )}
