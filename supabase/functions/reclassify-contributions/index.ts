@@ -71,9 +71,16 @@ Deno.serve(async (req) => {
 
     // If more items remain, self-invoke for the next chunk
     if (result.nextOffset < itemsToProcess.length) {
-      selfInvoke(sb, team_id, mode, newJobId, result.nextOffset).catch((err) => {
-        console.error("Self-invoke failed:", err);
-      });
+      console.log(`[handoff] scheduling next chunk job=${newJobId} offset=${result.nextOffset}`);
+      try {
+        await selfInvoke(team_id, mode, newJobId, result.nextOffset);
+        console.log(`[handoff] scheduled next chunk job=${newJobId} offset=${result.nextOffset}`);
+      } catch (err) {
+        const message = `Failed to schedule next chunk: ${err instanceof Error ? err.message : "Unknown handoff error"}`;
+        console.error(`[handoff] ${message} job=${newJobId} offset=${result.nextOffset}`);
+        await failJob(sb, newJobId, message);
+        throw new Error(message);
+      }
     } else {
       // All done
       await sb.from("reclassification_jobs").update({
@@ -147,9 +154,16 @@ async function processContinuation(
   const result = await processChunk(sb, jobId, teamId, itemsToProcess, offset, startTime);
 
   if (result.nextOffset < itemsToProcess.length) {
-    selfInvoke(sb, teamId, mode, jobId, result.nextOffset).catch((err) => {
-      console.error("Self-invoke failed:", err);
-    });
+    console.log(`[handoff] scheduling next chunk job=${jobId} offset=${result.nextOffset}`);
+    try {
+      await selfInvoke(teamId, mode, jobId, result.nextOffset);
+      console.log(`[handoff] scheduled next chunk job=${jobId} offset=${result.nextOffset}`);
+    } catch (err) {
+      const message = `Failed to schedule next chunk: ${err instanceof Error ? err.message : "Unknown handoff error"}`;
+      console.error(`[handoff] ${message} job=${jobId} offset=${result.nextOffset}`);
+      await failJob(sb, jobId, message);
+      return jsonResponse({ job_id: jobId, stopped: true });
+    }
   } else {
     await sb.from("reclassification_jobs").update({
       status: "complete",
@@ -243,7 +257,6 @@ async function processChunk(
 }
 
 async function selfInvoke(
-  sb: ReturnType<typeof createClient>,
   teamId: string,
   mode: string,
   jobId: string,
@@ -268,6 +281,21 @@ async function selfInvoke(
     const text = await res.text();
     throw new Error(`Self-invoke failed (${res.status}): ${text}`);
   }
+}
+
+async function failJob(
+  sb: ReturnType<typeof createClient>,
+  jobId: string,
+  message: string,
+) {
+  await sb
+    .from("reclassification_jobs")
+    .update({
+      status: "failed",
+      error_message: message,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", jobId);
 }
 
 function jsonResponse(data: any) {

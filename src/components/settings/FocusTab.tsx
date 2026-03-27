@@ -475,6 +475,8 @@ export function FocusTab() {
   }
 
   const availableParents = topLevelItems.filter(i => i.id !== editingId);
+  const isReclassifyRunning = reclassifyMutation.progress.status === "running";
+  const isReclassifyStalled = isReclassifyRunning && reclassifyMutation.progress.stalled;
 
   const resetForm = () => {
     setTitle("");
@@ -622,12 +624,16 @@ export function FocusTab() {
           {teamId && <FocusInsightsBanner teamId={teamId} />}
 
           {/* Reclassification progress banner */}
-          {reclassifyMutation.progress.status === "running" && (
-            <div className="rounded-lg border border-primary/20 bg-primary/[0.02] p-3 space-y-1.5">
+          {isReclassifyRunning && (
+            <div className={`rounded-lg border p-3 space-y-2 ${isReclassifyStalled ? "border-destructive/30 bg-destructive/[0.06]" : "border-primary/20 bg-primary/[0.02]"}`}>
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span className="flex items-center gap-1.5">
-                  <Loader2 className="h-3 w-3 animate-spin text-primary" />
-                  {reclassifyMutation.progress.total > 0
+                  {isReclassifyStalled
+                    ? <AlertTriangle className="h-3 w-3 text-destructive" />
+                    : <Loader2 className="h-3 w-3 animate-spin text-primary" />}
+                  {isReclassifyStalled
+                    ? "Re-classification stalled. Please retry."
+                    : reclassifyMutation.progress.total > 0
                     ? "Re-classifying activities against updated focus areas…"
                     : "Preparing re-classification…"}
                 </span>
@@ -641,6 +647,22 @@ export function FocusTab() {
                   : undefined}
                 className="h-1.5"
               />
+              {isReclassifyStalled && (
+                <div className="flex justify-end">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-[11px]"
+                    onClick={() => reclassifyMutation.mutate({ mode: "full" }, {
+                      onSuccess: () => toast({ title: "Re-classification started in background" }),
+                      onError: (err: Error) => toast({ title: err.message || "Re-classification failed", variant: "destructive" }),
+                    })}
+                  >
+                    <RotateCcw className="h-3 w-3 mr-1" />
+                    Retry now
+                  </Button>
+                </div>
+              )}
             </div>
           )}
 
@@ -778,9 +800,9 @@ export function FocusTab() {
                   onSuccess: () => toast({ title: "Re-classification started in background" }),
                   onError: (err: Error) => toast({ title: err.message || "Re-classification failed", variant: "destructive" }),
                 })}
-                disabled={reclassifyMutation.progress.status === "running"}
+                disabled={isReclassifyRunning && !isReclassifyStalled}
               >
-                {reclassifyMutation.progress.status === "running"
+                {isReclassifyRunning && !isReclassifyStalled
                   ? <Loader2 className="h-4 w-4 mr-1 animate-spin" />
                   : <RotateCcw className="h-4 w-4 mr-1" />}
                 Re-classify
