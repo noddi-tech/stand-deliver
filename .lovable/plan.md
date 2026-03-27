@@ -1,36 +1,31 @@
 
 
-# Add Labels + Tooltips to Commitment Resolution Buttons
+# Widen Standup Layout + Responsive Commitment Buttons
 
-## What Changes
+## Problem
+The standup page is capped at `max-w-3xl` (768px). On desktop there's plenty of room, but the commitment rows feel cramped — especially now that buttons have labels. On mobile (390px viewport), the buttons and text compete for space.
 
-In `src/pages/MyStandup.tsx` (~lines 1010-1042), update the four resolution buttons to show **icon + text label**, and wrap each in a `Tooltip` with a short explanation.
+## Changes
 
-| Button | Icon | Label | Tooltip |
-|--------|------|-------|---------|
-| Done | `Check` | Done | "Mark as completed. This item won't carry forward to your next standup." |
-| Carry | `ArrowRight` | Carry | "Still working on it. This item will carry forward to your next standup." |
-| Blocked | `AlertTriangle` | Blocked | "Something is preventing progress. You'll be asked to describe the blocker." |
-| Drop | `X` | Drop | "No longer relevant. This item will be removed from your active commitments." |
+### 1. Widen the page container
+**`src/pages/MyStandup.tsx` (line 826)**
+- Change `max-w-3xl` → `max-w-5xl` to use more horizontal space on desktop
 
-## Implementation
+### 2. Stack commitment rows on mobile
+**`src/pages/MyStandup.tsx` (lines 983-1070)**
 
-**`src/pages/MyStandup.tsx`**
-- Import `Tooltip, TooltipTrigger, TooltipContent, TooltipProvider` from `@/components/ui/tooltip`
-- Wrap the button group in `<TooltipProvider delayDuration={300}>`
-- Each button becomes:
-  ```tsx
-  <Tooltip>
-    <TooltipTrigger asChild>
-      <Button size="sm" variant={...} className="h-7 px-2.5 text-xs">
-        <Check className="h-3 w-3" />
-        <span className="hidden sm:inline">Done</span>
-      </Button>
-    </TooltipTrigger>
-    <TooltipContent>Mark as completed. This item won't carry forward.</TooltipContent>
-  </Tooltip>
-  ```
-- Labels hidden on mobile (`hidden sm:inline`), tooltips work everywhere
+Change the commitment item layout from a single horizontal flex row to a responsive layout:
+- **Desktop** (`sm:` and up): keep current side-by-side layout — title/badges on left, buttons on right
+- **Mobile** (`< sm`): stack vertically — title/badges on top, buttons below as a full-width row
 
-**Single file change, ~40 lines modified.**
+Specifically:
+- Change the outer `flex items-center justify-between` to `flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2`
+- Remove `shrink-0` from button group on mobile so buttons can spread
+- Show button labels on all screen sizes (remove `hidden sm:inline` from the `<span>` elements) since there's now room with the stacked layout
+
+## Files Changed
+
+| File | Change |
+|------|--------|
+| `src/pages/MyStandup.tsx` | Widen container to `max-w-5xl`, make commitment rows stack vertically on mobile with full-width buttons |
 
