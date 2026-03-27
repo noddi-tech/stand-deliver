@@ -1048,7 +1048,7 @@ export default function MyStandup() {
                               onClick={() => handleStatusChange(c.id, "blocked")}
                             >
                               <AlertTriangle className="h-3 w-3" />
-                              <span className="hidden sm:inline">Blocked</span>
+                              <span>Blocked</span>
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>Something is preventing progress. You'll be asked to describe the blocker.</TooltipContent>
