@@ -627,11 +627,20 @@ export function FocusTab() {
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span className="flex items-center gap-1.5">
                   <Loader2 className="h-3 w-3 animate-spin text-primary" />
-                  Re-classifying activities against updated focus areas…
+                  {reclassifyMutation.progress.total > 0
+                    ? "Re-classifying activities against updated focus areas…"
+                    : "Preparing re-classification…"}
                 </span>
-                <span>{reclassifyMutation.progress.processed}/{reclassifyMutation.progress.total}</span>
+                {reclassifyMutation.progress.total > 0 && (
+                  <span>{reclassifyMutation.progress.processed}/{reclassifyMutation.progress.total}</span>
+                )}
               </div>
-              <Progress value={reclassifyMutation.progress.total > 0 ? (reclassifyMutation.progress.processed / reclassifyMutation.progress.total) * 100 : 0} className="h-1.5" />
+              <Progress
+                value={reclassifyMutation.progress.total > 0
+                  ? (reclassifyMutation.progress.processed / reclassifyMutation.progress.total) * 100
+                  : undefined}
+                className="h-1.5"
+              />
             </div>
           )}
 
