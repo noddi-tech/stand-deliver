@@ -776,15 +776,19 @@ export function FocusTab() {
 
             if (!hasChildren) {
               return (
-                <FocusItemRow
-                  key={item.id}
-                  item={item}
-                  isLead={isLead}
-                  onEdit={startEdit}
-                  onArchive={handleArchive}
-                  onComplete={(id) => setCompleteConfirmId(id)}
-                  predecessorTitle={predTitle}
-                />
+                <div key={item.id} className="space-y-0">
+                  <FocusItemRow
+                    item={item}
+                    isLead={isLead}
+                    onEdit={startEdit}
+                    onArchive={handleArchive}
+                    onComplete={(id) => setCompleteConfirmId(id)}
+                    predecessorTitle={predTitle}
+                  />
+                  {(item as any).predecessor_id && teamId && (
+                    <InlineGapAnalysis focusItemId={item.id} teamId={teamId} />
+                  )}
+                </div>
               );
             }
 
