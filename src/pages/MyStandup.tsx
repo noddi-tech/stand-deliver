@@ -1010,7 +1010,7 @@ export default function MyStandup() {
                       </div>
                     </div>
                     <TooltipProvider delayDuration={300}>
-                      <div className="flex gap-1 sm:shrink-0">
+                      <div className="grid grid-cols-2 sm:flex gap-1 sm:shrink-0">
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
