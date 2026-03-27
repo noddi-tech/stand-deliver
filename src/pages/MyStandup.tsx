@@ -823,7 +823,7 @@ export default function MyStandup() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto p-6 space-y-6">
+    <div className="max-w-5xl mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-foreground">
           {isEditing ? "Edit Standup" : "My Standup"}
@@ -981,7 +981,7 @@ export default function MyStandup() {
               return (
                 <div key={c.id} className="space-y-2">
                   <div
-                    className={`flex items-center justify-between gap-3 rounded-lg border p-3 transition-opacity duration-300 ${
+                    className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 rounded-lg border p-3 transition-opacity duration-300 ${
                       isFading ? "opacity-40" : isResolved ? "opacity-60" : ""
                     }`}
                   >
@@ -1010,7 +1010,7 @@ export default function MyStandup() {
                       </div>
                     </div>
                     <TooltipProvider delayDuration={300}>
-                      <div className="flex gap-1 shrink-0">
+                      <div className="flex gap-1 sm:shrink-0">
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
@@ -1020,7 +1020,7 @@ export default function MyStandup() {
                               onClick={() => handleStatusChange(c.id, "done")}
                             >
                               <Check className="h-3 w-3" />
-                              <span className="hidden sm:inline">Done</span>
+                              <span>Done</span>
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>Mark as completed. This item won't carry forward to your next standup.</TooltipContent>
@@ -1034,7 +1034,7 @@ export default function MyStandup() {
                               onClick={() => handleStatusChange(c.id, "in_progress")}
                             >
                               <ArrowRight className="h-3 w-3" />
-                              <span className="hidden sm:inline">Carry</span>
+                              <span>Carry</span>
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>Still working on it. This item will carry forward to your next standup.</TooltipContent>
@@ -1048,7 +1048,7 @@ export default function MyStandup() {
                               onClick={() => handleStatusChange(c.id, "blocked")}
                             >
                               <AlertTriangle className="h-3 w-3" />
-                              <span className="hidden sm:inline">Blocked</span>
+                              <span>Blocked</span>
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>Something is preventing progress. You'll be asked to describe the blocker.</TooltipContent>
@@ -1062,7 +1062,7 @@ export default function MyStandup() {
                               onClick={() => handleStatusChange(c.id, "dropped")}
                             >
                               <X className="h-3 w-3" />
-                              <span className="hidden sm:inline">Drop</span>
+                              <span>Drop</span>
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>No longer relevant. This item will be removed from your active commitments.</TooltipContent>
