@@ -1094,7 +1094,68 @@ export function FocusTab() {
               Create a new iteration building on what was learned from "{v2PredecessorTitle}".
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 py-2">
+          <div className="space-y-3 py-2 max-h-[60vh] overflow-y-auto">
+            {/* Predecessor Context */}
+            {v2PredecessorId && !predecessorCtx.isLoading && predecessorCtx.retrospective && (
+              <Collapsible defaultOpen>
+                <CollapsibleTrigger className="flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground w-full">
+                  <FileText className="h-3.5 w-3.5" />
+                  v1 Summary
+                  <ChevronRight className="h-3 w-3 ml-auto" />
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="mt-2 p-3 rounded-lg border border-border bg-muted/30 space-y-2 text-xs">
+                    <div className="flex gap-3 flex-wrap">
+                      <span><strong>Completion:</strong> {(predecessorCtx.retrospective.metrics as any)?.completion_rate ?? "–"}%</span>
+                      <span><strong>Activities:</strong> {(predecessorCtx.retrospective.metrics as any)?.total_classifications ?? 0}</span>
+                      <span><strong>Blockers:</strong> {(predecessorCtx.retrospective.metrics as any)?.blocker_count ?? 0}</span>
+                    </div>
+                    {predecessorCtx.retrospective.ai_narrative && (
+                      <p className="text-muted-foreground leading-relaxed">
+                        {predecessorCtx.retrospective.ai_narrative
+                          .replace(/^##\s*Executive Summary\n?/m, "")
+                          .split("\n\n")[0]
+                          .slice(0, 300)}
+                        {predecessorCtx.retrospective.ai_narrative.length > 300 ? "…" : ""}
+                      </p>
+                    )}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+
+            {/* Deferred Items */}
+            {v2PredecessorId && !predecessorCtx.isLoading && predecessorCtx.deferredItems && predecessorCtx.deferredItems.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium text-muted-foreground">Deferred & Unresolved Items</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {predecessorCtx.deferredItems.map((item: DeferredItem) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="text-[11px] px-2 py-1 rounded-md border border-border bg-card hover:bg-accent transition-colors text-left max-w-full truncate"
+                      onClick={() => {
+                        const addition = v2Description ? `\n• ${item.title}` : `• ${item.title}`;
+                        setV2Description(prev => prev + addition);
+                      }}
+                      title={`Click to add: ${item.title} (${item.status}, carried ${item.carry_count}x)`}
+                    >
+                      <span className="font-medium">{item.title}</span>
+                      <span className="text-muted-foreground ml-1">({item.status}{item.carry_count > 0 ? `, ×${item.carry_count}` : ""})</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-muted-foreground">Click items to add them to the description</p>
+              </div>
+            )}
+
+            {predecessorCtx.isLoading && v2PredecessorId && (
+              <div className="space-y-2">
+                <Skeleton className="h-16 rounded-lg" />
+                <Skeleton className="h-8 rounded-lg" />
+              </div>
+            )}
+
             <Input
               placeholder="Focus area title"
               value={v2Title}
