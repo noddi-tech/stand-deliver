@@ -1062,7 +1062,7 @@ export default function MyStandup() {
                               onClick={() => handleStatusChange(c.id, "dropped")}
                             >
                               <X className="h-3 w-3" />
-                              <span className="hidden sm:inline">Drop</span>
+                              <span>Drop</span>
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>No longer relevant. This item will be removed from your active commitments.</TooltipContent>
