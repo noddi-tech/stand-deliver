@@ -1,57 +1,38 @@
 
+Yes — based on the current code and DB state, this job is very likely stuck at 320.
 
-# Fix: Reclassification Job Stops Mid-Way
+## Diagnosis
+- Latest `reclassification_jobs` row is still `running` at `processed=320/1985` with no updates since `10:03`.
+- In `reclassify-contributions`, the continuation handoff is still effectively fire-and-forget:
+  - `selfInvoke(...)` is called but **not awaited** in both initial and continuation paths.
+  - The function then returns immediately, so runtime shutdown can kill the handoff request before the next invocation starts.
+- That exactly matches the symptom: first chunk runs, then chain stops.
 
-## Problem
+## Implementation Plan
 
-The job stopped at 320/1985. The `processInBackground()` call is a fire-and-forget promise that runs *after* the HTTP response is returned. Supabase Edge Functions (Deno) terminate the isolate shortly after the response is sent — the "background" processing gets killed silently.
+### 1) Make continuation handoff reliable (server-side)
+**File:** `supabase/functions/reclassify-contributions/index.ts`
+- Change both handoff calls to `await selfInvoke(...)` before returning the response.
+- If handoff fails, explicitly update the job row:
+  - `status = 'failed'`
+  - `error_message = 'Failed to schedule next chunk: ...'`
+  - `updated_at = now()`
+- Add explicit logs around handoff start/success/failure with `job_id` and `offset` so stalls are diagnosable.
 
-This is a fundamental limitation: **Supabase Edge Functions cannot do true background processing after returning a response.**
+### 2) Prevent indefinite “running” UI state
+**Files:** `src/hooks/useTeamFocus.ts`, `src/components/settings/FocusTab.tsx`
+- In the hook, include `updated_at` in the realtime payload and mount query.
+- If a job is `running` but hasn’t updated for a threshold (e.g. 2–3 minutes), surface local `error`/`stalled` state.
+- In FocusTab, show a clear stalled message (“Sync stalled, please retry”) instead of endless spinner.
 
-## Solution: Self-Chaining Edge Function
+### 3) Recovery behavior
+**File:** `supabase/functions/reclassify-contributions/index.ts`
+- Keep existing “supersede stale running jobs” behavior on new starts.
+- Ensure retriggering from “Re-classify” cleanly marks old stuck job failed and starts a fresh one.
 
-Instead of fire-and-forget, the edge function should process a time-boxed chunk (e.g. ~60 seconds worth of batches), then **re-invoke itself** for the next chunk. Each invocation is a fresh HTTP request with its own time budget.
-
-### How It Works
-
-```text
-Client → reclassify-contributions (chunk 1: items 0-400)
-           ↓ updates job row
-           ↓ re-invokes itself with offset=400
-         reclassify-contributions (chunk 2: items 400-800)
-           ↓ updates job row
-           ↓ re-invokes itself with offset=800
-         ... until all items processed
-```
-
-### Changes
-
-**`supabase/functions/reclassify-contributions/index.ts`** — Rewrite to:
-
-1. Accept optional `job_id` and `offset` params (for continuation calls)
-2. On first call: fetch items, compute total, create job row, start processing from offset 0
-3. Process batches in a loop with a **time guard** (~50 seconds). After each batch of 20, check elapsed time.
-4. When time budget is nearly exhausted, **self-invoke** with the current offset and job_id, then return.
-5. On continuation call: load the job row, skip item-fetching (pass items via job context or re-fetch), continue from offset.
-6. Mark job `complete` only when offset >= total.
-
-Since items can't be passed between invocations efficiently (1985 items is too large for a request body), each invocation will re-fetch items but skip to the correct offset. The `filterUnclassified` step only runs on the first call; continuation calls use `mode` + offset.
-
-**Also fix the stuck job**: Add a cleanup step — on first call, if there's already a `running` job for this team, mark it as `failed` (stale) before creating a new one.
-
-**`src/hooks/useTeamFocus.ts`** — No changes needed (Realtime subscription already handles incremental updates).
-
-### Technical Details
-
-- Time budget per invocation: ~50 seconds (leaves margin before Supabase's ~150s wall clock limit)
-- Batch size stays at 20 items per AI call
-- Self-invocation uses `sb.functions.invoke("reclassify-contributions", ...)` with service role
-- Each chunk processes ~250-400 items (depending on AI response times)
-- Job row gets updated after every batch, so UI progress stays live
-
-### Files Changed
-
-| File | Change |
-|------|--------|
-| `supabase/functions/reclassify-contributions/index.ts` | Rewrite with self-chaining + time guard |
-
+## Validation Plan (end-to-end)
+1. Trigger **Re-classify (full)** from Focus settings.
+2. Confirm progress moves past **320** and continues in multiple jumps (e.g. 320→640→…).
+3. Confirm job eventually reaches `complete`.
+4. Navigate away and back during run; verify progress resumes from DB state.
+5. Simulate handoff failure (temporary bad URL or forced throw) and confirm job becomes `failed` with visible retry UX.
