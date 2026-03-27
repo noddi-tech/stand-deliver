@@ -771,6 +771,20 @@ export function FocusTab() {
                 {aiLoading ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1" />}
                 Suggest with AI
               </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => reclassifyMutation.mutate({ mode: "full" }, {
+                  onSuccess: () => toast({ title: "Re-classification started in background" }),
+                  onError: (err: Error) => toast({ title: err.message || "Re-classification failed", variant: "destructive" }),
+                })}
+                disabled={reclassifyMutation.progress.status === "running"}
+              >
+                {reclassifyMutation.progress.status === "running"
+                  ? <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  : <RotateCcw className="h-4 w-4 mr-1" />}
+                Re-classify
+              </Button>
             </div>
           )}
 
