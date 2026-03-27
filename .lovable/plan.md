@@ -1,23 +1,27 @@
 
 
-# Fix: Two-Row Button Grid on Mobile
+# Fix AI Confusing Commitment Completion with Standup Participation
 
 ## Problem
-The four resolution buttons overflow horizontally on mobile, causing a horizontal scroll — "Drop" is cut off in the screenshot.
+The AI highlight for Joachim says "low 33% standup completion rate" when his standup participation is actually 75%. The AI is conflating `commitments.completionRate` (task completion) with `standup.participationRate` (standup submissions).
 
-## Change
+## Root Cause
+In `supabase/functions/ai-team-summary/index.ts`, the prompt sends both metrics but doesn't explicitly warn the AI about the distinction. The JSON field names (`completionRate` under `commitments`, `participationRate` under `standup`) are clear to a developer but the AI muddles them.
 
-**`src/pages/MyStandup.tsx` (line 1013)**
+## Fix
 
-Change the button container from `flex gap-1` to a 2×2 grid on mobile, single row on desktop:
+**`supabase/functions/ai-team-summary/index.ts` (~line 201-216)**
 
-```tsx
-<div className="grid grid-cols-2 sm:flex gap-1 sm:shrink-0">
+Add a clarifying rule to the prompt:
+
+```
+6. IMPORTANT DISTINCTION: "completionRate" under "commitments" is the percentage of TASKS completed — NOT standup completion. "participationRate" under "standup" is the percentage of standup sessions the member submitted. Never confuse these two metrics. When discussing standups, use participationRate. When discussing task delivery, use completionRate.
 ```
 
-This gives a clean 2×2 layout on mobile (Done/Carry on top, Blocked/Drop below) and keeps the single horizontal row on `sm:` and up. No other changes needed.
+This is a single line addition to the `CRITICAL RULES` section of the prompt. No structural changes needed.
 
+## Files Changed
 | File | Change |
 |------|--------|
-| `src/pages/MyStandup.tsx` | Line 1013: `flex gap-1 sm:shrink-0` → `grid grid-cols-2 sm:flex gap-1 sm:shrink-0` |
+| `supabase/functions/ai-team-summary/index.ts` | Add rule 6 clarifying metric distinction |
 
