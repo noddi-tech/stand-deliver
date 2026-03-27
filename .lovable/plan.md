@@ -1,31 +1,23 @@
 
 
-# Widen Standup Layout + Responsive Commitment Buttons
+# Fix: Two-Row Button Grid on Mobile
 
 ## Problem
-The standup page is capped at `max-w-3xl` (768px). On desktop there's plenty of room, but the commitment rows feel cramped — especially now that buttons have labels. On mobile (390px viewport), the buttons and text compete for space.
+The four resolution buttons overflow horizontally on mobile, causing a horizontal scroll — "Drop" is cut off in the screenshot.
 
-## Changes
+## Change
 
-### 1. Widen the page container
-**`src/pages/MyStandup.tsx` (line 826)**
-- Change `max-w-3xl` → `max-w-5xl` to use more horizontal space on desktop
+**`src/pages/MyStandup.tsx` (line 1013)**
 
-### 2. Stack commitment rows on mobile
-**`src/pages/MyStandup.tsx` (lines 983-1070)**
+Change the button container from `flex gap-1` to a 2×2 grid on mobile, single row on desktop:
 
-Change the commitment item layout from a single horizontal flex row to a responsive layout:
-- **Desktop** (`sm:` and up): keep current side-by-side layout — title/badges on left, buttons on right
-- **Mobile** (`< sm`): stack vertically — title/badges on top, buttons below as a full-width row
+```tsx
+<div className="grid grid-cols-2 sm:flex gap-1 sm:shrink-0">
+```
 
-Specifically:
-- Change the outer `flex items-center justify-between` to `flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2`
-- Remove `shrink-0` from button group on mobile so buttons can spread
-- Show button labels on all screen sizes (remove `hidden sm:inline` from the `<span>` elements) since there's now room with the stacked layout
-
-## Files Changed
+This gives a clean 2×2 layout on mobile (Done/Carry on top, Blocked/Drop below) and keeps the single horizontal row on `sm:` and up. No other changes needed.
 
 | File | Change |
 |------|--------|
-| `src/pages/MyStandup.tsx` | Widen container to `max-w-5xl`, make commitment rows stack vertically on mobile with full-width buttons |
+| `src/pages/MyStandup.tsx` | Line 1013: `flex gap-1 sm:shrink-0` → `grid grid-cols-2 sm:flex gap-1 sm:shrink-0` |
 
