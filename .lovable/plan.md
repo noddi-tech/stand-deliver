@@ -1,48 +1,33 @@
 
 
-# Make Reclassification Survive Page Navigation
+# Fix Reclassification Progress Showing 0/0
 
 ## Problem
-The reclassification loop runs client-side inside a `useMutation` hook. Navigating away unmounts the component and kills the process mid-batch.
 
-## Approach: Move to Edge Function
+The progress banner shows "0/0" because:
 
-Move the batch loop server-side so the browser fires one request and the edge function processes all items independently.
+1. The edge function creates the job row with `total: 0`, then processes in the background. There's a gap between job creation and when `total` is updated after fetching all items.
+2. The UI shows the banner immediately when status is "running" but `total` hasn't been populated yet.
+3. The `scheduleReclassify` debounce fires automatically on focus item changes — there's no manual "Re-classify" button to trigger it on demand.
 
-### 1. Create `reclassify-contributions` Edge Function
-- Accepts `team_id`, `mode` (incremental/full), `since` (ISO date)
-- Fetches all external_activity + commitments server-side
-- Filters already-classified items in incremental mode
-- Calls `ai-classify-contributions` for each batch (reuse existing classification logic)
-- Writes progress to a new `reclassification_jobs` table (id, team_id, status, processed, total, classified, error_message, created_at, updated_at)
-- Updates row as it progresses; sets status to `complete` or `failed` at the end
+## Fix
 
-### 2. Create `reclassification_jobs` table (migration)
-- Columns: `id` (uuid), `team_id` (uuid), `status` (text: pending/running/complete/failed), `processed` (int), `total` (int), `classified` (int), `error_message` (text), `created_at`, `updated_at`
-- RLS: SELECT for team members; INSERT/UPDATE via service_role only (same pattern as focus_retrospectives)
+### 1. Show indeterminate progress when total is 0
 
-### 3. Update `useReclassifyContributions` hook
-- `mutate` now calls the edge function (fire-and-forget), which returns `{ job_id }`
-- Subscribe to `reclassification_jobs` via Supabase Realtime for progress updates
-- Progress state derived from the DB row, so re-entering the page picks up an in-progress job
-- On mount, check for any `running` job for this team and resume showing progress
+In `FocusTab.tsx`, when `total === 0` and status is `running`, show "Preparing..." with an indeterminate progress bar instead of "0/0". Only show the count once `total > 0`.
 
-### 4. Update FocusTab + Dashboard + Analytics
-- Progress banner reads from the hook's Realtime-backed state (no change needed if hook API stays the same)
-- On page load, if a job is `running`, show the progress bar immediately
+### 2. Add a manual "Re-classify Activities" button
 
-### Files
-| File | Action |
+Add a button (e.g. next to "Add Focus Area" / "Suggest with AI") that lets leads manually trigger reclassification without editing a focus area. This addresses your original question about retriggering.
+
+### 3. Improve edge function: set total before responding
+
+In `reclassify-contributions/index.ts`, move the item-fetching and total calculation BEFORE returning the response. The background processing loop starts after, but the job row already has the correct `total`. This eliminates the 0/0 window.
+
+## Files Changed
+
+| File | Change |
 |------|--------|
-| Migration: `reclassification_jobs` table | Create |
-| `supabase/functions/reclassify-contributions/index.ts` | Create |
-| `supabase/config.toml` | Edit (add function) |
-| `src/hooks/useTeamFocus.ts` | Edit (rewrite `useReclassifyContributions`) |
-| `src/integrations/supabase/types.ts` | Auto-updated |
-
-### Implementation Order
-1. Migration for `reclassification_jobs` table
-2. Edge function `reclassify-contributions`
-3. Rewrite hook with Realtime subscription
-4. Test end-to-end: trigger reclassify, navigate away, come back, confirm progress resumes
+| `supabase/functions/reclassify-contributions/index.ts` | Compute total before responding, update job row with total before starting batch loop |
+| `src/components/settings/FocusTab.tsx` | Show "Preparing..." when total=0, add manual "Re-classify" button |
 
