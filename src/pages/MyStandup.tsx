@@ -1034,7 +1034,7 @@ export default function MyStandup() {
                               onClick={() => handleStatusChange(c.id, "in_progress")}
                             >
                               <ArrowRight className="h-3 w-3" />
-                              <span className="hidden sm:inline">Carry</span>
+                              <span>Carry</span>
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>Still working on it. This item will carry forward to your next standup.</TooltipContent>
