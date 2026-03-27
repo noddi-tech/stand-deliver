@@ -981,7 +981,7 @@ export default function MyStandup() {
               return (
                 <div key={c.id} className="space-y-2">
                   <div
-                    className={`flex items-center justify-between gap-3 rounded-lg border p-3 transition-opacity duration-300 ${
+                    className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 rounded-lg border p-3 transition-opacity duration-300 ${
                       isFading ? "opacity-40" : isResolved ? "opacity-60" : ""
                     }`}
                   >
