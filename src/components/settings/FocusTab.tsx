@@ -645,7 +645,7 @@ export function FocusTab() {
     const finalTags = v2TagInputRef.current?.flush() ?? v2Tags;
     if (!v2Title.trim() || finalTags.length === 0 || !v2PredecessorId) return;
     try {
-      await createV2Mutation.mutateAsync({
+      const newFocus = await createV2Mutation.mutateAsync({
         title: v2Title,
         label: finalTags.join(", "),
         description: v2Description || undefined,
@@ -653,6 +653,17 @@ export function FocusTab() {
       });
       toast({ title: "v2 focus area created" });
       setV2DialogOpen(false);
+
+      // Fire-and-forget gap analysis
+      if (newFocus?.id && teamId) {
+        supabase.functions.invoke("ai-focus-gap-analysis", {
+          body: { v1_focus_id: v2PredecessorId, v2_focus_id: newFocus.id, team_id: teamId },
+        }).then(() => {
+          toast({ title: "Gap analysis generating…" });
+        }).catch(() => {
+          // Non-critical
+        });
+      }
     } catch {
       toast({ title: "Failed to create v2", variant: "destructive" });
     }
