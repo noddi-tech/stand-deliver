@@ -206,6 +206,7 @@ CRITICAL RULES:
 3. It's OK to celebrate wins explicitly ("crushing it", "strong velocity") AND flag concerns directly ("needs to step up", "going quiet").
 4. Be specific with names, numbers, and engineering metrics (LOC, PR count, cycle times).
 5. Always use the phrase "${label}" when referring to the time period. Never say "this week" if the period is longer.
+6. IMPORTANT DISTINCTION: "completionRate" under "commitments" is the percentage of TASKS completed — NOT standup completion. "participationRate" under "standup" is the percentage of standup sessions the member submitted. Never confuse these two metrics. When discussing standups, use participationRate. When discussing task delivery, use completionRate.
 
 Team data (${label}, ${days} days):
 ${JSON.stringify(memberStats, null, 2)}
