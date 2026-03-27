@@ -29,7 +29,11 @@ import {
   useDismissInsight,
   useCreateFocusV2,
   useFocusGapAnalysis,
+  usePredecessorContext,
+  useRegenerateRetrospective,
+  useInlineGapAnalysis,
   type FocusInsight,
+  type DeferredItem,
 } from "@/hooks/useFocusRecall";
 import { FocusRetrospectivePanel } from "@/components/focus/FocusRetrospectivePanel";
 import { FocusPredecessorPicker } from "@/components/focus/FocusPredecessorPicker";
