@@ -237,19 +237,33 @@ function FocusItemRow({
 function CompletedFocusItemRow({
   item,
   isLead,
+  teamId,
   onViewRetrospective,
   onCreateV2,
   predecessorTitle,
 }: {
   item: TeamFocusItem;
   isLead: boolean;
+  teamId: string | undefined;
   onViewRetrospective: (id: string, title: string) => void;
   onCreateV2: (item: TeamFocusItem) => void;
   predecessorTitle?: string;
 }) {
   const { data: retro, isLoading: retroLoading } = useFocusRetrospective(item.id);
+  const regenerateMutation = useRegenerateRetrospective();
   const itemTags = splitLabels(item.label);
   const completedDate = (item as any).completed_at ? format(new Date((item as any).completed_at), "MMM d, yyyy") : null;
+
+  const handleRegenerate = () => {
+    if (!teamId) return;
+    regenerateMutation.mutate(
+      { focusItemId: item.id, teamId },
+      {
+        onSuccess: () => toast({ title: "Regenerating retrospective…" }),
+        onError: () => toast({ title: "Failed to regenerate", variant: "destructive" }),
+      }
+    );
+  };
 
   return (
     <div className="flex items-start gap-3 p-3 rounded-lg border border-border bg-card">
@@ -288,16 +302,42 @@ function CompletedFocusItemRow({
                 <FileText className="h-3 w-3" /> View Retrospective
               </Button>
               {isLead && (
-                <Button size="sm" variant="outline" className="h-6 text-[10px] gap-1" onClick={() => onCreateV2(item)}>
-                  <GitBranch className="h-3 w-3" /> Create v2
-                </Button>
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 text-[10px] gap-1"
+                    onClick={handleRegenerate}
+                    disabled={regenerateMutation.isPending}
+                  >
+                    {regenerateMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+                    Regenerate
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-6 text-[10px] gap-1" onClick={() => onCreateV2(item)}>
+                    <GitBranch className="h-3 w-3" /> Create v2
+                  </Button>
+                </>
               )}
             </>
           )}
           {!retroLoading && retro?.status === "failed" && (
-            <Badge variant="destructive" className="text-[10px] gap-1">
-              <AlertTriangle className="h-3 w-3" /> Failed
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant="destructive" className="text-[10px] gap-1">
+                <AlertTriangle className="h-3 w-3" /> Failed
+              </Badge>
+              {isLead && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-6 text-[10px] gap-1"
+                  onClick={handleRegenerate}
+                  disabled={regenerateMutation.isPending}
+                >
+                  {regenerateMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+                  Retry
+                </Button>
+              )}
+            </div>
           )}
           {!retroLoading && !retro && isLead && (
             <Button size="sm" variant="outline" className="h-6 text-[10px] gap-1" onClick={() => onCreateV2(item)}>
@@ -310,6 +350,34 @@ function CompletedFocusItemRow({
   );
 }
 
+/** Inline gap analysis for active focus items with predecessors */
+function InlineGapAnalysis({ focusItemId, teamId }: { focusItemId: string; teamId: string }) {
+  const { data: analysis, isLoading } = useInlineGapAnalysis(focusItemId, teamId);
+  const [expanded, setExpanded] = useState(false);
+
+  if (isLoading || !analysis) return null;
+
+  const pendingCount = (analysis.suggestions || []).filter((s: any) => s.accepted === null).length;
+  if (pendingCount === 0 && (analysis.suggestions || []).length === 0) return null;
+
+  return (
+    <Collapsible open={expanded} onOpenChange={setExpanded}>
+      <CollapsibleTrigger asChild>
+        <button className="w-full text-left px-3 py-1.5 text-xs text-primary hover:bg-primary/5 rounded-b-lg flex items-center gap-1.5 transition-colors">
+          <Sparkles className="h-3 w-3" />
+          AI has {(analysis.suggestions || []).length} suggestion{(analysis.suggestions || []).length !== 1 ? "s" : ""} for this iteration
+          {pendingCount > 0 && <Badge variant="secondary" className="text-[9px] h-4">{pendingCount} pending</Badge>}
+          <ChevronRight className={`h-3 w-3 ml-auto transition-transform ${expanded ? "rotate-90" : ""}`} />
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="px-3 pb-3">
+          <FocusGapAnalysisCard analysis={analysis} isLoading={false} />
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
 /** Focus Insights Banner */
 function FocusInsightsBanner({ teamId }: { teamId: string }) {
   const { data: insights } = useFocusInsights(teamId);
