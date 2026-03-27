@@ -1009,40 +1009,66 @@ export default function MyStandup() {
                         </span>
                       </div>
                     </div>
-                    <div className="flex gap-1 shrink-0">
-                      <Button
-                        size="sm"
-                        variant={current === "done" ? "default" : "outline"}
-                        className="h-7 px-2 text-xs"
-                        onClick={() => handleStatusChange(c.id, "done")}
-                      >
-                        <Check className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={current === "in_progress" ? "default" : "outline"}
-                        className="h-7 px-2 text-xs"
-                        onClick={() => handleStatusChange(c.id, "in_progress")}
-                      >
-                        <ArrowRight className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={current === "blocked" ? "destructive" : "outline"}
-                        className="h-7 px-2 text-xs"
-                        onClick={() => handleStatusChange(c.id, "blocked")}
-                      >
-                        <AlertTriangle className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={current === "dropped" ? "secondary" : "outline"}
-                        className="h-7 px-2 text-xs"
-                        onClick={() => handleStatusChange(c.id, "dropped")}
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </div>
+                    <TooltipProvider delayDuration={300}>
+                      <div className="flex gap-1 shrink-0">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant={current === "done" ? "default" : "outline"}
+                              className="h-7 px-2.5 text-xs"
+                              onClick={() => handleStatusChange(c.id, "done")}
+                            >
+                              <Check className="h-3 w-3" />
+                              <span className="hidden sm:inline">Done</span>
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Mark as completed. This item won't carry forward to your next standup.</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant={current === "in_progress" ? "default" : "outline"}
+                              className="h-7 px-2.5 text-xs"
+                              onClick={() => handleStatusChange(c.id, "in_progress")}
+                            >
+                              <ArrowRight className="h-3 w-3" />
+                              <span className="hidden sm:inline">Carry</span>
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Still working on it. This item will carry forward to your next standup.</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant={current === "blocked" ? "destructive" : "outline"}
+                              className="h-7 px-2.5 text-xs"
+                              onClick={() => handleStatusChange(c.id, "blocked")}
+                            >
+                              <AlertTriangle className="h-3 w-3" />
+                              <span className="hidden sm:inline">Blocked</span>
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Something is preventing progress. You'll be asked to describe the blocker.</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant={current === "dropped" ? "secondary" : "outline"}
+                              className="h-7 px-2.5 text-xs"
+                              onClick={() => handleStatusChange(c.id, "dropped")}
+                            >
+                              <X className="h-3 w-3" />
+                              <span className="hidden sm:inline">Drop</span>
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>No longer relevant. This item will be removed from your active commitments.</TooltipContent>
+                        </Tooltip>
+                      </div>
+                    </TooltipProvider>
                   </div>
                   {/* Inline blocked reason input */}
                   {blockedInputId === c.id && (
