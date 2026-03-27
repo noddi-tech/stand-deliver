@@ -1132,6 +1132,53 @@ export type Database = {
         }
         Relationships: []
       }
+      reclassification_jobs: {
+        Row: {
+          classified: number
+          created_at: string
+          error_message: string | null
+          id: string
+          mode: string
+          processed: number
+          status: string
+          team_id: string
+          total: number
+          updated_at: string
+        }
+        Insert: {
+          classified?: number
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          mode?: string
+          processed?: number
+          status?: string
+          team_id: string
+          total?: number
+          updated_at?: string
+        }
+        Update: {
+          classified?: number
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          mode?: string
+          processed?: number
+          status?: string
+          team_id?: string
+          total?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reclassification_jobs_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       slack_installations: {
         Row: {
           bot_token: string

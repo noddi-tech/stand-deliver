@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -138,189 +138,101 @@ export function useReclassifyContributions(teamId: string | undefined) {
   const [progress, setProgress] = useState<ReclassifyProgress>({
     processed: 0, total: 0, classified: 0, status: "idle",
   });
-  const abortRef = useRef(false);
+  const jobIdRef = useRef<string | null>(null);
+
+  // On mount, check for any running job for this team
+  useEffect(() => {
+    if (!teamId) return;
+    const checkExisting = async () => {
+      const { data } = await supabase
+        .from("reclassification_jobs" as any)
+        .select("id, status, processed, total, classified, error_message")
+        .eq("team_id", teamId)
+        .in("status", ["pending", "running"] as any)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      const jobs = (data || []) as any[];
+      if (jobs.length > 0) {
+        const job = jobs[0];
+        jobIdRef.current = job.id;
+        setProgress({
+          processed: job.processed || 0,
+          total: job.total || 0,
+          classified: job.classified || 0,
+          status: job.status === "pending" ? "running" : "running",
+        });
+      }
+    };
+    checkExisting();
+  }, [teamId]);
+
+  // Subscribe to Realtime changes on the active job
+  useEffect(() => {
+    if (!teamId) return;
+
+    const channel = supabase
+      .channel(`reclassify-${teamId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "reclassification_jobs",
+          filter: `team_id=eq.${teamId}`,
+        },
+        (payload: any) => {
+          const row = payload.new;
+          if (!row) return;
+          // Only track our active job or the latest one
+          if (jobIdRef.current && row.id !== jobIdRef.current) return;
+
+          if (row.status === "complete" || row.status === "failed") {
+            setProgress({
+              processed: row.processed || 0,
+              total: row.total || 0,
+              classified: row.classified || 0,
+              status: row.status === "complete" ? "done" : "error",
+            });
+            jobIdRef.current = null;
+            // Invalidate related queries
+            qc.invalidateQueries({ queryKey: ["contribution-classification", teamId] });
+          } else {
+            setProgress({
+              processed: row.processed || 0,
+              total: row.total || 0,
+              classified: row.classified || 0,
+              status: "running",
+            });
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [teamId, qc]);
 
   const mutation = useMutation({
     mutationFn: async (opts?: { mode?: ReclassifyMode }) => {
       const mode = opts?.mode ?? "incremental";
       if (!teamId) throw new Error("No team");
-      abortRef.current = false;
 
-      const fourteenDaysAgo = new Date();
-      fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
-      const since = fourteenDaysAgo.toISOString();
+      setProgress({ processed: 0, total: 0, classified: 0, status: "running" });
 
-      const parseDegradedMessage = (message: string) => {
-        const normalized = message.toLowerCase();
-        if (normalized.includes("credit")) {
-          return { reason: "credits_exhausted" as const, message: "AI credits exhausted. Add credits in Settings → Workspace → Usage." };
-        }
-        if (normalized.includes("rate")) {
-          return { reason: "rate_limited" as const, message: "AI rate limit reached. Please try again in a minute." };
-        }
-        return null;
-      };
+      const { data, error } = await supabase.functions.invoke("reclassify-contributions", {
+        body: { team_id: teamId, mode },
+      });
 
-      // Fetch recent external_activity with pagination
-      const extData: any[] = [];
-      let extFrom = 0;
-      const PAGE = 1000;
-      while (true) {
-        const { data, error } = await supabase
-          .from("external_activity")
-          .select("id, source, activity_type, title, member_id, metadata")
-          .eq("team_id", teamId)
-          .gte("occurred_at", since)
-          .range(extFrom, extFrom + PAGE - 1);
-        if (error) throw error;
-        const rows = data || [];
-        extData.push(...rows);
-        if (rows.length < PAGE) break;
-        extFrom += PAGE;
-      }
-
-      // Fetch recent commitments
-      const { data: commitData } = await supabase
-        .from("commitments")
-        .select("id, title, description, member_id")
-        .eq("team_id", teamId)
-        .gte("created_at", since);
-
-      const items: Array<{
-        id: string;
-        source_type: string;
-        source?: string;
-        activity_type?: string;
-        title: string;
-        description?: string;
-        metadata?: Record<string, any>;
-        member_id: string;
-      }> = [];
-
-      for (const e of extData) {
-        items.push({
-          id: e.id,
-          source_type: "external_activity",
-          source: e.source,
-          activity_type: e.activity_type,
-          title: e.title,
-          member_id: e.member_id,
-          metadata: e.metadata as Record<string, any> | undefined,
-        });
-      }
-      for (const c of commitData || []) {
-        items.push({
-          id: c.id,
-          source_type: "commitment",
-          title: c.title,
-          description: c.description || undefined,
-          member_id: c.member_id,
-        });
-      }
-
-      if (items.length === 0) {
-        setProgress({ processed: 0, total: 0, classified: 0, status: "done" });
-        return { classified: 0 };
-      }
-
-      let itemsToProcess = items;
-
-      if (mode === "incremental") {
-        // Filter out already-classified items
-        const allIds = items.map((it) => it.id);
-        // Chunk IDs to avoid too-large IN clauses
-        const classifiedIds = new Set<string>();
-        for (let i = 0; i < allIds.length; i += 500) {
-          const chunk = allIds.slice(i, i + 500);
-          const { data: existingClassifications } = await supabase
-            .from("impact_classifications" as any)
-            .select("activity_id")
-            .eq("team_id", teamId)
-            .in("activity_id", chunk as any);
-          for (const c of (existingClassifications || []) as any[]) {
-            classifiedIds.add(c.activity_id);
-          }
-        }
-        itemsToProcess = items.filter((it) => !classifiedIds.has(it.id));
-
-        if (itemsToProcess.length === 0) {
-          setProgress({ processed: 0, total: 0, classified: 0, status: "done" });
-          return { classified: 0, skipped: items.length };
-        }
-      }
-
-      // Initialize progress
-      setProgress({ processed: 0, total: itemsToProcess.length, classified: 0, status: "running" });
-
-      // Send in batches of 20
-      let totalClassified = 0;
-      let degraded: { reason: "credits_exhausted" | "rate_limited"; message: string } | null = null;
-
-      for (let i = 0; i < itemsToProcess.length; i += 20) {
-        if (abortRef.current) break;
-        const batch = itemsToProcess.slice(i, i + 20);
-        const { data, error } = await supabase.functions.invoke("ai-classify-contributions", {
-          body: { team_id: teamId, items: batch },
-        });
-
-        if (error) {
-          const status = (error as any)?.context?.status;
-          if (status === 402 || status === 429) {
-            degraded = {
-              reason: status === 402 ? "credits_exhausted" : "rate_limited",
-              message: status === 402
-                ? "AI credits exhausted. Add credits in Settings → Workspace → Usage."
-                : "AI rate limit reached. Please try again in a minute.",
-            };
-            break;
-          }
-          console.error("Reclassify batch error:", error);
-          setProgress((p) => ({ ...p, status: "error" }));
-          throw error;
-        }
-
-        if (data?.degraded?.reason === "credits_exhausted" || data?.degraded?.reason === "rate_limited") {
-          degraded = {
-            reason: data.degraded.reason,
-            message: data.degraded.message || (data.degraded.reason === "credits_exhausted"
-              ? "AI credits exhausted. Add credits in Settings → Workspace → Usage."
-              : "AI rate limit reached. Please try again in a minute."),
-          };
-          break;
-        }
-
-        if (typeof data?.error === "string") {
-          const parsed = parseDegradedMessage(data.error);
-          if (parsed) {
-            degraded = parsed;
-            break;
-          }
-          setProgress((p) => ({ ...p, status: "error" }));
-          throw new Error(data.error);
-        }
-
-        const batchClassified = Number(data?.classified || 0);
-        totalClassified += batchClassified;
-        setProgress((p) => ({
-          ...p,
-          processed: Math.min(p.processed + batch.length, p.total),
-          classified: p.classified + batchClassified,
-        }));
-      }
-
-      setProgress((p) => ({ ...p, status: "done" }));
-
-      return degraded
-        ? { classified: totalClassified, degraded }
-        : { classified: totalClassified };
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["contribution-classification", teamId] });
+      if (error) throw error;
+      jobIdRef.current = data?.job_id || null;
+      return { jobId: data?.job_id };
     },
   });
 
   const resetProgress = useCallback(() => {
     setProgress({ processed: 0, total: 0, classified: 0, status: "idle" });
+    jobIdRef.current = null;
   }, []);
 
   return { ...mutation, progress, resetProgress };
