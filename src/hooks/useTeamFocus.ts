@@ -40,9 +40,14 @@ export interface ReclassifyProgress {
   total: number;
   classified: number;
   status: "idle" | "running" | "done" | "error";
+  updatedAt: string | null;
+  errorMessage: string | null;
+  stalled: boolean;
 }
 
 export type ReclassifyMode = "incremental" | "full";
+
+const RECLASSIFY_STALL_THRESHOLD_MS = 3 * 60 * 1000;
 
 export function useTeamFocusItems(teamId: string | undefined) {
   return useQuery({
@@ -136,7 +141,7 @@ export function useDeleteFocusItem(teamId: string | undefined) {
 export function useReclassifyContributions(teamId: string | undefined) {
   const qc = useQueryClient();
   const [progress, setProgress] = useState<ReclassifyProgress>({
-    processed: 0, total: 0, classified: 0, status: "idle",
+    processed: 0, total: 0, classified: 0, status: "idle", updatedAt: null, errorMessage: null, stalled: false,
   });
   const jobIdRef = useRef<string | null>(null);
 
@@ -146,7 +151,7 @@ export function useReclassifyContributions(teamId: string | undefined) {
     const checkExisting = async () => {
       const { data } = await supabase
         .from("reclassification_jobs" as any)
-        .select("id, status, processed, total, classified, error_message")
+        .select("id, status, processed, total, classified, error_message, updated_at")
         .eq("team_id", teamId)
         .in("status", ["pending", "running"] as any)
         .order("created_at", { ascending: false })
@@ -160,6 +165,9 @@ export function useReclassifyContributions(teamId: string | undefined) {
           total: job.total || 0,
           classified: job.classified || 0,
           status: job.status === "pending" ? "running" : "running",
+          updatedAt: job.updated_at || null,
+          errorMessage: job.error_message || null,
+          stalled: !!job.updated_at && (Date.now() - new Date(job.updated_at).getTime() > RECLASSIFY_STALL_THRESHOLD_MS),
         });
       }
     };
@@ -192,6 +200,9 @@ export function useReclassifyContributions(teamId: string | undefined) {
               total: row.total || 0,
               classified: row.classified || 0,
               status: row.status === "complete" ? "done" : "error",
+              updatedAt: row.updated_at || null,
+              errorMessage: row.error_message || null,
+              stalled: false,
             });
             jobIdRef.current = null;
             // Invalidate related queries
@@ -202,6 +213,9 @@ export function useReclassifyContributions(teamId: string | undefined) {
               total: row.total || 0,
               classified: row.classified || 0,
               status: "running",
+              updatedAt: row.updated_at || null,
+              errorMessage: row.error_message || null,
+              stalled: false,
             });
           }
         }
@@ -213,12 +227,41 @@ export function useReclassifyContributions(teamId: string | undefined) {
     };
   }, [teamId, qc]);
 
+  useEffect(() => {
+    if (progress.status !== "running") return;
+
+    const interval = setInterval(() => {
+      setProgress((prev) => {
+        if (prev.status !== "running") return prev;
+        if (!prev.updatedAt) return prev;
+
+        const nextStalled = Date.now() - new Date(prev.updatedAt).getTime() > RECLASSIFY_STALL_THRESHOLD_MS;
+        if (prev.stalled === nextStalled) return prev;
+
+        return {
+          ...prev,
+          stalled: nextStalled,
+        };
+      });
+    }, 15_000);
+
+    return () => clearInterval(interval);
+  }, [progress.status]);
+
   const mutation = useMutation({
     mutationFn: async (opts?: { mode?: ReclassifyMode }) => {
       const mode = opts?.mode ?? "incremental";
       if (!teamId) throw new Error("No team");
 
-      setProgress({ processed: 0, total: 0, classified: 0, status: "running" });
+      setProgress({
+        processed: 0,
+        total: 0,
+        classified: 0,
+        status: "running",
+        updatedAt: new Date().toISOString(),
+        errorMessage: null,
+        stalled: false,
+      });
 
       const { data, error } = await supabase.functions.invoke("reclassify-contributions", {
         body: { team_id: teamId, mode },
@@ -231,7 +274,7 @@ export function useReclassifyContributions(teamId: string | undefined) {
   });
 
   const resetProgress = useCallback(() => {
-    setProgress({ processed: 0, total: 0, classified: 0, status: "idle" });
+    setProgress({ processed: 0, total: 0, classified: 0, status: "idle", updatedAt: null, errorMessage: null, stalled: false });
     jobIdRef.current = null;
   }, []);
 
