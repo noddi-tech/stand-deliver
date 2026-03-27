@@ -1,33 +1,57 @@
 
 
-# Fix Reclassification Progress Showing 0/0
+# Fix: Reclassification Job Stops Mid-Way
 
 ## Problem
 
-The progress banner shows "0/0" because:
+The job stopped at 320/1985. The `processInBackground()` call is a fire-and-forget promise that runs *after* the HTTP response is returned. Supabase Edge Functions (Deno) terminate the isolate shortly after the response is sent — the "background" processing gets killed silently.
 
-1. The edge function creates the job row with `total: 0`, then processes in the background. There's a gap between job creation and when `total` is updated after fetching all items.
-2. The UI shows the banner immediately when status is "running" but `total` hasn't been populated yet.
-3. The `scheduleReclassify` debounce fires automatically on focus item changes — there's no manual "Re-classify" button to trigger it on demand.
+This is a fundamental limitation: **Supabase Edge Functions cannot do true background processing after returning a response.**
 
-## Fix
+## Solution: Self-Chaining Edge Function
 
-### 1. Show indeterminate progress when total is 0
+Instead of fire-and-forget, the edge function should process a time-boxed chunk (e.g. ~60 seconds worth of batches), then **re-invoke itself** for the next chunk. Each invocation is a fresh HTTP request with its own time budget.
 
-In `FocusTab.tsx`, when `total === 0` and status is `running`, show "Preparing..." with an indeterminate progress bar instead of "0/0". Only show the count once `total > 0`.
+### How It Works
 
-### 2. Add a manual "Re-classify Activities" button
+```text
+Client → reclassify-contributions (chunk 1: items 0-400)
+           ↓ updates job row
+           ↓ re-invokes itself with offset=400
+         reclassify-contributions (chunk 2: items 400-800)
+           ↓ updates job row
+           ↓ re-invokes itself with offset=800
+         ... until all items processed
+```
 
-Add a button (e.g. next to "Add Focus Area" / "Suggest with AI") that lets leads manually trigger reclassification without editing a focus area. This addresses your original question about retriggering.
+### Changes
 
-### 3. Improve edge function: set total before responding
+**`supabase/functions/reclassify-contributions/index.ts`** — Rewrite to:
 
-In `reclassify-contributions/index.ts`, move the item-fetching and total calculation BEFORE returning the response. The background processing loop starts after, but the job row already has the correct `total`. This eliminates the 0/0 window.
+1. Accept optional `job_id` and `offset` params (for continuation calls)
+2. On first call: fetch items, compute total, create job row, start processing from offset 0
+3. Process batches in a loop with a **time guard** (~50 seconds). After each batch of 20, check elapsed time.
+4. When time budget is nearly exhausted, **self-invoke** with the current offset and job_id, then return.
+5. On continuation call: load the job row, skip item-fetching (pass items via job context or re-fetch), continue from offset.
+6. Mark job `complete` only when offset >= total.
 
-## Files Changed
+Since items can't be passed between invocations efficiently (1985 items is too large for a request body), each invocation will re-fetch items but skip to the correct offset. The `filterUnclassified` step only runs on the first call; continuation calls use `mode` + offset.
+
+**Also fix the stuck job**: Add a cleanup step — on first call, if there's already a `running` job for this team, mark it as `failed` (stale) before creating a new one.
+
+**`src/hooks/useTeamFocus.ts`** — No changes needed (Realtime subscription already handles incremental updates).
+
+### Technical Details
+
+- Time budget per invocation: ~50 seconds (leaves margin before Supabase's ~150s wall clock limit)
+- Batch size stays at 20 items per AI call
+- Self-invocation uses `sb.functions.invoke("reclassify-contributions", ...)` with service role
+- Each chunk processes ~250-400 items (depending on AI response times)
+- Job row gets updated after every batch, so UI progress stays live
+
+### Files Changed
 
 | File | Change |
 |------|--------|
-| `supabase/functions/reclassify-contributions/index.ts` | Compute total before responding, update job row with total before starting batch loop |
-| `src/components/settings/FocusTab.tsx` | Show "Preparing..." when total=0, add manual "Re-classify" button |
+| `supabase/functions/reclassify-contributions/index.ts` | Rewrite with self-chaining + time guard |
 
