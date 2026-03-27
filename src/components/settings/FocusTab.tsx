@@ -452,6 +452,7 @@ export function FocusTab() {
   const [v2Tags, setV2Tags] = useState<string[]>([]);
   const [v2Description, setV2Description] = useState("");
   const v2TagInputRef = useRef<TagInputHandle>(null);
+  const predecessorCtx = usePredecessorContext(v2PredecessorId, teamId);
 
   const fetchAiSuggestions = async () => {
     if (!teamId) return;
