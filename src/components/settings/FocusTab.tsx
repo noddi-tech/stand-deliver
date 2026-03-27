@@ -995,6 +995,7 @@ export function FocusTab() {
           <CardContent className="space-y-2">
             {completedItems.map((item) => (
               <CompletedFocusItemRow
+                teamId={teamId}
                 key={item.id}
                 item={item}
                 isLead={isLead}
