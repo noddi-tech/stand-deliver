@@ -89,17 +89,19 @@ Deno.serve(async (req) => {
     let commitmentsByStatus: Record<string, number> = {};
     let totalCommitments = 0;
     let carryForwardCount = 0;
+    let commitmentDetails: any[] = [];
 
     for (let i = 0; i < commitmentIds.length; i += 500) {
       const chunk = commitmentIds.slice(i, i + 500);
       const { data: commitments } = await sb
         .from("commitments")
-        .select("id, status, carry_count")
+        .select("id, title, status, carry_count, resolution_note, blocked_reason")
         .in("id", chunk);
       for (const c of commitments || []) {
         totalCommitments++;
         commitmentsByStatus[c.status] = (commitmentsByStatus[c.status] || 0) + 1;
         if (c.carry_count > 0) carryForwardCount++;
+        commitmentDetails.push(c);
       }
     }
 
@@ -107,34 +109,49 @@ Deno.serve(async (req) => {
     let blockerCategories: Record<string, number> = {};
     let totalBlockerDays = 0;
     let blockerCount = 0;
+    let blockerDetails: any[] = [];
 
     for (let i = 0; i < commitmentIds.length; i += 500) {
       const chunk = commitmentIds.slice(i, i + 500);
       const { data: blockers } = await sb
         .from("blockers")
-        .select("category, days_open, is_resolved")
+        .select("description, category, days_open, is_resolved")
         .eq("team_id", team_id)
         .in("commitment_id", chunk);
       for (const b of blockers || []) {
         blockerCount++;
         blockerCategories[b.category] = (blockerCategories[b.category] || 0) + 1;
         totalBlockerDays += b.days_open;
+        blockerDetails.push(b);
       }
     }
 
-    // External activity breakdown
+    // External activity breakdown + fetch top 20 titles
     let activityBySrc: Record<string, number> = {};
+    let topActivities: any[] = [];
+
     for (let i = 0; i < extActivityIds.length; i += 500) {
       const chunk = extActivityIds.slice(i, i + 500);
       const { data: extActs } = await sb
         .from("external_activity")
-        .select("source, activity_type")
-        .in("id", chunk);
+        .select("title, source, activity_type, external_url, occurred_at")
+        .in("id", chunk)
+        .order("occurred_at", { ascending: false });
       for (const a of extActs || []) {
         const key = `${a.source}:${a.activity_type}`;
         activityBySrc[key] = (activityBySrc[key] || 0) + 1;
+        if (topActivities.length < 20) {
+          topActivities.push(a);
+        }
       }
     }
+
+    // Build a map from activity_id -> classification for top activities reasoning
+    const classificationByActivityId = new Map(
+      classificationList
+        .filter((c: any) => c.source_type === "external_activity")
+        .map((c: any) => [c.activity_id, c])
+    );
 
     // Effort distribution
     const effortByTier: Record<string, number> = {};
@@ -192,34 +209,65 @@ Deno.serve(async (req) => {
 
     if (lovableKey) {
       try {
-        const prompt = `You are a team retrospective analyst. Generate a structured retrospective for a completed focus area.
+        const topActivitiesText = topActivities.length > 0
+          ? topActivities.map(a => `- [${a.source}:${a.activity_type}] ${a.title}`).join("\n")
+          : "No external activities recorded.";
 
-Focus Area: "${focusItem.title}"
+        const commitmentsText = commitmentDetails.length > 0
+          ? commitmentDetails.map(c =>
+            `- "${c.title}" — status: ${c.status}${c.carry_count > 0 ? `, carried ${c.carry_count}x` : ""}${c.resolution_note ? ` — notes: ${c.resolution_note}` : ""}${c.blocked_reason ? ` — blocked: ${c.blocked_reason}` : ""}`
+          ).join("\n")
+          : "No commitments tracked.";
+
+        const blockersText = blockerDetails.length > 0
+          ? blockerDetails.map(b =>
+            `- [${b.category}] "${b.description}" — ${b.is_resolved ? "resolved" : "unresolved"} (${b.days_open} days open)`
+          ).join("\n")
+          : "No blockers were logged.";
+
+        const prompt = `You are a project analyst generating a retrospective for a completed focus area.
+
+## Focus Area
+Title: "${focusItem.title}"
 Description: ${focusItem.description || "No description provided"}
 Tags: ${focusItem.label}
+Duration: ${focusItem.starts_at || focusItem.created_at} to ${focusItem.completed_at || "now"}
 
-Metrics:
+## Metrics Summary
 - Total classified activities: ${metrics.total_classifications}
-- Total commitments: ${metrics.total_commitments}
+- Commitments: ${metrics.total_commitments} (done: ${commitmentsByStatus["done"] || 0}, carried: ${commitmentsByStatus["carried"] || 0}, dropped: ${commitmentsByStatus["dropped"] || 0}, active: ${commitmentsByStatus["active"] || 0}, blocked: ${commitmentsByStatus["blocked"] || 0})
 - Completion rate: ${metrics.completion_rate}%
 - Carry-forward rate: ${metrics.carry_forward_rate}%
-- Blockers: ${metrics.blocker_count} (avg ${metrics.avg_blocker_days} days to resolve)
-- Top blocker categories: ${JSON.stringify(metrics.blocker_categories)}
-- Activity sources: ${JSON.stringify(metrics.activity_by_source)}
-- Effort by impact tier: ${JSON.stringify(metrics.effort_by_tier)}
+- Blockers encountered: ${metrics.blocker_count} (avg ${metrics.avg_blocker_days} days to resolve)
 - Contributors: ${metrics.contributors.join(", ") || "None tracked"}
 
-Generate a JSON response with these exact fields:
+## Activity by Source
+${Object.entries(metrics.activity_by_source).map(([k, v]) => `- ${k}: ${v}`).join("\n") || "No activity breakdown."}
+
+## Top Activities (most recent, highest impact)
+${topActivitiesText}
+
+## Commitments
+${commitmentsText}
+
+## Blockers
+${blockersText}
+
+---
+
+Generate a retrospective with these exact JSON keys:
 {
-  "executive_summary": "2-3 sentence summary of what was accomplished",
-  "what_shipped": "Paragraph describing key deliverables based on done commitments and high-impact activities",
-  "what_blocked": "Paragraph about blockers, patterns, and resolution times",
-  "recurring_patterns": "Paragraph about patterns noticed (carry-forwards, blocker types, effort distribution)",
-  "where_we_got_lucky": "Paragraph about things that went well unexpectedly or risks that didn't materialize",
+  "executive_summary": "2-3 sentence overview of what this focus area accomplished and its overall health",
+  "what_shipped": "Paragraph describing the key deliverables, referencing specific activity titles and PRs by name",
+  "what_blocked": "Paragraph about blockers and items that were carried repeatedly. Reference specific commitment titles. If no blockers, say so briefly.",
+  "recurring_patterns": "Patterns you notice — e.g. types of work that kept getting carried, concentration of effort in certain areas",
+  "where_we_got_lucky": "Risks that didn't materialize but could in a future iteration. If nothing obvious, say 'No significant lucky breaks identified.'",
   "recommendations": [
     {"title": "recommendation title", "description": "actionable recommendation", "priority": "high|medium|low"}
   ]
-}`;
+}
+
+Respond ONLY with valid JSON. No markdown fences.`;
 
         const resp = await fetch("https://ai.lovable.dev/chat/v1/chat/completions", {
           method: "POST",
@@ -272,9 +320,31 @@ Generate a JSON response with these exact fields:
       }
     }
 
-    // Fallback narrative from metrics
+    // Fallback narrative from metrics + real content
     if (!narrative) {
-      narrative = `## Executive Summary\nThis focus area had ${metrics.total_commitments} commitments with a ${metrics.completion_rate}% completion rate. ${metrics.blocker_count} blockers were encountered.`;
+      const topActivityNames = topActivities.slice(0, 3).map(a => a.title).join(", ");
+      const sourceSummary = Object.entries(metrics.activity_by_source)
+        .sort((a, b) => (b[1] as number) - (a[1] as number))
+        .slice(0, 5)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(", ");
+
+      const parts = [
+        `## Executive Summary`,
+        `This focus area had ${metrics.total_commitments} commitments with a ${metrics.completion_rate}% completion rate and ${metrics.total_classifications} classified activities across ${metrics.contributor_count} contributor(s).`,
+      ];
+
+      if (sourceSummary) {
+        parts.push(`\n## Activity Breakdown\n${sourceSummary}`);
+      }
+      if (topActivityNames) {
+        parts.push(`\n## Key Activities\nTop activities: ${topActivityNames}`);
+      }
+      if (blockerCount > 0) {
+        parts.push(`\n## Blockers\n${blockerCount} blockers encountered (avg ${metrics.avg_blocker_days} days to resolve). Categories: ${JSON.stringify(metrics.blocker_categories)}`);
+      }
+
+      narrative = parts.join("\n");
     }
 
     // ============================================================

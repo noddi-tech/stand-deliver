@@ -29,7 +29,11 @@ import {
   useDismissInsight,
   useCreateFocusV2,
   useFocusGapAnalysis,
+  usePredecessorContext,
+  useRegenerateRetrospective,
+  useInlineGapAnalysis,
   type FocusInsight,
+  type DeferredItem,
 } from "@/hooks/useFocusRecall";
 import { FocusRetrospectivePanel } from "@/components/focus/FocusRetrospectivePanel";
 import { FocusPredecessorPicker } from "@/components/focus/FocusPredecessorPicker";
@@ -233,19 +237,33 @@ function FocusItemRow({
 function CompletedFocusItemRow({
   item,
   isLead,
+  teamId,
   onViewRetrospective,
   onCreateV2,
   predecessorTitle,
 }: {
   item: TeamFocusItem;
   isLead: boolean;
+  teamId: string | undefined;
   onViewRetrospective: (id: string, title: string) => void;
   onCreateV2: (item: TeamFocusItem) => void;
   predecessorTitle?: string;
 }) {
   const { data: retro, isLoading: retroLoading } = useFocusRetrospective(item.id);
+  const regenerateMutation = useRegenerateRetrospective();
   const itemTags = splitLabels(item.label);
   const completedDate = (item as any).completed_at ? format(new Date((item as any).completed_at), "MMM d, yyyy") : null;
+
+  const handleRegenerate = () => {
+    if (!teamId) return;
+    regenerateMutation.mutate(
+      { focusItemId: item.id, teamId },
+      {
+        onSuccess: () => toast({ title: "Regenerating retrospective…" }),
+        onError: () => toast({ title: "Failed to regenerate", variant: "destructive" }),
+      }
+    );
+  };
 
   return (
     <div className="flex items-start gap-3 p-3 rounded-lg border border-border bg-card">
@@ -284,16 +302,42 @@ function CompletedFocusItemRow({
                 <FileText className="h-3 w-3" /> View Retrospective
               </Button>
               {isLead && (
-                <Button size="sm" variant="outline" className="h-6 text-[10px] gap-1" onClick={() => onCreateV2(item)}>
-                  <GitBranch className="h-3 w-3" /> Create v2
-                </Button>
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 text-[10px] gap-1"
+                    onClick={handleRegenerate}
+                    disabled={regenerateMutation.isPending}
+                  >
+                    {regenerateMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+                    Regenerate
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-6 text-[10px] gap-1" onClick={() => onCreateV2(item)}>
+                    <GitBranch className="h-3 w-3" /> Create v2
+                  </Button>
+                </>
               )}
             </>
           )}
           {!retroLoading && retro?.status === "failed" && (
-            <Badge variant="destructive" className="text-[10px] gap-1">
-              <AlertTriangle className="h-3 w-3" /> Failed
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant="destructive" className="text-[10px] gap-1">
+                <AlertTriangle className="h-3 w-3" /> Failed
+              </Badge>
+              {isLead && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-6 text-[10px] gap-1"
+                  onClick={handleRegenerate}
+                  disabled={regenerateMutation.isPending}
+                >
+                  {regenerateMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+                  Retry
+                </Button>
+              )}
+            </div>
           )}
           {!retroLoading && !retro && isLead && (
             <Button size="sm" variant="outline" className="h-6 text-[10px] gap-1" onClick={() => onCreateV2(item)}>
@@ -306,6 +350,34 @@ function CompletedFocusItemRow({
   );
 }
 
+/** Inline gap analysis for active focus items with predecessors */
+function InlineGapAnalysis({ focusItemId, teamId }: { focusItemId: string; teamId: string }) {
+  const { data: analysis, isLoading } = useInlineGapAnalysis(focusItemId, teamId);
+  const [expanded, setExpanded] = useState(false);
+
+  if (isLoading || !analysis) return null;
+
+  const pendingCount = (analysis.suggestions || []).filter((s: any) => s.accepted === null).length;
+  if (pendingCount === 0 && (analysis.suggestions || []).length === 0) return null;
+
+  return (
+    <Collapsible open={expanded} onOpenChange={setExpanded}>
+      <CollapsibleTrigger asChild>
+        <button className="w-full text-left px-3 py-1.5 text-xs text-primary hover:bg-primary/5 rounded-b-lg flex items-center gap-1.5 transition-colors">
+          <Sparkles className="h-3 w-3" />
+          AI has {(analysis.suggestions || []).length} suggestion{(analysis.suggestions || []).length !== 1 ? "s" : ""} for this iteration
+          {pendingCount > 0 && <Badge variant="secondary" className="text-[9px] h-4">{pendingCount} pending</Badge>}
+          <ChevronRight className={`h-3 w-3 ml-auto transition-transform ${expanded ? "rotate-90" : ""}`} />
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="px-3 pb-3">
+          <FocusGapAnalysisCard analysis={analysis} isLoading={false} />
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
 /** Focus Insights Banner */
 function FocusInsightsBanner({ teamId }: { teamId: string }) {
   const { data: insights } = useFocusInsights(teamId);
@@ -380,6 +452,7 @@ export function FocusTab() {
   const [v2Tags, setV2Tags] = useState<string[]>([]);
   const [v2Description, setV2Description] = useState("");
   const v2TagInputRef = useRef<TagInputHandle>(null);
+  const predecessorCtx = usePredecessorContext(v2PredecessorId, teamId);
 
   const fetchAiSuggestions = async () => {
     if (!teamId) return;
@@ -572,7 +645,7 @@ export function FocusTab() {
     const finalTags = v2TagInputRef.current?.flush() ?? v2Tags;
     if (!v2Title.trim() || finalTags.length === 0 || !v2PredecessorId) return;
     try {
-      await createV2Mutation.mutateAsync({
+      const newFocus = await createV2Mutation.mutateAsync({
         title: v2Title,
         label: finalTags.join(", "),
         description: v2Description || undefined,
@@ -580,6 +653,16 @@ export function FocusTab() {
       });
       toast({ title: "v2 focus area created" });
       setV2DialogOpen(false);
+
+      // Fire-and-forget gap analysis
+      const newId = (newFocus as any)?.id;
+      if (newId && teamId) {
+        supabase.functions.invoke("ai-focus-gap-analysis", {
+          body: { v1_focus_id: v2PredecessorId, v2_focus_id: newId, team_id: teamId },
+        }).then(() => {
+          toast({ title: "Gap analysis generating…" });
+        }).catch(() => {});
+      }
     } catch {
       toast({ title: "Failed to create v2", variant: "destructive" });
     }
@@ -693,15 +776,19 @@ export function FocusTab() {
 
             if (!hasChildren) {
               return (
-                <FocusItemRow
-                  key={item.id}
-                  item={item}
-                  isLead={isLead}
-                  onEdit={startEdit}
-                  onArchive={handleArchive}
-                  onComplete={(id) => setCompleteConfirmId(id)}
-                  predecessorTitle={predTitle}
-                />
+                <div key={item.id} className="space-y-0">
+                  <FocusItemRow
+                    item={item}
+                    isLead={isLead}
+                    onEdit={startEdit}
+                    onArchive={handleArchive}
+                    onComplete={(id) => setCompleteConfirmId(id)}
+                    predecessorTitle={predTitle}
+                  />
+                  {(item as any).predecessor_id && teamId && (
+                    <InlineGapAnalysis focusItemId={item.id} teamId={teamId} />
+                  )}
+                </div>
               );
             }
 
@@ -923,6 +1010,7 @@ export function FocusTab() {
           <CardContent className="space-y-2">
             {completedItems.map((item) => (
               <CompletedFocusItemRow
+                teamId={teamId}
                 key={item.id}
                 item={item}
                 isLead={isLead}
@@ -1010,7 +1098,68 @@ export function FocusTab() {
               Create a new iteration building on what was learned from "{v2PredecessorTitle}".
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3 py-2">
+          <div className="space-y-3 py-2 max-h-[60vh] overflow-y-auto">
+            {/* Predecessor Context */}
+            {v2PredecessorId && !predecessorCtx.isLoading && predecessorCtx.retrospective && (
+              <Collapsible defaultOpen>
+                <CollapsibleTrigger className="flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground w-full">
+                  <FileText className="h-3.5 w-3.5" />
+                  v1 Summary
+                  <ChevronRight className="h-3 w-3 ml-auto" />
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="mt-2 p-3 rounded-lg border border-border bg-muted/30 space-y-2 text-xs">
+                    <div className="flex gap-3 flex-wrap">
+                      <span><strong>Completion:</strong> {(predecessorCtx.retrospective.metrics as any)?.completion_rate ?? "–"}%</span>
+                      <span><strong>Activities:</strong> {(predecessorCtx.retrospective.metrics as any)?.total_classifications ?? 0}</span>
+                      <span><strong>Blockers:</strong> {(predecessorCtx.retrospective.metrics as any)?.blocker_count ?? 0}</span>
+                    </div>
+                    {predecessorCtx.retrospective.ai_narrative && (
+                      <p className="text-muted-foreground leading-relaxed">
+                        {predecessorCtx.retrospective.ai_narrative
+                          .replace(/^##\s*Executive Summary\n?/m, "")
+                          .split("\n\n")[0]
+                          .slice(0, 300)}
+                        {predecessorCtx.retrospective.ai_narrative.length > 300 ? "…" : ""}
+                      </p>
+                    )}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+
+            {/* Deferred Items */}
+            {v2PredecessorId && !predecessorCtx.isLoading && predecessorCtx.deferredItems && predecessorCtx.deferredItems.length > 0 && (
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium text-muted-foreground">Deferred & Unresolved Items</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {predecessorCtx.deferredItems.map((item: DeferredItem) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="text-[11px] px-2 py-1 rounded-md border border-border bg-card hover:bg-accent transition-colors text-left max-w-full truncate"
+                      onClick={() => {
+                        const addition = v2Description ? `\n• ${item.title}` : `• ${item.title}`;
+                        setV2Description(prev => prev + addition);
+                      }}
+                      title={`Click to add: ${item.title} (${item.status}, carried ${item.carry_count}x)`}
+                    >
+                      <span className="font-medium">{item.title}</span>
+                      <span className="text-muted-foreground ml-1">({item.status}{item.carry_count > 0 ? `, ×${item.carry_count}` : ""})</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-muted-foreground">Click items to add them to the description</p>
+              </div>
+            )}
+
+            {predecessorCtx.isLoading && v2PredecessorId && (
+              <div className="space-y-2">
+                <Skeleton className="h-16 rounded-lg" />
+                <Skeleton className="h-8 rounded-lg" />
+              </div>
+            )}
+
             <Input
               placeholder="Focus area title"
               value={v2Title}

@@ -349,3 +349,105 @@ export function useDismissInsight(teamId: string | undefined) {
     },
   });
 }
+
+// ============================================================
+// useDeferredItems
+// Fetches unresolved commitments from a completed focus area
+// via impact_classifications join path.
+// ============================================================
+
+export interface DeferredItem {
+  id: string;
+  title: string;
+  status: string;
+  carry_count: number;
+}
+
+export function useDeferredItems(focusItemId: string | null | undefined, teamId: string | undefined) {
+  return useQuery({
+    queryKey: ["deferred-items", focusItemId],
+    enabled: !!focusItemId && !!teamId,
+    staleTime: 60 * 1000,
+    queryFn: async () => {
+      // Step 1: Get commitment IDs linked to this focus area via impact_classifications
+      const { data: classifications, error: classErr } = await supabase
+        .from("impact_classifications" as any)
+        .select("activity_id")
+        .eq("focus_item_id", focusItemId!)
+        .eq("source_type", "commitment");
+      if (classErr) throw classErr;
+
+      const commitmentIds = (classifications || []).map((c: any) => c.activity_id);
+      if (commitmentIds.length === 0) return [] as DeferredItem[];
+
+      // Step 2: Fetch commitments that are NOT done/dropped
+      const { data: commitments, error: commitErr } = await supabase
+        .from("commitments" as any)
+        .select("id, title, status, carry_count")
+        .in("id", commitmentIds)
+        .in("status", ["carried", "active", "blocked", "in_progress"]);
+      if (commitErr) throw commitErr;
+
+      return (commitments || []) as unknown as DeferredItem[];
+    },
+  });
+}
+
+// ============================================================
+// usePredecessorContext
+// Combines retrospective + deferred items for v2 dialog.
+// ============================================================
+
+export function usePredecessorContext(predecessorId: string | null | undefined, teamId: string | undefined) {
+  const retro = useFocusRetrospective(predecessorId || undefined);
+  const deferred = useDeferredItems(predecessorId, teamId);
+  return {
+    retrospective: retro.data,
+    deferredItems: deferred.data,
+    isLoading: retro.isLoading || deferred.isLoading,
+  };
+}
+
+// ============================================================
+// useRegenerateRetrospective
+// Re-invokes ai-focus-retrospective for an existing completed item.
+// ============================================================
+
+export function useRegenerateRetrospective() {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (params: { focusItemId: string; teamId: string }) => {
+      const { data, error } = await supabase.functions.invoke("ai-focus-retrospective", {
+        body: { focus_item_id: params.focusItemId, team_id: params.teamId, create_row: false },
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["focus-retrospective"] });
+    },
+  });
+}
+
+// ============================================================
+// useInlineGapAnalysis
+// Queries gap analysis for an active focus area by v2_focus_id.
+// ============================================================
+
+export function useInlineGapAnalysis(focusItemId: string | undefined, teamId: string | undefined) {
+  return useQuery({
+    queryKey: ["inline-gap-analysis", focusItemId],
+    enabled: !!focusItemId && !!teamId,
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("focus_gap_analyses" as any)
+        .select("*")
+        .eq("v2_focus_id", focusItemId!)
+        .maybeSingle();
+      if (error) throw error;
+      return data as unknown as FocusGapAnalysis | null;
+    },
+  });
+}
