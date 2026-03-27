@@ -655,14 +655,13 @@ export function FocusTab() {
       setV2DialogOpen(false);
 
       // Fire-and-forget gap analysis
-      if (newFocus?.id && teamId) {
+      const newId = (newFocus as any)?.id;
+      if (newId && teamId) {
         supabase.functions.invoke("ai-focus-gap-analysis", {
-          body: { v1_focus_id: v2PredecessorId, v2_focus_id: newFocus.id, team_id: teamId },
+          body: { v1_focus_id: v2PredecessorId, v2_focus_id: newId, team_id: teamId },
         }).then(() => {
           toast({ title: "Gap analysis generating…" });
-        }).catch(() => {
-          // Non-critical
-        });
+        }).catch(() => {});
       }
     } catch {
       toast({ title: "Failed to create v2", variant: "destructive" });
