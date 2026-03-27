@@ -1020,7 +1020,7 @@ export default function MyStandup() {
                               onClick={() => handleStatusChange(c.id, "done")}
                             >
                               <Check className="h-3 w-3" />
-                              <span className="hidden sm:inline">Done</span>
+                              <span>Done</span>
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>Mark as completed. This item won't carry forward to your next standup.</TooltipContent>
