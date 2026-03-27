@@ -451,18 +451,3 @@ export function useInlineGapAnalysis(focusItemId: string | undefined, teamId: st
     },
   });
 }
-  const qc = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (insightId: string) => {
-      const { error } = await supabase
-        .from("focus_insights" as any)
-        .update({ is_dismissed: true } as any)
-        .eq("id", insightId);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["focus-insights", teamId] });
-    },
-  });
-}
