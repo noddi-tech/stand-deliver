@@ -427,13 +427,8 @@ export function FocusTab() {
     if (reclassifyTimerRef.current) clearTimeout(reclassifyTimerRef.current);
     reclassifyTimerRef.current = setTimeout(() => {
       reclassifyMutation.mutate({ mode: "full" }, {
-        onSuccess: (result) => {
-          if (result.classified > 0) {
-            toast({ title: `Re-classified ${result.classified} activities against updated focus areas` });
-          }
-          if ((result as any).degraded) {
-            toast({ title: (result as any).degraded.message, variant: "destructive" });
-          }
+        onSuccess: () => {
+          toast({ title: "Re-classification started in background" });
         },
         onError: (err: Error) => {
           toast({ title: err.message || "Re-classification failed", variant: "destructive" });
