@@ -64,6 +64,8 @@ export default function Dashboard() {
 
   const { data: metrics, isLoading: metricsLoading } = useTeamMetrics(teamId);
   const { data: todaySession } = useTodaySession(teamId, memberId);
+  const { data: teamSchedule } = useTeamSchedule(teamId);
+  const isStandupDay = getIsStandupDay(teamSchedule);
   const { data: attention, isLoading: attentionLoading } = useAttentionItems(teamId);
   const { data: activity, isLoading: activityLoading } = useRecentActivity(teamId);
   const skipMutation = useSkipStandup();
