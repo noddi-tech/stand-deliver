@@ -18,7 +18,7 @@ import { ActivityBadgeChip } from "@/components/activity/ActivityBadgeChip";
 import { useRealtimeInvalidation } from "@/hooks/useRealtimeInvalidation";
 
 import { useTeamSummary } from "@/hooks/useTeamSummary";
-import { useTeamSchedule } from "@/hooks/useTeamSchedule";
+import { useTeamSchedule, getIsStandupDay } from "@/hooks/useTeamSchedule";
 import { useEnrichedTeamMetrics } from "@/hooks/useEnrichedAnalytics";
 import { useNavigate } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
