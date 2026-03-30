@@ -100,6 +100,7 @@ export default function Dashboard() {
 
   const standupButton = () => {
     if (!todaySession || todaySession.status === "no_session") {
+      if (!isStandupDay) return null;
       return (
         <div className="flex items-center gap-2">
           <Button onClick={() => navigate("/standup")} size="sm">
