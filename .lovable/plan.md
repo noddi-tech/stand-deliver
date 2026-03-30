@@ -1,41 +1,30 @@
 
 
-# Redesign Activity Cards with Grid Layout
+# Hide Standup Button on Non-Scheduled Days
 
 ## Problem
-On mobile (390px), the activity cards cram everything into a single horizontal row — source icon, avatar, truncated title, badge chip, metadata, and external link all fight for space. The title gets heavily truncated and the badge/timestamp info wraps awkwardly.
+The Dashboard always shows "Start Today's Standup" when no session exists — it doesn't check the team's `standup_days` schedule. On days with no standup scheduled (e.g. Sunday), the button still appears.
 
 ## Solution
-Restructure each activity card's internal layout into a clean two-row grid:
-
-**Row 1**: Avatar + Title + Badge chip (full width)
-**Row 2**: Source icon + Member name + Activity type badge + Timestamp + External link
-
-This gives the title more room to breathe and groups metadata logically.
+In `src/pages/Dashboard.tsx`, check whether today is a scheduled standup day before rendering the standup button. The `useAttentionItems` hook already has this exact logic — compute the current day code using the team's `standup_timezone` and check against `standup_days`.
 
 ## Changes
 
-**File: `src/pages/Activity.tsx`** (lines 335-378)
+**File: `src/pages/Dashboard.tsx`**
 
-Replace the current single-row `flex items-center` card layout with:
+1. Fetch the team's schedule data (already available via `useUserTeam` → `team` object, but need `standup_days` and `standup_timezone` from the `teams` table). Query the `teams` table for these fields using `teamId`.
 
+2. Add a `isStandupDay` check:
 ```
-Row 1: flex items-start gap-2
-  - Avatar (h-7 w-7)
-  - Title (text-sm font-medium, no truncate on mobile or at least more room)
-  - Badge chip (pushed right with ml-auto)
-
-Row 2: flex items-center gap-2 text-[11px] text-muted-foreground
-  - Source emoji
-  - Member name
-  - · Activity type badge
-  - · Timestamp
-  - External link (ml-auto)
+const dayMap = { 0: "sun", 1: "mon", 2: "tue", 3: "wed", 4: "thu", 5: "fri", 6: "sat" };
+const teamNow = new Date(new Date().toLocaleString("en-US", { timeZone: teamSchedule.standup_timezone || "UTC" }));
+const todayCode = dayMap[teamNow.getDay()];
+const isStandupDay = teamSchedule.standup_days?.includes(todayCode);
 ```
 
-Remove the source icon from the left side of row 1 (move it to row 2 metadata line). This reclaims ~28px on mobile. The avatar stays as the visual anchor.
+3. In `standupButton()`, when status is `"no_session"`, return `null` if `!isStandupDay` instead of showing the Start/Skip buttons.
 
 | File | Change |
 |------|--------|
-| `src/pages/Activity.tsx` | Restructure card internals from single-row to two-row layout |
+| `src/pages/Dashboard.tsx` | Query team schedule; hide standup button on non-standup days |
 
