@@ -18,6 +18,7 @@ import { ActivityBadgeChip } from "@/components/activity/ActivityBadgeChip";
 import { useRealtimeInvalidation } from "@/hooks/useRealtimeInvalidation";
 
 import { useTeamSummary } from "@/hooks/useTeamSummary";
+import { useTeamSchedule, getIsStandupDay } from "@/hooks/useTeamSchedule";
 import { useEnrichedTeamMetrics } from "@/hooks/useEnrichedAnalytics";
 import { useNavigate } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
@@ -63,6 +64,8 @@ export default function Dashboard() {
 
   const { data: metrics, isLoading: metricsLoading } = useTeamMetrics(teamId);
   const { data: todaySession } = useTodaySession(teamId, memberId);
+  const { data: teamSchedule } = useTeamSchedule(teamId);
+  const isStandupDay = getIsStandupDay(teamSchedule);
   const { data: attention, isLoading: attentionLoading } = useAttentionItems(teamId);
   const { data: activity, isLoading: activityLoading } = useRecentActivity(teamId);
   const skipMutation = useSkipStandup();
@@ -97,6 +100,7 @@ export default function Dashboard() {
 
   const standupButton = () => {
     if (!todaySession || todaySession.status === "no_session") {
+      if (!isStandupDay) return null;
       return (
         <div className="flex items-center gap-2">
           <Button onClick={() => navigate("/standup")} size="sm">
