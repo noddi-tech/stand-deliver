@@ -1,103 +1,42 @@
 
 
-# Calendar Week Alignment + Monday Morning Fallback
+# Update /vis-explained for Absolute-Baseline Scoring
 
-## Problem
+## What's stale
 
-Fix 1 (calendar week boundaries) creates the same Monday-morning empty state for the Dashboard Member Breakdown that Fix 2 solves for awards. Both `useEnrichedAnalytics` and `useWeeklyAwards` need the same fallback pattern.
+The Impact component description (line 44) says:
+> "Your individual scores are summed, then log-compressed and normalized against the team median. The median maps to 50, with a floor of 5 for any active contributor"
+
+This describes the old system. The new absolute-baseline model normalizes against a per-team `reference_baseline` stored in `vis_config`, not the team median.
 
 ## Changes
 
-### 1. `src/hooks/useEnrichedAnalytics.ts` — calendar week + fallback
+### `src/pages/VISExplained.tsx`
 
-**Line 67**: Replace rolling window with calendar week when `periodDays === 7`:
+**1. Impact description (line 43-44)** — Replace the normalization paragraph:
 
-```typescript
-const mondayStart = startOfWeek(new Date(), { weekStartsOn: 1 });
-const sinceDate = periodDays === 7
-  ? mondayStart.toISOString()
-  : subDays(new Date(), periodDays).toISOString();
+Old: "...summed, then log-compressed and normalized against the team median. The median maps to 50, with a floor of 5..."
+
+New: "Every contribution — commits, PRs, tasks, standup commitments — is automatically classified by AI into one of four tiers. Each item also gets a value type and a focus alignment tag. The AI classifies the outcome, not the method — work shipped via Lovable, v0, or Cursor is scored the same as hand-written code. Your individual scores are summed into a raw impact total, then normalized against your team's reference baseline using a log scale: `log10(raw + 1) / log10(baseline + 1) × 60`. The baseline represents a solid week of output, calibrated from your team's actual history. Hitting the baseline scores ~60 on this component. The log scale means a 10× difference in raw output shows up as a moderate score gap, not a 10× gap — keeping scores stable even on small teams."
+
+**2. "What VIS is NOT" section** — Add a new item about the baseline:
+
 ```
-
-After computing `members` (line ~206), add fallback check for the week period:
-
-```typescript
-// If current calendar week has no data, fall back to last week
-let displayLabel = "This Week";
-if (periodDays === 7 && members.every(m => !m.hasVIS && m.commitCount === 0)) {
-  // Re-query with last Monday–Sunday window
-  const lastMonday = subDays(mondayStart, 7);
-  // ... re-run the same queries with lastMonday.toISOString() as sinceDate
-  displayLabel = "Last Week";
+{
+  title: "It's not relative to teammates",
+  description: "Your score is measured against an absolute baseline — a 'solid week' calibrated from team history — not against what others did this week. Two people doing the same work get the same score, regardless of team size."
 }
 ```
 
-To avoid duplicating the entire query body, restructure the `queryFn` to extract the data-fetching logic into an inner helper that takes `sinceDate` as a parameter. Call it first with current week; if empty and `periodDays === 7`, call again with last week's start. This keeps the code DRY.
+**3. Tips section** — Update the mid-week estimate tip (line 101-103) to mention calendar week boundaries:
 
-Return `displayLabel` alongside the existing `EnrichedMetrics`:
+Old: "The canonical score is computed Sunday night from the full week's data. During the week you see an estimate that updates every 5 minutes."
 
-```typescript
-return { ...metrics, displayLabel } as EnrichedMetrics & { displayLabel: string };
-```
+New: "The canonical score is computed Sunday night from the full Monday–Sunday week. During the week you see a live estimate. On Monday morning, if the current week has no data yet, you'll see last week's scores until new classifications come in."
 
-Add `displayLabel` to the `EnrichedMetrics` interface (or return as a separate field).
-
-### 2. `src/hooks/useWeeklyAwards.ts` — fallback to last week
-
-After line 154, add the fallback check:
-
-```typescript
-const hasEnoughData = thisWeekMembers.length > 0;
-const displayLabel = hasEnoughData ? "This Week" : "Last Week";
-
-if (!hasEnoughData) {
-  // Recompute awards from lastWeekMap instead
-  const lastWeekMembers = Array.from(lastWeekMap.values())
-    .filter(m => m.commitCount + m.reviewsGiven + m.commitmentsCompleted > 0);
-  // Use lastWeekMembers for MVP/Hero/Momentum computation below
-}
-```
-
-Return `{ awards, displayLabel }` — the return type already has `awards`, just add `displayLabel`.
-
-### 3. `src/pages/TeamInsights.tsx` — use dynamic label
-
-**Line 69-71**: Replace hardcoded "This Week's Awards" with:
-
-```typescript
-{awardsData?.displayLabel || "This Week"}'s Awards
-```
-
-And the badge on line 71:
-
-```typescript
-<Badge ...>{awardsData?.displayLabel || "This week"}</Badge>
-```
-
-### 4. `src/components/team/MemberBreakdown.tsx` — date range subtitle
-
-Add a date range subtitle next to the period selector. When `useEnrichedAnalytics` returns `displayLabel: "Last Week"`, show "Last Week" instead of "This Week" in the period button area. Pass `displayLabel` through from Dashboard → MemberBreakdown as a new optional prop.
-
-Also add formatted date range (e.g., "Mar 24 – Mar 30") as muted text next to the heading using `format(periodStart, "MMM d")` – `format(periodEnd, "MMM d")`.
-
-### 5. `src/pages/Dashboard.tsx` — pass displayLabel
-
-Read `displayLabel` from the enriched hook result and pass to `MemberBreakdown`:
-
-```typescript
-const { data: enriched } = useEnrichedTeamMetrics(teamId, PERIOD_DAYS[breakdownPeriod]);
-// enriched now includes displayLabel
-```
-
-Pass as prop: `<MemberBreakdown ... displayLabel={enriched?.displayLabel} />`
-
-## Files Changed
+## Files changed
 
 | File | Change |
 |------|--------|
-| `src/hooks/useEnrichedAnalytics.ts` | Calendar week start for 7d; fallback to last week if empty; return `displayLabel` |
-| `src/hooks/useWeeklyAwards.ts` | Fallback to last week awards if current week empty; return `displayLabel` |
-| `src/pages/TeamInsights.tsx` | Use dynamic `displayLabel` for awards heading |
-| `src/components/team/MemberBreakdown.tsx` | Accept `displayLabel` prop; show date range subtitle |
-| `src/pages/Dashboard.tsx` | Pass `displayLabel` from enriched hook to MemberBreakdown |
+| `src/pages/VISExplained.tsx` | Update Impact description, add baseline NOT item, update mid-week tip |
 
