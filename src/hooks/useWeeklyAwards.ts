@@ -152,8 +152,14 @@ export function useWeeklyAwards(teamId: string | undefined) {
 
       const awards: WeeklyAward[] = [];
       const thisWeekMembers = Array.from(thisWeekMap.values()).filter(m => m.commitCount + m.reviewsGiven + m.commitmentsCompleted > 0);
+      const lastWeekMembers = Array.from(lastWeekMap.values()).filter(m => m.commitCount + m.reviewsGiven + m.commitmentsCompleted > 0);
 
-      if (thisWeekMembers.length > 0) {
+      // Fallback to last week when current week has insufficient data
+      const hasEnoughData = thisWeekMembers.some(m => m.impactScore > 0 || m.commitCount > 0);
+      const displayMembers = hasEnoughData ? thisWeekMembers : lastWeekMembers;
+      const displayLabel = hasEnoughData ? "This Week" : "Last Week";
+
+      if (displayMembers.length > 0) {
         // MVP
         const mvp = thisWeekMembers.reduce((best, m) => {
           const score = m.impactScore + m.reviewsGiven * 20 + m.commitmentsCompleted * 15;
