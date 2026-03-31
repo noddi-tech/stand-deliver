@@ -224,6 +224,7 @@ export function useWeeklyAwards(teamId: string | undefined) {
             stat: `+${Math.round(bestImprovement * 100)}% vs last week`,
           });
         }
+        } // close hasEnoughData guard for momentum
       }
 
       return { awards };
