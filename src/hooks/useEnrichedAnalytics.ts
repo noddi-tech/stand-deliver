@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { subDays, startOfWeek, format, differenceInHours } from "date-fns";
+import { computeNormalizedImpact } from "@/lib/scoring";
 
 export interface EnrichedMetrics {
   members: EnrichedMemberMetrics[];
