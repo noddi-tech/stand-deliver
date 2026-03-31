@@ -1670,6 +1670,35 @@ export type Database = {
           },
         ]
       }
+      vis_config: {
+        Row: {
+          calibrated_at: string | null
+          id: string
+          reference_baseline: number
+          team_id: string
+        }
+        Insert: {
+          calibrated_at?: string | null
+          id?: string
+          reference_baseline?: number
+          team_id: string
+        }
+        Update: {
+          calibrated_at?: string | null
+          id?: string
+          reference_baseline?: number
+          team_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vis_config_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: true
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       weekly_vis_scores: {
         Row: {
           breakdown: Json

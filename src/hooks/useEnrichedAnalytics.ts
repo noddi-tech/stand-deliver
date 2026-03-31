@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { subDays, startOfWeek, format, differenceInHours } from "date-fns";
+import { computeNormalizedImpact } from "@/lib/scoring";
 
 export interface EnrichedMetrics {
   members: EnrichedMemberMetrics[];
@@ -64,6 +65,14 @@ export function useEnrichedTeamMetrics(teamId: string | undefined, periodDays = 
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
       const sinceDate = subDays(new Date(), periodDays).toISOString();
+
+      // Fetch reference baseline from vis_config
+      const { data: visConfig } = await supabase
+        .from("vis_config" as any)
+        .select("reference_baseline")
+        .eq("team_id", teamId!)
+        .maybeSingle();
+      const referenceBaseline = Number((visConfig as any)?.reference_baseline) || 100;
 
       // Fetch VIS impact scores — paginated
       const visScores = await fetchAllRows<{ member_id: string; activity_id: string; impact_score: number }>(
@@ -196,29 +205,18 @@ export function useEnrichedTeamMetrics(teamId: string | undefined, periodDays = 
         });
       }
 
-      // --- VIS Normalization: log-scale, median = 50 ---
+      // --- VIS Normalization: absolute-baseline (unified formula) ---
       const visMembers = members.filter((m) => m.hasVIS && m.codeImpactScore > 0);
 
-      if (visMembers.length > 0) {
-        const logScores = visMembers.map((m) => Math.log10(m.codeImpactScore + 1));
-        const sorted = [...logScores].sort((a, b) => a - b);
-        const mid = Math.floor(sorted.length / 2);
-        let logMedian = sorted.length % 2 === 1
-          ? sorted[mid]
-          : (sorted[mid - 1] + sorted[mid]) / 2;
-        if (logMedian === 0) logMedian = 1;
+      for (const m of visMembers) {
+        m.codeImpactScore = Math.round(
+          computeNormalizedImpact(m.codeImpactScore, referenceBaseline)
+        );
+      }
 
-        for (const m of visMembers) {
-          const logScore = Math.log10(m.codeImpactScore + 1);
-          m.codeImpactScore = Math.round(
-            Math.min(100, Math.max(5, (logScore / logMedian) * 50))
-          );
-        }
-
-        for (const m of members) {
-          if (m.hasVIS && m.codeImpactScore <= 0) {
-            m.codeImpactScore = 0;
-          }
+      for (const m of members) {
+        if (m.hasVIS && m.codeImpactScore <= 0) {
+          m.codeImpactScore = 0;
         }
       }
 

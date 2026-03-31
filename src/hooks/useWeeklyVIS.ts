@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { computeImpactScore, computeVISTotal } from "@/lib/scoring";
+import { computeVISTotal, computeNormalizedImpact } from "@/lib/scoring";
 
 export interface VISBreakdown {
   normalizedImpact: number;
@@ -35,6 +35,8 @@ function isCurrentWeek(weekStart: string): boolean {
  * Hook to get VIS score for a member.
  * - Past weeks: reads from weekly_vis_scores table (canonical)
  * - Current week: computes mid-week estimate client-side from impact_classifications
+ *
+ * Uses absolute-baseline normalization from vis_config (same formula everywhere).
  */
 export function useWeeklyVIS(
   memberId: string | undefined,
@@ -48,7 +50,7 @@ export function useWeeklyVIS(
   const canonicalQuery = useQuery({
     queryKey: ["weekly-vis-canonical", memberId, teamId, targetWeek],
     enabled: !!memberId && !!teamId && !isCurrent,
-    staleTime: 60 * 60 * 1000, // 1hr cache for historical
+    staleTime: 60 * 60 * 1000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("weekly_vis_scores" as any)
@@ -66,10 +68,18 @@ export function useWeeklyVIS(
   const estimateQuery = useQuery({
     queryKey: ["weekly-vis-estimate", memberId, teamId, targetWeek],
     enabled: !!memberId && !!teamId && isCurrent,
-    staleTime: 5 * 60 * 1000, // 5min cache for live estimate
+    staleTime: 5 * 60 * 1000,
     queryFn: async () => {
       const weekEnd = new Date(targetWeek);
       weekEnd.setUTCDate(weekEnd.getUTCDate() + 7);
+
+      // Fetch reference baseline from vis_config
+      const { data: visConfig } = await supabase
+        .from("vis_config" as any)
+        .select("reference_baseline")
+        .eq("team_id", teamId!)
+        .maybeSingle();
+      const referenceBaseline = Number((visConfig as any)?.reference_baseline) || 100;
 
       // Fetch this week's classifications for this member
       const { data: classifications } = await supabase
@@ -80,7 +90,7 @@ export function useWeeklyVIS(
         .gte("created_at", `${targetWeek}T00:00:00Z`)
         .lt("created_at", weekEnd.toISOString());
 
-      // Fetch activity badges for this member's team
+      // Fetch activity badges for badge distribution
       const { data: badges } = await supabase
         .from("activity_badges")
         .select("activity_id, badge_key")
@@ -137,42 +147,15 @@ export function useWeeklyVIS(
       const reviewCount = (reviews || []).length;
       const multiplierScore = Math.min(100, (reviewCount / 10) * 100);
 
-      // Fetch ALL team members' classifications for this week to compute median
-      const { data: allClassifications } = await supabase
-        .from("impact_classifications" as any)
-        .select("member_id, impact_score")
-        .eq("team_id", teamId!)
-        .gte("created_at", `${targetWeek}T00:00:00Z`)
-        .lt("created_at", weekEnd.toISOString());
-
-      // Aggregate raw impact per member
-      const memberRawImpacts = new Map<string, number>();
-      for (const c of (allClassifications || []) as any[]) {
-        memberRawImpacts.set(
-          c.member_id,
-          (memberRawImpacts.get(c.member_id) || 0) + (Number(c.impact_score) || 0)
-        );
-      }
-
-      // Compute team median
-      const allRaw = Array.from(memberRawImpacts.values()).sort((a, b) => a - b);
-      let median = 1;
-      if (allRaw.length > 0) {
-        const mid = Math.floor(allRaw.length / 2);
-        median = allRaw.length % 2 === 1
-          ? allRaw[mid]
-          : (allRaw[mid - 1] + allRaw[mid]) / 2;
-        if (median === 0) median = 1;
-      }
-
-      const normalizedImpact = Math.min(100, (rawImpact / median) * 50);
+      // Compute normalized impact using absolute baseline
+      const normalizedImpact = computeNormalizedImpact(rawImpact, referenceBaseline);
 
       const visTotal = computeVISTotal({
-        normalizedImpact: Math.min(100, normalizedImpact),
+        rawImpact,
         deliveryScore: Math.min(100, deliveryScore),
         multiplierScore,
         focusRatio: Math.min(100, focusRatio),
-      });
+      }, referenceBaseline);
 
       return {
         visTotal,

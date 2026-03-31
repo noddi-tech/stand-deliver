@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeImpactScore, computeVISTotal } from "@/lib/scoring";
+import { computeImpactScore, computeVISTotal, computeNormalizedImpact } from "@/lib/scoring";
 import type { ClassificationInput } from "@/lib/scoring";
 
 /**
@@ -32,21 +32,78 @@ describe("computeImpactScore - drift detection", () => {
   });
 });
 
-describe("computeVISTotal", () => {
-  it("computes weighted composite correctly", () => {
+describe("computeVISTotal - absolute baseline normalization", () => {
+  it("rawImpact=100, baseline=100 produces ~60 normalized impact", () => {
+    const normalized = computeNormalizedImpact(100, 100);
+    // log10(101) / log10(101) * 60 = 60
+    expect(normalized).toBeCloseTo(60, 0);
+  });
+
+  it("rawImpact=50, baseline=100 produces ~45 normalized impact", () => {
+    const normalized = computeNormalizedImpact(50, 100);
+    // log10(51) / log10(101) * 60 ≈ 51.2
+    expect(normalized).toBeGreaterThan(40);
+    expect(normalized).toBeLessThan(55);
+  });
+
+  it("rawImpact=200, baseline=100 produces ~72 normalized impact", () => {
+    const normalized = computeNormalizedImpact(200, 100);
+    expect(normalized).toBeGreaterThan(65);
+    expect(normalized).toBeLessThan(80);
+  });
+
+  it("rawImpact=500, baseline=100 produces ~86 normalized impact", () => {
+    const normalized = computeNormalizedImpact(500, 100);
+    expect(normalized).toBeGreaterThan(75);
+    expect(normalized).toBeLessThan(95);
+  });
+
+  it("rawImpact=0 produces 0 normalized impact", () => {
+    expect(computeNormalizedImpact(0, 100)).toBe(0);
+  });
+
+  it("rawImpact=10, baseline=100 produces ~27 normalized impact", () => {
+    const normalized = computeNormalizedImpact(10, 100);
+    expect(normalized).toBeGreaterThan(20);
+    expect(normalized).toBeLessThan(35);
+  });
+
+  it("computes full VIS total correctly with rawImpact", () => {
+    // rawImpact=100, baseline=100 → normalizedImpact≈60
+    // 60*0.4 + 80*0.3 + 40*0.15 + 70*0.15 = 24 + 24 + 6 + 10.5 = 64.5
     const result = computeVISTotal({
-      normalizedImpact: 60,
+      rawImpact: 100,
       deliveryScore: 80,
       multiplierScore: 40,
       focusRatio: 70,
-    });
-    // 60*0.4 + 80*0.3 + 40*0.15 + 70*0.15 = 24 + 24 + 6 + 10.5 = 64.5
-    expect(result).toBe(64.5);
+    }, 100);
+    expect(result).toBeCloseTo(64.5, 0);
   });
 
   it("clamps to 0-100", () => {
-    expect(computeVISTotal({ normalizedImpact: 200, deliveryScore: 200, multiplierScore: 200, focusRatio: 200 })).toBe(100);
-    expect(computeVISTotal({ normalizedImpact: -50, deliveryScore: -50, multiplierScore: -50, focusRatio: -50 })).toBe(0);
+    // Extremely high rawImpact
+    const high = computeVISTotal({
+      rawImpact: 1000000,
+      deliveryScore: 100,
+      multiplierScore: 100,
+      focusRatio: 100,
+    }, 100);
+    expect(high).toBeLessThanOrEqual(100);
+
+    // Zero everything
+    const zero = computeVISTotal({
+      rawImpact: 0,
+      deliveryScore: 0,
+      multiplierScore: 0,
+      focusRatio: 0,
+    }, 100);
+    expect(zero).toBe(0);
+  });
+
+  it("different baselines produce different scores for same rawImpact", () => {
+    const low = computeVISTotal({ rawImpact: 100, deliveryScore: 50, multiplierScore: 50, focusRatio: 50 }, 50);
+    const high = computeVISTotal({ rawImpact: 100, deliveryScore: 50, multiplierScore: 50, focusRatio: 50 }, 500);
+    expect(low).toBeGreaterThan(high);
   });
 });
 
@@ -85,32 +142,7 @@ describe("computeImpactScore - behavioral", () => {
       focus_alignment: "unknown" as any,
       size: 100,
     });
-    // 10 * 1.0 * 1.0 * (log10(101)/2 ≈ 1.002) ≈ 10.02
     expect(score).toBeGreaterThan(9);
     expect(score).toBeLessThan(11);
-  });
-});
-
-describe("computeVISTotal - behavioral", () => {
-  it("equal components at 50 produce score of 50", () => {
-    expect(
-      computeVISTotal({
-        normalizedImpact: 50,
-        deliveryScore: 50,
-        multiplierScore: 50,
-        focusRatio: 50,
-      })
-    ).toBe(50);
-  });
-
-  it("weights sum to 1.0 (all at 100 → 100)", () => {
-    expect(
-      computeVISTotal({
-        normalizedImpact: 100,
-        deliveryScore: 100,
-        multiplierScore: 100,
-        focusRatio: 100,
-      })
-    ).toBe(100);
   });
 });

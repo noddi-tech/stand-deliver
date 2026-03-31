@@ -288,27 +288,27 @@ Deno.serve(async (req) => {
           populateScores(ghActivity, thisWeekScores, thisWeekVIS);
           populateScores(lastWeekGhActivity, lastWeekScores, lastWeekVIS);
 
-          // Log-scale normalization (matches client useWeeklyAwards / useEnrichedTeamMetrics)
-          function logScaleNormalize(scores: Map<string, any>) {
-            const rawValues = Array.from(scores.values())
-              .map(s => s.impactScore)
-              .filter(v => v > 0);
-            if (rawValues.length === 0) return;
-            const logValues = rawValues.map(v => Math.log10(v + 1)).sort((a: number, b: number) => a - b);
-            const mid = Math.floor(logValues.length / 2);
-            let logMedian = logValues.length % 2 === 1
-              ? logValues[mid]
-              : (logValues[mid - 1] + logValues[mid]) / 2;
-            if (logMedian === 0) logMedian = 1;
+          // Absolute-baseline normalization (unified formula)
+          // Fetch reference baseline from vis_config
+          const { data: visConfigData } = await supabaseAdmin
+            .from("vis_config")
+            .select("reference_baseline")
+            .eq("team_id", team_id)
+            .maybeSingle();
+          const refBaseline = Number(visConfigData?.reference_baseline) || 100;
+          const logRef = Math.log10(refBaseline + 1);
+
+          function normalizeImpact(scores: Map<string, any>) {
+            if (logRef <= 0) return;
             for (const s of scores.values()) {
               if (s.impactScore > 0) {
-                const logScore = Math.log10(s.impactScore + 1);
-                s.impactScore = Math.round(Math.min(100, Math.max(5, (logScore / logMedian) * 50)));
+                const normalized = (Math.log10(s.impactScore + 1) / logRef) * 60;
+                s.impactScore = Math.round(Math.min(100, Math.max(0, normalized)));
               }
             }
           }
-          logScaleNormalize(thisWeekScores);
-          logScaleNormalize(lastWeekScores);
+          normalizeImpact(thisWeekScores);
+          normalizeImpact(lastWeekScores);
 
           // Add commitment completions
           for (const c of commitments || []) {
