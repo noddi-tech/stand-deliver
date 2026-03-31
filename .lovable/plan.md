@@ -1,30 +1,38 @@
 
 
-# Hide Standup Button on Non-Scheduled Days
+# VIS Unified Scoring Overhaul
 
-## Problem
-The Dashboard always shows "Start Today's Standup" when no session exists — it doesn't check the team's `standup_days` schedule. On days with no standup scheduled (e.g. Sunday), the button still appears.
+## Status: Steps 1-7 COMPLETE ✅
 
-## Solution
-In `src/pages/Dashboard.tsx`, check whether today is a scheduled standup day before rendering the standup button. The `useAttentionItems` hook already has this exact logic — compute the current day code using the team's `standup_timezone` and check against `standup_days`.
+## What Changed
 
-## Changes
+Replaced the dual normalization system (linear for weekly cron/hook, log-scale for analytics/awards/digest) with a single absolute-baseline formula. Every view now shows the same VIS number.
 
-**File: `src/pages/Dashboard.tsx`**
+### Formula
 
-1. Fetch the team's schedule data (already available via `useUserTeam` → `team` object, but need `standup_days` and `standup_timezone` from the `teams` table). Query the `teams` table for these fields using `teamId`.
-
-2. Add a `isStandupDay` check:
 ```
-const dayMap = { 0: "sun", 1: "mon", 2: "tue", 3: "wed", 4: "thu", 5: "fri", 6: "sat" };
-const teamNow = new Date(new Date().toLocaleString("en-US", { timeZone: teamSchedule.standup_timezone || "UTC" }));
-const todayCode = dayMap[teamNow.getDay()];
-const isStandupDay = teamSchedule.standup_days?.includes(todayCode);
+normalizedImpact = clamp(log10(rawImpact + 1) / log10(referenceBaseline + 1) × 60, 0, 100)
+VIS = normalizedImpact × 0.40 + deliveryScore × 0.30 + multiplierScore × 0.15 + focusRatio × 0.15
 ```
 
-3. In `standupButton()`, when status is `"no_session"`, return `null` if `!isStandupDay` instead of showing the Start/Skip buttons.
+### Files Changed
 
-| File | Change |
-|------|--------|
-| `src/pages/Dashboard.tsx` | Query team schedule; hide standup button on non-standup days |
+| Step | File | Change |
+|------|------|--------|
+| 1 | Migration | Created `vis_config` table, auto-calibrated baseline from 30-day data |
+| 2 | `supabase/functions/_shared/scoring.ts` | New `computeVISTotal(rawImpact, baseline)` + `computeNormalizedImpact` helper |
+| 2 | `src/lib/scoring.ts` | Mirror of canonical |
+| 2 | `src/test/scoring.test.ts` | 18 tests updated for new signature |
+| 3 | `supabase/functions/compute-weekly-vis/index.ts` | Reads baseline from `vis_config`, removed median calculation |
+| 4 | `src/hooks/useWeeklyVIS.ts` | Reads baseline from `vis_config`, removed all-team fetch for median |
+| 5 | `src/hooks/useEnrichedAnalytics.ts` | Replaced log-scale median normalization with `computeNormalizedImpact` |
+| 6 | `src/hooks/useWeeklyAwards.ts` | Replaced `logScaleNormalize` with `computeNormalizedImpact` |
+| 7 | `supabase/functions/ai-weekly-digest/index.ts` | Replaced `logScaleNormalize` with absolute-baseline normalization |
 
+## Remaining (Step 9 — independently shippable)
+
+- 9a: Weighted Delivery Score (by impact tier)
+- 9b: Review Depth Multiplier
+- 9c: Work Type Macro-Categories
+- 9d: Richer Team Insights Celebrations
+- 9e: VIS Sparkline on Member Cards
