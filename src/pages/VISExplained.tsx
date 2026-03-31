@@ -41,7 +41,7 @@ const COMPONENTS = [
     weight: "40%",
     question: "What did your work actually do for the product?",
     description:
-      "Every contribution — commits, PRs, tasks, standup commitments — is automatically classified by AI into one of four tiers. Each item also gets a value type and a focus alignment tag. The AI classifies the outcome, not the method — work shipped via Lovable, v0, or Cursor is scored the same as hand-written code. Your individual scores are summed, then log-compressed and normalized against the team median. The median maps to 50, with a floor of 5 for any active contributor — so you'll never see a 0 if you shipped real work. The log scale means a 10x difference in raw output shows up as a modest score gap, not a 10x score gap. This keeps scores meaningful even on small teams.",
+      "Every contribution — commits, PRs, tasks, standup commitments — is automatically classified by AI into one of four tiers. Each item also gets a value type and a focus alignment tag. The AI classifies the outcome, not the method — work shipped via Lovable, v0, or Cursor is scored the same as hand-written code. Your individual scores are summed into a raw impact total, then normalized against your team's reference baseline using a log scale: log₁₀(raw + 1) / log₁₀(baseline + 1) × 60. The baseline represents a solid week of output, calibrated from your team's actual history. Hitting the baseline scores ~60 on this component. The log scale means a 10× difference in raw output shows up as a moderate score gap, not a 10× gap — keeping scores stable even on small teams.",
     accent: "border-l-primary",
   },
   {
@@ -83,6 +83,10 @@ const NOT_ITEMS = [
     description: "The AI classification is a signal, not a verdict. It can misclassify — a critical fix might get tagged \"standard\" if the commit message doesn't explain the context. If you see something wrong, that's useful feedback.",
   },
   {
+    title: "It's not relative to teammates",
+    description: "Your score is measured against an absolute baseline — a 'solid week' calibrated from team history — not against what others did this week. Two people doing the same work get the same score, regardless of team size.",
+  },
+  {
     title: "It's not code-only",
     description: "ClickUp tasks, standup commitments, and Slack help threads are all classified. Business work — customer onboarding, strategy docs, deal progression — counts just as much when classified at the right tier.",
   },
@@ -99,7 +103,7 @@ const TIPS = [
   },
   {
     title: "The mid-week estimate is approximate",
-    description: "The canonical score is computed Sunday night from the full week's data. During the week you see an estimate that updates every 5 minutes.",
+    description: "The canonical score is computed Sunday night from the full Monday–Sunday week. During the week you see a live estimate. On Monday morning, if the current week has no data yet, you'll see last week's scores until new classifications come in.",
   },
 ];
 
