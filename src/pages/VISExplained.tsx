@@ -103,7 +103,7 @@ const TIPS = [
   },
   {
     title: "The mid-week estimate is approximate",
-    description: "The canonical score is computed Sunday night from the full week's data. During the week you see an estimate that updates every 5 minutes.",
+    description: "The canonical score is computed Sunday night from the full Monday–Sunday week. During the week you see a live estimate. On Monday morning, if the current week has no data yet, you'll see last week's scores until new classifications come in.",
   },
 ];
 
