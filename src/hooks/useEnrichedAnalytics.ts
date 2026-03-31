@@ -67,7 +67,17 @@ export function useEnrichedTeamMetrics(teamId: string | undefined, periodDays = 
     enabled: !!teamId,
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
-      const sinceDate = subDays(new Date(), periodDays).toISOString();
+      const now = new Date();
+      const thisMonday = startOfWeek(now, { weekStartsOn: 1 });
+      const lastMonday = subDays(thisMonday, 7);
+
+      // For week period, use calendar week boundaries; otherwise rolling window
+      let sinceDate = periodDays === 7
+        ? thisMonday.toISOString()
+        : subDays(now, periodDays).toISOString();
+      let periodStart = periodDays === 7 ? thisMonday : subDays(now, periodDays);
+      let periodEnd = now;
+      let displayLabel = periodDays === 7 ? "This Week" : "";
 
       // Fetch reference baseline from vis_config
       const { data: visConfig } = await supabase
