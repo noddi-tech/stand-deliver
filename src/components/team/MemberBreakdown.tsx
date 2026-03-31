@@ -49,6 +49,9 @@ interface MemberBreakdownProps {
   highlightsLoading?: boolean;
   period?: BreakdownPeriod;
   onPeriodChange?: (period: BreakdownPeriod) => void;
+  displayLabel?: string;
+  periodStart?: Date;
+  periodEnd?: Date;
 }
 
 export function MemberBreakdown({
