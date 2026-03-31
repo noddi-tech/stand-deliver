@@ -9,6 +9,9 @@ export interface EnrichedMetrics {
   prCycleTimeTrend: { week: string; avgHours: number }[];
   workTypeDist: { week: string; [key: string]: string | number }[];
   codeImpactTrend: { week: string; impact: number }[];
+  displayLabel: string;
+  periodStart: Date;
+  periodEnd: Date;
 }
 
 export interface EnrichedMemberMetrics {
