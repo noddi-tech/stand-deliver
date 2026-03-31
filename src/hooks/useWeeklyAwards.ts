@@ -161,7 +161,7 @@ export function useWeeklyAwards(teamId: string | undefined) {
 
       if (displayMembers.length > 0) {
         // MVP
-        const mvp = thisWeekMembers.reduce((best, m) => {
+        const mvp = displayMembers.reduce((best, m) => {
           const score = m.impactScore + m.reviewsGiven * 20 + m.commitmentsCompleted * 15;
           const bestScore = best.impactScore + best.reviewsGiven * 20 + best.commitmentsCompleted * 15;
           return score > bestScore ? m : best;
