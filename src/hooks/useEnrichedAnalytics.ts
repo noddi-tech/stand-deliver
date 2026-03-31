@@ -66,6 +66,14 @@ export function useEnrichedTeamMetrics(teamId: string | undefined, periodDays = 
     queryFn: async () => {
       const sinceDate = subDays(new Date(), periodDays).toISOString();
 
+      // Fetch reference baseline from vis_config
+      const { data: visConfig } = await supabase
+        .from("vis_config" as any)
+        .select("reference_baseline")
+        .eq("team_id", teamId!)
+        .maybeSingle();
+      const referenceBaseline = Number((visConfig as any)?.reference_baseline) || 100;
+
       // Fetch VIS impact scores — paginated
       const visScores = await fetchAllRows<{ member_id: string; activity_id: string; impact_score: number }>(
         (from, to) =>
