@@ -199,10 +199,11 @@ export function useWeeklyAwards(teamId: string | undefined) {
           });
         }
 
-        // Momentum
+        // Momentum (only when showing current week data)
         let bestImprovement = 0;
         let momentumMember: MemberStats | null = null;
-        for (const m of thisWeekMembers) {
+        if (hasEnoughData) {
+        for (const m of displayMembers) {
           const lastWeek = lastWeekMap.get(m.memberId);
           const lastScore = lastWeek ? lastWeek.impactScore + lastWeek.reviewsGiven * 20 + lastWeek.commitmentsCompleted * 15 : 0;
           const thisScore = m.impactScore + m.reviewsGiven * 20 + m.commitmentsCompleted * 15;
