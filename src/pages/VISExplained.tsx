@@ -83,6 +83,10 @@ const NOT_ITEMS = [
     description: "The AI classification is a signal, not a verdict. It can misclassify — a critical fix might get tagged \"standard\" if the commit message doesn't explain the context. If you see something wrong, that's useful feedback.",
   },
   {
+    title: "It's not relative to teammates",
+    description: "Your score is measured against an absolute baseline — a 'solid week' calibrated from team history — not against what others did this week. Two people doing the same work get the same score, regardless of team size.",
+  },
+  {
     title: "It's not code-only",
     description: "ClickUp tasks, standup commitments, and Slack help threads are all classified. Business work — customer onboarding, strategy docs, deal progression — counts just as much when classified at the right tier.",
   },
