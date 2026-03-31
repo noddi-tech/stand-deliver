@@ -1,26 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { subDays, startOfWeek } from "date-fns";
-
-/** Log-scale normalization: median maps to 50, compresses extreme ranges */
-function logScaleNormalize(rawScores: Map<string, number>): Map<string, number> {
-  const values = Array.from(rawScores.values()).filter(v => v > 0);
-  if (values.length === 0) return new Map();
-  const logValues = values.map(v => Math.log10(v + 1)).sort((a, b) => a - b);
-  const mid = Math.floor(logValues.length / 2);
-  let logMedian = logValues.length % 2 === 1
-    ? logValues[mid]
-    : (logValues[mid - 1] + logValues[mid]) / 2;
-  if (logMedian === 0) logMedian = 1;
-
-  const result = new Map<string, number>();
-  for (const [id, raw] of rawScores) {
-    if (raw <= 0) { result.set(id, 0); continue; }
-    const logScore = Math.log10(raw + 1);
-    result.set(id, Math.round(Math.min(100, Math.max(5, (logScore / logMedian) * 50))));
-  }
-  return result;
-}
+import { computeNormalizedImpact } from "@/lib/scoring";
 
 export interface WeeklyAward {
   type: "mvp" | "unsung_hero" | "momentum";
@@ -45,6 +26,14 @@ export function useWeeklyAwards(teamId: string | undefined) {
       const thisWeekStart = startOfWeek(now, { weekStartsOn: 1 });
       const lastWeekStart = startOfWeek(subDays(now, 7), { weekStartsOn: 1 });
       const twoWeeksAgo = subDays(now, 14).toISOString();
+
+      // Fetch reference baseline from vis_config
+      const { data: visConfig } = await supabase
+        .from("vis_config" as any)
+        .select("reference_baseline")
+        .eq("team_id", teamId!)
+        .maybeSingle();
+      const referenceBaseline = Number((visConfig as any)?.reference_baseline) || 100;
 
       const { data: activities } = await supabase
         .from("external_activity")
@@ -72,7 +61,7 @@ export function useWeeklyAwards(teamId: string | undefined) {
       const allCommitments = commitments || [];
       const allClassifications = classifications || [];
 
-      // Build VIS score map per week
+      // Build raw VIS score map per week
       const visScoreMap = new Map<string, Map<string, number>>();
       for (const c of allClassifications) {
         const d = new Date(c.created_at);
@@ -126,10 +115,23 @@ export function useWeeklyAwards(teamId: string | undefined) {
           else if (item.activity_type === "pr_merged") stats.prsMerged++;
         }
 
-        // Apply VIS scores — log-scale normalize (matches useEnrichedTeamMetrics)
-        const normalizedMap = logScaleNormalize(weekVisMap);
-        for (const [id, stats] of memberMap) {
-          stats.impactScore = normalizedMap.get(id) || 0;
+        // Apply VIS scores — absolute-baseline normalization (unified formula)
+        for (const [id, rawScore] of weekVisMap) {
+          if (!memberMap.has(id)) {
+            memberMap.set(id, {
+              name: "Unknown",
+              memberId: id,
+              impactScore: 0,
+              reviewsGiven: 0,
+              prsOpened: 0,
+              prsMerged: 0,
+              commitCount: 0,
+              commitmentsCompleted: 0,
+            });
+          }
+          memberMap.get(id)!.impactScore = Math.round(
+            computeNormalizedImpact(rawScore, referenceBaseline)
+          );
         }
 
         // Add commitment completions

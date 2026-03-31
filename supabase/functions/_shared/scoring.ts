@@ -53,19 +53,43 @@ export function computeImpactScore(input: ClassificationInput): number {
 }
 
 /**
- * Compute VIS composite score from four components.
+ * Compute VIS composite score using absolute-baseline normalization.
+ *
+ * normalizedImpact = clamp(log10(rawImpact + 1) / log10(referenceBaseline + 1) * 60, 0, 100)
  * Weights: impact 40%, delivery 30%, multiplier 15%, focus 15%
+ *
+ * The referenceBaseline is stored per-team in the vis_config table and represents
+ * a "solid week" of raw impact. A member hitting exactly the baseline scores ~60
+ * on the impact component.
  */
-export function computeVISTotal(components: {
-  normalizedImpact: number;
-  deliveryScore: number;
-  multiplierScore: number;
-  focusRatio: number;
-}): number {
+export function computeVISTotal(
+  components: {
+    rawImpact: number;
+    deliveryScore: number;
+    multiplierScore: number;
+    focusRatio: number;
+  },
+  referenceBaseline: number = 100
+): number {
+  const logRef = Math.log10(referenceBaseline + 1);
+  const normalizedImpact = logRef > 0
+    ? Math.min(100, Math.max(0, (Math.log10(components.rawImpact + 1) / logRef) * 60))
+    : 0;
+
   const total =
-    components.normalizedImpact * 0.4 +
-    components.deliveryScore * 0.3 +
+    normalizedImpact * 0.40 +
+    components.deliveryScore * 0.30 +
     components.multiplierScore * 0.15 +
     components.focusRatio * 0.15;
   return Math.round(Math.max(0, Math.min(100, total)) * 100) / 100;
+}
+
+/**
+ * Helper to compute normalizedImpact from rawImpact + baseline.
+ * Useful when callers need the normalized value for display/storage.
+ */
+export function computeNormalizedImpact(rawImpact: number, referenceBaseline: number = 100): number {
+  const logRef = Math.log10(referenceBaseline + 1);
+  if (logRef <= 0) return 0;
+  return Math.min(100, Math.max(0, (Math.log10(rawImpact + 1) / logRef) * 60));
 }

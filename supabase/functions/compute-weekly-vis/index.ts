@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
-import { computeVISTotal } from "../_shared/scoring.ts";
+import { computeVISTotal, computeNormalizedImpact } from "../_shared/scoring.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,13 +17,11 @@ Deno.serve(async (req) => {
     );
 
     // Compute week boundaries (last COMPLETE week: Mon 00:00 → Sun 23:59)
-    // If today is Sunday, we still want the PREVIOUS week (not the current one
-    // which hasn't finished yet), so we always go back at least 1 day first.
     const now = new Date();
     const yesterday = new Date(now);
-    yesterday.setUTCDate(now.getUTCDate() - 1); // ensures we never score the current day
+    yesterday.setUTCDate(now.getUTCDate() - 1);
 
-    const dayOfWeek = yesterday.getUTCDay(); // 0=Sun
+    const dayOfWeek = yesterday.getUTCDay();
     const daysToLastSunday = dayOfWeek === 0 ? 0 : dayOfWeek;
 
     const lastSunday = new Date(yesterday);
@@ -51,6 +49,14 @@ Deno.serve(async (req) => {
     for (const team of teams) {
       const teamId = team.id;
 
+      // Fetch reference baseline from vis_config (service role bypasses RLS)
+      const { data: visConfig } = await sb
+        .from("vis_config")
+        .select("reference_baseline")
+        .eq("team_id", teamId)
+        .maybeSingle();
+      const referenceBaseline = Number(visConfig?.reference_baseline) || 100;
+
       // Get active members
       const { data: members } = await sb
         .from("team_members")
@@ -69,13 +75,12 @@ Deno.serve(async (req) => {
         .gte("created_at", weekStartTs)
         .lte("created_at", weekEndTs);
 
-      // Fetch activity_badges for this week's team to join with classifications
+      // Fetch activity_badges for badge distribution
       const { data: badges } = await sb
         .from("activity_badges")
         .select("activity_id, source_type, badge_key")
         .eq("team_id", teamId);
 
-      // Build badge lookup: activity_id -> badge_key
       const badgeLookup: Record<string, string> = {};
       for (const b of badges || []) {
         badgeLookup[b.activity_id] = b.badge_key;
@@ -95,18 +100,9 @@ Deno.serve(async (req) => {
         if (c.focus_alignment === "direct" || c.focus_alignment === "indirect") {
           memberScores[c.member_id].alignedCount++;
         }
-        // Aggregate impact by badge type
         const badgeKey = badgeLookup[c.activity_id] || "unknown";
         memberScores[c.member_id].badgeImpact[badgeKey] = (memberScores[c.member_id].badgeImpact[badgeKey] || 0) + score;
       }
-
-      // Compute team median for normalization
-      const rawScores = memberIds.map((mid) => memberScores[mid].rawImpact).sort((a, b) => a - b);
-      const median = rawScores.length > 0
-        ? rawScores.length % 2 === 1
-          ? rawScores[Math.floor(rawScores.length / 2)]
-          : (rawScores[rawScores.length / 2 - 1] + rawScores[rawScores.length / 2]) / 2
-        : 1;
 
       // Fetch commitment completion rates
       const { data: commitments } = await sb
@@ -144,16 +140,15 @@ Deno.serve(async (req) => {
       // Compute and upsert VIS for each member
       for (const mid of memberIds) {
         const scores = memberScores[mid];
-        const normalizedImpact = median > 0
-          ? Math.min(100, (scores.rawImpact / median) * 50)
-          : 0;
+
+        // Absolute-baseline normalization (same formula everywhere)
+        const normalizedImpact = computeNormalizedImpact(scores.rawImpact, referenceBaseline);
 
         const commitData = memberCommitments[mid];
         const deliveryScore = commitData.total > 0
           ? Math.min(100, (commitData.done / commitData.total) * 100)
-          : 50; // neutral if no commitments
+          : 50;
 
-        // Multiplier: cap at 100, ~10 reviews/week = 100
         const multiplierScore = Math.min(100, (memberReviews[mid] / 10) * 100);
 
         const focusRatio = scores.totalCount > 0
@@ -161,13 +156,13 @@ Deno.serve(async (req) => {
           : 0;
 
         const visTotal = computeVISTotal({
-          normalizedImpact,
+          rawImpact: scores.rawImpact,
           deliveryScore,
           multiplierScore,
           focusRatio,
-        });
+        }, referenceBaseline);
 
-        // Compute badge distribution percentages
+        // Badge distribution percentages
         const badgeDistribution = scores.badgeImpact;
         const totalBadgeImpact = Object.values(badgeDistribution).reduce((s, v) => s + v, 0);
         const badgeImpactPct: Record<string, number> = {};
@@ -189,6 +184,7 @@ Deno.serve(async (req) => {
           alignedClassifications: scores.alignedCount,
           badgeDistribution,
           badgeImpactPct,
+          referenceBaseline,
         };
 
         await sb.from("weekly_vis_scores").upsert(
