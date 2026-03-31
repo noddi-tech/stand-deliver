@@ -69,6 +69,9 @@ export function MemberBreakdown({
   highlightsLoading,
   period = "week",
   onPeriodChange,
+  displayLabel,
+  periodStart,
+  periodEnd,
 }: MemberBreakdownProps) {
   const [showAll, setShowAll] = useState(true);
   const display = showAll ? memberStats : memberStats.slice(0, 6);
