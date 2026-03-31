@@ -141,7 +141,7 @@ export function useEnrichedTeamMetrics(teamId: string | undefined, periodDays = 
       }
 
       const members: EnrichedMemberMetrics[] = [];
-      const now = new Date();
+      // now already declared above
 
       for (const [memberId, { name, items: memberItems }] of memberMap) {
         const commits = memberItems.filter((i) => i.activity_type === "commit");
