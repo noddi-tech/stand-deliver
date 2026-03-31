@@ -67,8 +67,8 @@ export default function TeamInsights() {
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <Trophy className="h-4 w-4 text-primary" />
-              This Week's Awards
-              <Badge variant="secondary" className="text-[10px] font-normal">This week</Badge>
+              {awardsData?.displayLabel || "This Week"}'s Awards
+              <Badge variant="secondary" className="text-[10px] font-normal">{awardsData?.displayLabel || "This week"}</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">

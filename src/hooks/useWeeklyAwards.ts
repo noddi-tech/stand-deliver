@@ -227,7 +227,7 @@ export function useWeeklyAwards(teamId: string | undefined) {
         } // close hasEnoughData guard for momentum
       }
 
-      return { awards };
+      return { awards, displayLabel };
     },
   });
 }

@@ -125,10 +125,18 @@ export function MemberBreakdown({
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
-          <CardTitle className="text-base flex items-center gap-2">
-            <User className="h-4 w-4 text-muted-foreground" />
-            Member Breakdown
-          </CardTitle>
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <User className="h-4 w-4 text-muted-foreground" />
+              Member Breakdown
+            </CardTitle>
+            {periodStart && periodEnd && (
+              <span className="text-xs text-muted-foreground">
+                {displayLabel && displayLabel !== PERIOD_LABELS[period] ? `${displayLabel} · ` : ""}
+                {format(periodStart, "MMM d")} – {format(periodEnd, "MMM d")}
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-1">
             {(Object.keys(PERIOD_LABELS) as BreakdownPeriod[]).map((p) => (
               <Button
