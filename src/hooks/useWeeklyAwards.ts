@@ -152,10 +152,16 @@ export function useWeeklyAwards(teamId: string | undefined) {
 
       const awards: WeeklyAward[] = [];
       const thisWeekMembers = Array.from(thisWeekMap.values()).filter(m => m.commitCount + m.reviewsGiven + m.commitmentsCompleted > 0);
+      const lastWeekMembers = Array.from(lastWeekMap.values()).filter(m => m.commitCount + m.reviewsGiven + m.commitmentsCompleted > 0);
 
-      if (thisWeekMembers.length > 0) {
+      // Fallback to last week when current week has insufficient data
+      const hasEnoughData = thisWeekMembers.some(m => m.impactScore > 0 || m.commitCount > 0);
+      const displayMembers = hasEnoughData ? thisWeekMembers : lastWeekMembers;
+      const displayLabel = hasEnoughData ? "This Week" : "Last Week";
+
+      if (displayMembers.length > 0) {
         // MVP
-        const mvp = thisWeekMembers.reduce((best, m) => {
+        const mvp = displayMembers.reduce((best, m) => {
           const score = m.impactScore + m.reviewsGiven * 20 + m.commitmentsCompleted * 15;
           const bestScore = best.impactScore + best.reviewsGiven * 20 + best.commitmentsCompleted * 15;
           return score > bestScore ? m : best;
@@ -174,7 +180,7 @@ export function useWeeklyAwards(teamId: string | undefined) {
         }
 
         // Unsung Hero
-        const hero = thisWeekMembers
+        const hero = displayMembers
           .filter(m => m.reviewsGiven >= 2)
           .reduce<MemberStats | null>((best, m) => {
             const ratio = m.reviewsGiven / Math.max(m.prsOpened, 1);
@@ -193,10 +199,11 @@ export function useWeeklyAwards(teamId: string | undefined) {
           });
         }
 
-        // Momentum
+        // Momentum (only when showing current week data)
         let bestImprovement = 0;
         let momentumMember: MemberStats | null = null;
-        for (const m of thisWeekMembers) {
+        if (hasEnoughData) {
+        for (const m of displayMembers) {
           const lastWeek = lastWeekMap.get(m.memberId);
           const lastScore = lastWeek ? lastWeek.impactScore + lastWeek.reviewsGiven * 20 + lastWeek.commitmentsCompleted * 15 : 0;
           const thisScore = m.impactScore + m.reviewsGiven * 20 + m.commitmentsCompleted * 15;
@@ -217,9 +224,10 @@ export function useWeeklyAwards(teamId: string | undefined) {
             stat: `+${Math.round(bestImprovement * 100)}% vs last week`,
           });
         }
+        } // close hasEnoughData guard for momentum
       }
 
-      return { awards };
+      return { awards, displayLabel };
     },
   });
 }

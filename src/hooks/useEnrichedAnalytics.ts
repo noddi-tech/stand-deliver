@@ -9,6 +9,9 @@ export interface EnrichedMetrics {
   prCycleTimeTrend: { week: string; avgHours: number }[];
   workTypeDist: { week: string; [key: string]: string | number }[];
   codeImpactTrend: { week: string; impact: number }[];
+  displayLabel: string;
+  periodStart: Date;
+  periodEnd: Date;
 }
 
 export interface EnrichedMemberMetrics {
@@ -64,7 +67,17 @@ export function useEnrichedTeamMetrics(teamId: string | undefined, periodDays = 
     enabled: !!teamId,
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
-      const sinceDate = subDays(new Date(), periodDays).toISOString();
+      const now = new Date();
+      const thisMonday = startOfWeek(now, { weekStartsOn: 1 });
+      const lastMonday = subDays(thisMonday, 7);
+
+      // For week period, use calendar week boundaries; otherwise rolling window
+      let sinceDate = periodDays === 7
+        ? thisMonday.toISOString()
+        : subDays(now, periodDays).toISOString();
+      let periodStart = periodDays === 7 ? thisMonday : subDays(now, periodDays);
+      let periodEnd = now;
+      let displayLabel = periodDays === 7 ? "This Week" : "";
 
       // Fetch reference baseline from vis_config
       const { data: visConfig } = await supabase
@@ -128,7 +141,7 @@ export function useEnrichedTeamMetrics(teamId: string | undefined, periodDays = 
       }
 
       const members: EnrichedMemberMetrics[] = [];
-      const now = new Date();
+      // now already declared above
 
       for (const [memberId, { name, items: memberItems }] of memberMap) {
         const commits = memberItems.filter((i) => i.activity_type === "commit");
@@ -272,12 +285,97 @@ export function useEnrichedTeamMetrics(teamId: string | undefined, periodDays = 
         codeImpactTrend.push({ week: weekLabel, impact: Math.round(weekImpact) });
       }
 
+      // Fallback: if week period and no data, shift to last week
+      if (periodDays === 7 && members.every(m => !m.hasVIS && m.commitCount === 0)) {
+        // Re-run with last week's boundaries
+        sinceDate = lastMonday.toISOString();
+        periodStart = lastMonday;
+        periodEnd = thisMonday;
+        displayLabel = "Last Week";
+
+        // Re-fetch VIS scores for last week
+        const lastWeekVisScores = await fetchAllRows<{ member_id: string; activity_id: string; impact_score: number }>(
+          (from, to) =>
+            supabase
+              .from("impact_classifications")
+              .select("member_id, activity_id, impact_score")
+              .eq("team_id", teamId!)
+              .gte("created_at", sinceDate)
+              .lt("created_at", thisMonday.toISOString())
+              .range(from, to),
+        );
+        const lastWeekVisMap = new Map<string, number>();
+        for (const row of lastWeekVisScores) {
+          lastWeekVisMap.set(row.member_id, (lastWeekVisMap.get(row.member_id) || 0) + Number(row.impact_score));
+        }
+
+        // Re-fetch activities for last week
+        const lastWeekActivities = await fetchAllRows<any>(
+          (from, to) =>
+            supabase
+              .from("external_activity")
+              .select("id, activity_type, title, member_id, occurred_at, metadata, member:team_members!inner(id, user_id, profile:profiles!inner(full_name))")
+              .eq("team_id", teamId!)
+              .eq("source", "github")
+              .gte("occurred_at", sinceDate)
+              .lt("occurred_at", thisMonday.toISOString())
+              .order("occurred_at", { ascending: false })
+              .range(from, to),
+        );
+
+        // Rebuild members from last week data
+        const lastMemberMap = new Map<string, { name: string; items: typeof lastWeekActivities }>();
+        for (const item of lastWeekActivities) {
+          const m = item.member as any;
+          const mid = item.member_id;
+          if (!lastMemberMap.has(mid)) lastMemberMap.set(mid, { name: m?.profile?.full_name || "Unknown", items: [] });
+          lastMemberMap.get(mid)!.items.push(item);
+        }
+
+        members.length = 0;
+        for (const [mid, { name, items: mItems }] of lastMemberMap) {
+          const commits = mItems.filter((i: any) => i.activity_type === "commit");
+          const prsOpened = mItems.filter((i: any) => i.activity_type === "pr_opened");
+          const prsMerged = mItems.filter((i: any) => i.activity_type === "pr_merged");
+          const reviewsGivenItems = mItems.filter((i: any) => i.activity_type === "pr_review");
+          const reviewsReceived = prsOpened.reduce((sum: number, pr: any) => sum + ((pr.metadata as any)?.review_count || 0), 0);
+          let totalAdditions = 0, totalDeletions = 0;
+          for (const c of commits) { const meta = c.metadata as any; totalAdditions += meta?.additions || 0; totalDeletions += meta?.deletions || 0; }
+          const cycleTimes: number[] = [];
+          for (const pr of prsMerged) { const meta = pr.metadata as any; if (meta?.created_at && meta?.merged_at) { const hours = differenceInHours(new Date(meta.merged_at), new Date(meta.created_at)); if (hours >= 0 && hours < 720) cycleTimes.push(hours); } }
+          const reviewVelocities: number[] = [];
+          for (const pr of prsOpened) { const meta = pr.metadata as any; if (meta?.created_at && meta?.first_review_at) { const hours = differenceInHours(new Date(meta.first_review_at), new Date(meta.created_at)); if (hours >= 0 && hours < 720) reviewVelocities.push(hours); } }
+          const repos = new Set<string>();
+          for (const item of mItems) { const meta = (item as any).metadata as any; if (meta?.repo) repos.add(meta.repo); }
+          const workTypes: Record<string, number> = {};
+          for (const item of mItems) { const badge = badgeLookup.get(item.id); workTypes[badge || "unclassified"] = (workTypes[badge || "unclassified"] || 0) + 1; }
+          const rawVis = lastWeekVisMap.get(mid) || 0;
+          members.push({
+            memberId: mid, memberName: name,
+            codeImpactScore: rawVis, hasVIS: rawVis > 0,
+            avgPRCycleTime: cycleTimes.length > 0 ? Math.round(cycleTimes.reduce((a, b) => a + b, 0) / cycleTimes.length * 10) / 10 : null,
+            reviewsGiven: reviewsGivenItems.length, reviewsReceived,
+            avgReviewVelocity: reviewVelocities.length > 0 ? Math.round(reviewVelocities.reduce((a, b) => a + b, 0) / reviewVelocities.length * 10) / 10 : null,
+            focusScore: repos.size, totalAdditions, totalDeletions, netLines: totalAdditions - totalDeletions,
+            commitCount: commits.length, workTypeBreakdown: workTypes,
+          });
+        }
+
+        // Re-normalize VIS
+        for (const m of members.filter(m => m.hasVIS && m.codeImpactScore > 0)) {
+          m.codeImpactScore = Math.round(computeNormalizedImpact(m.codeImpactScore, referenceBaseline));
+        }
+      }
+
       return {
         members,
         teamTotalReviews: members.reduce((s, m) => s + m.reviewsGiven, 0),
         prCycleTimeTrend,
         workTypeDist,
         codeImpactTrend,
+        displayLabel,
+        periodStart,
+        periodEnd,
       } as EnrichedMetrics;
     },
   });

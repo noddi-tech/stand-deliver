@@ -15,6 +15,7 @@ import type { MemberStat, MemberHighlight } from "@/hooks/useTeamSummary";
 import type { MemberBadge, BadgeDefinition } from "@/hooks/useBadges";
 import type { ClassificationResult, TeamFocusItem } from "@/hooks/useTeamFocus";
 import type { MemberBadgeCounts, MemberBadgeImpactPct, MemberBadgeCountPct } from "@/hooks/useMemberBadgeCounts";
+import { format } from "date-fns";
 
 const SENTIMENT_CONFIG: Record<string, { label: string; className: string }> = {
   strong: { label: "Strong week", className: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" },
@@ -48,6 +49,9 @@ interface MemberBreakdownProps {
   highlightsLoading?: boolean;
   period?: BreakdownPeriod;
   onPeriodChange?: (period: BreakdownPeriod) => void;
+  displayLabel?: string;
+  periodStart?: Date;
+  periodEnd?: Date;
 }
 
 export function MemberBreakdown({
@@ -65,6 +69,9 @@ export function MemberBreakdown({
   highlightsLoading,
   period = "week",
   onPeriodChange,
+  displayLabel,
+  periodStart,
+  periodEnd,
 }: MemberBreakdownProps) {
   const [showAll, setShowAll] = useState(true);
   const display = showAll ? memberStats : memberStats.slice(0, 6);
@@ -118,10 +125,18 @@ export function MemberBreakdown({
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
-          <CardTitle className="text-base flex items-center gap-2">
-            <User className="h-4 w-4 text-muted-foreground" />
-            Member Breakdown
-          </CardTitle>
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <User className="h-4 w-4 text-muted-foreground" />
+              Member Breakdown
+            </CardTitle>
+            {periodStart && periodEnd && (
+              <span className="text-xs text-muted-foreground">
+                {displayLabel && displayLabel !== PERIOD_LABELS[period] ? `${displayLabel} · ` : ""}
+                {format(periodStart, "MMM d")} – {format(periodEnd, "MMM d")}
+              </span>
+            )}
+          </div>
           <div className="flex items-center gap-1">
             {(Object.keys(PERIOD_LABELS) as BreakdownPeriod[]).map((p) => (
               <Button

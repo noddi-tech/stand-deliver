@@ -221,6 +221,9 @@ export default function Dashboard() {
           onPeriodChange={setBreakdownPeriod}
           loading={memberStatsLoading}
           highlightsLoading={summaryLoading}
+          displayLabel={enriched?.displayLabel}
+          periodStart={enriched?.periodStart}
+          periodEnd={enriched?.periodEnd}
         />
       </section>
 
