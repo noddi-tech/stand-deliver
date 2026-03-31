@@ -1,38 +1,103 @@
 
 
-# VIS Unified Scoring Overhaul
+# Calendar Week Alignment + Monday Morning Fallback
 
-## Status: Steps 1-7 COMPLETE ✅
+## Problem
 
-## What Changed
+Fix 1 (calendar week boundaries) creates the same Monday-morning empty state for the Dashboard Member Breakdown that Fix 2 solves for awards. Both `useEnrichedAnalytics` and `useWeeklyAwards` need the same fallback pattern.
 
-Replaced the dual normalization system (linear for weekly cron/hook, log-scale for analytics/awards/digest) with a single absolute-baseline formula. Every view now shows the same VIS number.
+## Changes
 
-### Formula
+### 1. `src/hooks/useEnrichedAnalytics.ts` — calendar week + fallback
 
+**Line 67**: Replace rolling window with calendar week when `periodDays === 7`:
+
+```typescript
+const mondayStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+const sinceDate = periodDays === 7
+  ? mondayStart.toISOString()
+  : subDays(new Date(), periodDays).toISOString();
 ```
-normalizedImpact = clamp(log10(rawImpact + 1) / log10(referenceBaseline + 1) × 60, 0, 100)
-VIS = normalizedImpact × 0.40 + deliveryScore × 0.30 + multiplierScore × 0.15 + focusRatio × 0.15
+
+After computing `members` (line ~206), add fallback check for the week period:
+
+```typescript
+// If current calendar week has no data, fall back to last week
+let displayLabel = "This Week";
+if (periodDays === 7 && members.every(m => !m.hasVIS && m.commitCount === 0)) {
+  // Re-query with last Monday–Sunday window
+  const lastMonday = subDays(mondayStart, 7);
+  // ... re-run the same queries with lastMonday.toISOString() as sinceDate
+  displayLabel = "Last Week";
+}
 ```
 
-### Files Changed
+To avoid duplicating the entire query body, restructure the `queryFn` to extract the data-fetching logic into an inner helper that takes `sinceDate` as a parameter. Call it first with current week; if empty and `periodDays === 7`, call again with last week's start. This keeps the code DRY.
 
-| Step | File | Change |
-|------|------|--------|
-| 1 | Migration | Created `vis_config` table, auto-calibrated baseline from 30-day data |
-| 2 | `supabase/functions/_shared/scoring.ts` | New `computeVISTotal(rawImpact, baseline)` + `computeNormalizedImpact` helper |
-| 2 | `src/lib/scoring.ts` | Mirror of canonical |
-| 2 | `src/test/scoring.test.ts` | 18 tests updated for new signature |
-| 3 | `supabase/functions/compute-weekly-vis/index.ts` | Reads baseline from `vis_config`, removed median calculation |
-| 4 | `src/hooks/useWeeklyVIS.ts` | Reads baseline from `vis_config`, removed all-team fetch for median |
-| 5 | `src/hooks/useEnrichedAnalytics.ts` | Replaced log-scale median normalization with `computeNormalizedImpact` |
-| 6 | `src/hooks/useWeeklyAwards.ts` | Replaced `logScaleNormalize` with `computeNormalizedImpact` |
-| 7 | `supabase/functions/ai-weekly-digest/index.ts` | Replaced `logScaleNormalize` with absolute-baseline normalization |
+Return `displayLabel` alongside the existing `EnrichedMetrics`:
 
-## Remaining (Step 9 — independently shippable)
+```typescript
+return { ...metrics, displayLabel } as EnrichedMetrics & { displayLabel: string };
+```
 
-- 9a: Weighted Delivery Score (by impact tier)
-- 9b: Review Depth Multiplier
-- 9c: Work Type Macro-Categories
-- 9d: Richer Team Insights Celebrations
-- 9e: VIS Sparkline on Member Cards
+Add `displayLabel` to the `EnrichedMetrics` interface (or return as a separate field).
+
+### 2. `src/hooks/useWeeklyAwards.ts` — fallback to last week
+
+After line 154, add the fallback check:
+
+```typescript
+const hasEnoughData = thisWeekMembers.length > 0;
+const displayLabel = hasEnoughData ? "This Week" : "Last Week";
+
+if (!hasEnoughData) {
+  // Recompute awards from lastWeekMap instead
+  const lastWeekMembers = Array.from(lastWeekMap.values())
+    .filter(m => m.commitCount + m.reviewsGiven + m.commitmentsCompleted > 0);
+  // Use lastWeekMembers for MVP/Hero/Momentum computation below
+}
+```
+
+Return `{ awards, displayLabel }` — the return type already has `awards`, just add `displayLabel`.
+
+### 3. `src/pages/TeamInsights.tsx` — use dynamic label
+
+**Line 69-71**: Replace hardcoded "This Week's Awards" with:
+
+```typescript
+{awardsData?.displayLabel || "This Week"}'s Awards
+```
+
+And the badge on line 71:
+
+```typescript
+<Badge ...>{awardsData?.displayLabel || "This week"}</Badge>
+```
+
+### 4. `src/components/team/MemberBreakdown.tsx` — date range subtitle
+
+Add a date range subtitle next to the period selector. When `useEnrichedAnalytics` returns `displayLabel: "Last Week"`, show "Last Week" instead of "This Week" in the period button area. Pass `displayLabel` through from Dashboard → MemberBreakdown as a new optional prop.
+
+Also add formatted date range (e.g., "Mar 24 – Mar 30") as muted text next to the heading using `format(periodStart, "MMM d")` – `format(periodEnd, "MMM d")`.
+
+### 5. `src/pages/Dashboard.tsx` — pass displayLabel
+
+Read `displayLabel` from the enriched hook result and pass to `MemberBreakdown`:
+
+```typescript
+const { data: enriched } = useEnrichedTeamMetrics(teamId, PERIOD_DAYS[breakdownPeriod]);
+// enriched now includes displayLabel
+```
+
+Pass as prop: `<MemberBreakdown ... displayLabel={enriched?.displayLabel} />`
+
+## Files Changed
+
+| File | Change |
+|------|--------|
+| `src/hooks/useEnrichedAnalytics.ts` | Calendar week start for 7d; fallback to last week if empty; return `displayLabel` |
+| `src/hooks/useWeeklyAwards.ts` | Fallback to last week awards if current week empty; return `displayLabel` |
+| `src/pages/TeamInsights.tsx` | Use dynamic `displayLabel` for awards heading |
+| `src/components/team/MemberBreakdown.tsx` | Accept `displayLabel` prop; show date range subtitle |
+| `src/pages/Dashboard.tsx` | Pass `displayLabel` from enriched hook to MemberBreakdown |
+
