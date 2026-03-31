@@ -180,7 +180,7 @@ export function useWeeklyAwards(teamId: string | undefined) {
         }
 
         // Unsung Hero
-        const hero = thisWeekMembers
+        const hero = displayMembers
           .filter(m => m.reviewsGiven >= 2)
           .reduce<MemberStats | null>((best, m) => {
             const ratio = m.reviewsGiven / Math.max(m.prsOpened, 1);
