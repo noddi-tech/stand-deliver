@@ -1208,8 +1208,18 @@ export default function MyStandup() {
             className="w-full"
             size="lg"
           >
-            {coachLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sparkles className="h-4 w-4 mr-2" />}
-            {isEditing ? "Review & Update" : "Review & Submit"}
+            {coachLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : todayCommitments.length === 0 && !isEditing ? (
+              <Check className="h-4 w-4 mr-2" />
+            ) : (
+              <Sparkles className="h-4 w-4 mr-2" />
+            )}
+            {isEditing
+              ? "Review & Update"
+              : todayCommitments.length === 0
+                ? "Submit Standup"
+                : "Review & Submit"}
           </Button>
         </>
       )}
