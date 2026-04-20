@@ -472,8 +472,9 @@ export default function MyStandup() {
   };
 
   const requestCoachReview = async () => {
-    if (todayCommitments.length < 2) {
-      toast.error("Add at least 2 focus items to keep your standup actionable");
+    // If user is only carrying forward (no new items), skip AI review and submit directly
+    if (todayCommitments.length === 0) {
+      handleSubmit();
       return;
     }
     // Open modal and start fake progress
