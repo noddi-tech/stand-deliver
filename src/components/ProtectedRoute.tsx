@@ -25,7 +25,9 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   // If user has no org or no team, redirect to onboarding (unless already there)
   const isOnboarding = location.pathname === "/onboarding";
   if ((!onboarding.hasOrg || !onboarding.hasTeam) && !isOnboarding) {
-    return <Navigate to="/onboarding" replace />;
+    const next = `${location.pathname}${location.search}`;
+    const safeNext = next && next !== "/onboarding" ? `?next=${encodeURIComponent(next)}` : "";
+    return <Navigate to={`/onboarding${safeNext}`} replace />;
   }
 
   return <>{children}</>;
