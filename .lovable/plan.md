@@ -1,62 +1,87 @@
 
 
-# Make New Focus Items Optional During Standup
+# Preserve Slack Deep-Link Destination Through Auth
 
 ## Problem
 
-Currently `MyStandup.tsx` enforces a minimum of 2 new focus items per standup submission. Team members on weeks where they're carrying existing commitments forward (no new work to add) are blocked from submitting unless they invent filler items — which defeats the purpose.
+Clicking the "Start Standup" button in Slack opens `https://standflow.naviosolutions.com/standup`, but unauthenticated users get bounced to `/dashboard` after Slack OIDC sign-in. The original `/standup` destination is lost because three redirect points hardcode `/dashboard`:
 
-The "carry forward" mechanism already exists: any active/in-progress commitment that isn't marked done/dropped/blocked rolls into the new session via `carry_forward_commitments`. So a member who simply marks all previous items as still in-progress and submits with zero new focus items has fully accounted for their work.
+1. `ProtectedRoute` redirects to `/auth` with no memory of the requested path.
+2. `Auth.tsx` redirects to `/dashboard` after successful auth.
+3. `AuthCallback.tsx` redirects to `/dashboard` after the OIDC round-trip.
 
-## Changes
+The Slack reminder code itself (`slack-send-reminder`, `slack-followup-cron`) is already correct — it points at `/standup`. The bug is in the client-side auth flow.
 
-### 1. `src/pages/MyStandup.tsx` — Remove the 2-item minimum
+## Solution
 
-**Line 474–478** (`requestCoachReview`): Remove the length check. If there are zero new commitments, skip the AI review entirely and go straight to submit (no point reviewing nothing). If there's 1+ new commitment, run the coach review as today.
+Use a `?next=` query parameter that survives the OIDC OAuth round-trip (Slack returns the user to a URL we control, but `location.state` is wiped by the full-page redirect, so query params are the only reliable carrier).
 
-```typescript
-const requestCoachReview = async () => {
-  // If user is only carrying forward (no new items), skip AI review and submit directly
-  if (todayCommitments.length === 0) {
-    handleSubmit();
-    return;
-  }
-  // ... existing coach review logic unchanged
-};
-```
+### Changes
 
-**Line 540–545** (`handleSubmit`): Remove the `< 2` guard entirely. Submission proceeds regardless of new-item count.
+**1. `src/components/ProtectedRoute.tsx`** — capture the original path
 
-**Line 1203–1211** (Submit button): Update the label to be honest about what's happening when there are no new items:
+When redirecting unauthenticated users to `/auth`, append the original path + search:
 
 ```typescript
-{coachLoading ? <Loader2 .../> : <Sparkles .../>}
-{isEditing
-  ? "Review & Update"
-  : todayCommitments.length === 0
-    ? "Submit Standup"
-    : "Review & Submit"}
+if (!user) {
+  const next = `${location.pathname}${location.search}`;
+  const safeNext = next && next !== "/auth" ? `?next=${encodeURIComponent(next)}` : "";
+  return <Navigate to={`/auth${safeNext}`} replace />;
+}
 ```
 
-(When there are no new items, hide the Sparkles icon — replace with `<Check>` — since AI review is skipped.)
+**2. `src/hooks/useAuth.tsx`** — forward `next` into the Slack OAuth redirect
 
-### 2. Add a small reassurance hint
+In `signInWithSlack`, read `?next=` from the current URL and append it to the OAuth `redirectTo` so it survives the round-trip:
 
-Below the focus input area (around line 1145), when `showStandupForm && todayCommitments.length === 0 && allResolved`, show a muted line:
+```typescript
+const params = new URLSearchParams(window.location.search);
+const next = params.get("next") || "";
+const callbackUrl = `${window.location.origin}/auth/callback${next ? `?next=${encodeURIComponent(next)}` : ""}`;
+// pass callbackUrl as redirectTo
+```
 
-> "No new focus items? That's fine — your in-progress commitments will carry forward."
+(I'll inspect the current `signInWithSlack` implementation to find the exact line, but the pattern is to thread `next` into whatever `redirectTo` it already builds.)
 
-This makes it clear to the user that submitting empty is a valid path, not an oversight.
+**3. `src/pages/AuthCallback.tsx`** — honour `?next=` after OIDC
 
-### 3. Files NOT changed
+Replace the hardcoded redirect:
 
-- The `!allResolved` guard on the submit button (line 1205) **stays** — users still need to address each previous commitment (mark done/dropped/blocked/in-progress) before submitting. That's the accountability check; it's separate from "add new work."
-- No edge-function changes needed; backend never enforced this.
-- `carry_forward_commitments` already handles the zero-new-items case correctly.
+```typescript
+if (!loading && user) {
+  const params = new URLSearchParams(window.location.search);
+  const next = params.get("next");
+  const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
+  return <Navigate to={safeNext} replace />;
+}
+```
+
+The `startsWith("/") && !startsWith("//")` check prevents open-redirect attacks (no protocol-relative URLs).
+
+**4. `src/pages/Auth.tsx`** — honour `?next=` for already-signed-in users
+
+Replace `<Navigate to="/dashboard" replace />` (line 74) with the same safe-next pattern, so users who land on `/auth?next=/standup` while already signed in go straight to `/standup`.
+
+### Files NOT changed
+
+- `supabase/functions/slack-send-reminder/index.ts` and `slack-followup-cron/index.ts` already correctly emit `/standup` URLs — no change needed.
+- `_shared/routes.ts` and the `SITE_URL` env var are correct.
+- `Onboarding` redirect in `ProtectedRoute` stays — users without a team must complete onboarding before any deep-link destination.
+
+## Verification Plan
+
+After deployment:
+1. Sign out, click a Slack reminder → confirm landing on `/standup` (not `/dashboard`).
+2. Sign out, manually open `https://standflow.naviosolutions.com/standup` → confirm same.
+3. Already-signed-in: click Slack link → confirm direct `/standup` load with no flash of `/dashboard`.
+4. Confirm root `/` and `/auth` (no `next`) still default to `/dashboard`.
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
-| `src/pages/MyStandup.tsx` | Remove `< 2` checks in `requestCoachReview` and `handleSubmit`; auto-skip AI review when zero new items; update submit button label; add reassurance hint |
+| `src/components/ProtectedRoute.tsx` | Append `?next=<path>` when redirecting to `/auth` |
+| `src/hooks/useAuth.tsx` | Forward `?next=` into Slack OIDC `redirectTo` |
+| `src/pages/AuthCallback.tsx` | Read `?next=` and redirect there (with safety check) |
+| `src/pages/Auth.tsx` | Read `?next=` for already-signed-in users |
 
