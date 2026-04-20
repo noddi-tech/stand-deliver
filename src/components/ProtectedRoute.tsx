@@ -16,7 +16,11 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
     );
   }
 
-  if (!user) return <Navigate to="/auth" replace />;
+  if (!user) {
+    const next = `${location.pathname}${location.search}`;
+    const safeNext = next && next !== "/auth" ? `?next=${encodeURIComponent(next)}` : "";
+    return <Navigate to={`/auth${safeNext}`} replace />;
+  }
 
   // If user has no org or no team, redirect to onboarding (unless already there)
   const isOnboarding = location.pathname === "/onboarding";

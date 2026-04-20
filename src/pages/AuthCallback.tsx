@@ -13,7 +13,12 @@ export default function AuthCallback() {
     return () => clearTimeout(timer);
   }, []);
 
-  if (!loading && user) return <Navigate to="/dashboard" replace />;
+  if (!loading && user) {
+    const params = new URLSearchParams(window.location.search);
+    const next = params.get("next");
+    const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
+    return <Navigate to={safeNext} replace />;
+  }
 
   if ((!loading && !user) || timedOut) {
     toast({ title: "Sign-in failed", description: "Could not complete authentication. Please try again.", variant: "destructive" });

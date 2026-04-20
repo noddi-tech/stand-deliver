@@ -49,9 +49,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signInWithSlack = async () => {
+    const params = new URLSearchParams(window.location.search);
+    const next = params.get("next") || "";
+    const callbackUrl = `${window.location.origin}/auth/callback${next ? `?next=${encodeURIComponent(next)}` : ""}`;
     await supabase.auth.signInWithOAuth({
       provider: "slack_oidc" as any,
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
+      options: { redirectTo: callbackUrl },
     });
   };
 
