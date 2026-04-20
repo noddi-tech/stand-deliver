@@ -203,7 +203,7 @@ export default function Onboarding() {
 
       setTeamId(selectedTeamId);
       toast({ title: "Welcome to StandFlow! 🎉", description: `You've joined ${existingOrgName}.` });
-      navigate("/dashboard", { replace: true });
+      navigate(safeNext, { replace: true });
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" });
     } finally {
