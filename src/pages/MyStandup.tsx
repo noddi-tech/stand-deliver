@@ -1168,6 +1168,11 @@ export default function MyStandup() {
               </Button>
             </div>
           ))}
+          {showStandupForm && todayCommitments.length === 0 && allResolved && (
+            <p className="text-xs text-muted-foreground italic pl-1">
+              No new focus items? That's fine — your in-progress commitments will carry forward.
+            </p>
+          )}
         </CardContent>
       </Card>
 
