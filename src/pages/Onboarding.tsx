@@ -86,7 +86,7 @@ export default function Onboarding() {
   useEffect(() => {
     if (!onboardingStatus.loading && !initialized) {
       if (onboardingStatus.hasOrg && onboardingStatus.hasTeam) {
-        navigate("/dashboard", { replace: true });
+        navigate(safeNext, { replace: true });
         return;
       }
       if (onboardingStatus.hasOrg && !onboardingStatus.hasTeam) {
