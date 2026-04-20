@@ -39,6 +39,11 @@ export default function Onboarding() {
   const { user } = useAuth();
   const onboardingStatus = useOnboardingStatus();
 
+  const safeNext = (() => {
+    const n = new URLSearchParams(window.location.search).get("next");
+    return n && n.startsWith("/") && !n.startsWith("//") ? n : "/dashboard";
+  })();
+
   const [step, setStep] = useState(0);
   const [initialized, setInitialized] = useState(false);
 
