@@ -273,7 +273,7 @@ export default function Onboarding() {
 
   const handleFinish = () => {
     toast({ title: "Welcome to StandFlow! 🎉", description: "Your workspace is ready." });
-    navigate("/dashboard", { replace: true });
+    navigate(safeNext, { replace: true });
   };
 
   const timezones = (() => {
