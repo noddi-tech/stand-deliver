@@ -27,6 +27,9 @@ export function useOnboardingStatus() {
       return;
     }
 
+    // Reset to loading whenever we re-check (prevents stale hasOrg=false flash)
+    setStatus((prev) => ({ ...prev, loading: true }));
+
     async function check() {
       const { data: orgMember } = await supabase
         .from("organization_members")
