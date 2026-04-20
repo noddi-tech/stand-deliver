@@ -39,6 +39,11 @@ export default function Onboarding() {
   const { user } = useAuth();
   const onboardingStatus = useOnboardingStatus();
 
+  const safeNext = (() => {
+    const n = new URLSearchParams(window.location.search).get("next");
+    return n && n.startsWith("/") && !n.startsWith("//") ? n : "/dashboard";
+  })();
+
   const [step, setStep] = useState(0);
   const [initialized, setInitialized] = useState(false);
 
@@ -81,7 +86,7 @@ export default function Onboarding() {
   useEffect(() => {
     if (!onboardingStatus.loading && !initialized) {
       if (onboardingStatus.hasOrg && onboardingStatus.hasTeam) {
-        navigate("/dashboard", { replace: true });
+        navigate(safeNext, { replace: true });
         return;
       }
       if (onboardingStatus.hasOrg && !onboardingStatus.hasTeam) {
@@ -198,7 +203,7 @@ export default function Onboarding() {
 
       setTeamId(selectedTeamId);
       toast({ title: "Welcome to StandFlow! 🎉", description: `You've joined ${existingOrgName}.` });
-      navigate("/dashboard", { replace: true });
+      navigate(safeNext, { replace: true });
     } catch (e: any) {
       toast({ title: "Error", description: e.message, variant: "destructive" });
     } finally {
@@ -268,7 +273,7 @@ export default function Onboarding() {
 
   const handleFinish = () => {
     toast({ title: "Welcome to StandFlow! 🎉", description: "Your workspace is ready." });
-    navigate("/dashboard", { replace: true });
+    navigate(safeNext, { replace: true });
   };
 
   const timezones = (() => {
