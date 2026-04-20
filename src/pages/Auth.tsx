@@ -71,7 +71,12 @@ export default function Auth() {
             <LogOut className="h-4 w-4" />
             Sign out &amp; switch workspace
           </Button>
-          <Navigate to="/dashboard" replace />
+          {(() => {
+            const params = new URLSearchParams(window.location.search);
+            const next = params.get("next");
+            const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : "/dashboard";
+            return <Navigate to={safeNext} replace />;
+          })()}
         </div>
       </div>
     );
