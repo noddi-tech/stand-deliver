@@ -472,8 +472,9 @@ export default function MyStandup() {
   };
 
   const requestCoachReview = async () => {
-    if (todayCommitments.length < 2) {
-      toast.error("Add at least 2 focus items to keep your standup actionable");
+    // If user is only carrying forward (no new items), skip AI review and submit directly
+    if (todayCommitments.length === 0) {
+      handleSubmit();
       return;
     }
     // Open modal and start fake progress
@@ -539,10 +540,6 @@ export default function MyStandup() {
 
   const handleSubmit = async () => {
     if (!memberId || !teamId) return;
-    if (todayCommitments.length < 2) {
-      toast.error("Add at least 2 focus items to keep your standup actionable");
-      return;
-    }
 
     setSubmitting(true);
     try {
@@ -1171,6 +1168,11 @@ export default function MyStandup() {
               </Button>
             </div>
           ))}
+          {showStandupForm && todayCommitments.length === 0 && allResolved && (
+            <p className="text-xs text-muted-foreground italic pl-1">
+              No new focus items? That's fine — your in-progress commitments will carry forward.
+            </p>
+          )}
         </CardContent>
       </Card>
 
@@ -1206,8 +1208,18 @@ export default function MyStandup() {
             className="w-full"
             size="lg"
           >
-            {coachLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Sparkles className="h-4 w-4 mr-2" />}
-            {isEditing ? "Review & Update" : "Review & Submit"}
+            {coachLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            ) : todayCommitments.length === 0 && !isEditing ? (
+              <Check className="h-4 w-4 mr-2" />
+            ) : (
+              <Sparkles className="h-4 w-4 mr-2" />
+            )}
+            {isEditing
+              ? "Review & Update"
+              : todayCommitments.length === 0
+                ? "Submit Standup"
+                : "Review & Submit"}
           </Button>
         </>
       )}
