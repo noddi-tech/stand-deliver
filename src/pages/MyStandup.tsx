@@ -540,10 +540,6 @@ export default function MyStandup() {
 
   const handleSubmit = async () => {
     if (!memberId || !teamId) return;
-    if (todayCommitments.length < 2) {
-      toast.error("Add at least 2 focus items to keep your standup actionable");
-      return;
-    }
 
     setSubmitting(true);
     try {
